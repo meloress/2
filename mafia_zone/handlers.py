@@ -238,6 +238,83 @@ async def _refresh_giveaway(bot: Bot, chat_id: int, msg_id: int, gid: int) -> No
         _refresh.pop(gid, None)
 
 
+# ---------- para ----------
+async def _couple_target(msg: Message, command: CommandObject):
+    """Reply, @username yoki ismga bog'langan mention. (uid, ism) yoki None."""
+    if msg.reply_to_message and msg.reply_to_message.from_user:
+        t = msg.reply_to_message.from_user
+        return None if t.is_bot else (t.id, t.full_name)
+    for ent in msg.entities or []:
+        if ent.type == "text_mention" and ent.user and not ent.user.is_bot:
+            return ent.user.id, ent.user.full_name
+    arg = (command.args or "").strip()
+    if arg.startswith("@") and (u := await db.user_by_username(arg)):
+        return u.telegram_id, u.full_name
+    return None
+
+
+async def _name(uid: int) -> str:
+    u = await db.get_user(uid)
+    return u.full_name if u else "?"
+
+
+@router.message(Command("couple"))
+async def cmd_couple(msg: Message, bot: Bot, command: CommandObject):
+    me = await _user(msg)
+    if not me:
+        return
+    target = await _couple_target(msg, command)
+    if not target:
+        return await msg.reply(texts.COUPLE_HOW if not command.args else texts.COUPLE_NOT_FOUND)
+    uid, name = target
+    if uid == me.telegram_id:
+        return await msg.reply(texts.COUPLE_SELF)
+    if await db.partner(me.telegram_id):
+        return await msg.reply(texts.COUPLE_YOU_TAKEN)
+    if await db.partner(uid):
+        return await msg.reply(texts.COUPLE_THEY_TAKEN)
+    kb = Kb(inline_keyboard=[[
+        Btn(text="✅ Tasdiqlash", callback_data=f"cp:{me.telegram_id}:{uid}:1", style="success"),
+        Btn(text="❌ Bekor qilish", callback_data=f"cp:{me.telegram_id}:{uid}:0", style="danger")]])
+    await send(bot, msg.chat.id, texts.couple_request(me.telegram_id, me.full_name, uid, name), kb)
+
+
+@router.callback_query(F.data.startswith("cp:"))
+async def cb_couple(cq: CallbackQuery, bot: Bot):
+    _, a, b, yes = cq.data.split(":")
+    a, b = int(a), int(b)
+    if cq.from_user.id != b:
+        return await cq.answer(texts.COUPLE_NOT_YOU, show_alert=True)
+    if not await _user(cq):
+        return await cq.answer()
+    if yes != "1":
+        text = texts.couple_rejected(b, cq.from_user.full_name)
+    elif await db.make_couple(a, b):
+        text = texts.couple_made(a, await _name(a), b, cq.from_user.full_name)
+    else:
+        return await cq.answer(texts.COUPLE_FAILED, show_alert=True)
+    await cq.answer()
+    await edit(bot, cq.message.chat.id, cq.message.message_id, text)
+
+
+@router.message(Command("uncouple"))
+async def cmd_uncouple(msg: Message):
+    me = await _user(msg)
+    if not me:
+        return
+    p = await db.break_couple(me.telegram_id)
+    await msg.reply(texts.couple_broken(me.telegram_id, me.full_name, p, await _name(p)) if p else texts.COUPLE_NONE)
+
+
+@router.message(Command("mycouple"))
+async def cmd_mycouple(msg: Message):
+    me = await _user(msg)
+    if not me:
+        return
+    p = await db.partner(me.telegram_id)
+    await msg.reply(texts.couple_show(me.telegram_id, me.full_name, p, await _name(p)) if p else texts.COUPLE_NONE)
+
+
 @router.message(Command("players"), GROUPS)
 async def cmd_players(msg: Message):
     r = RUNNERS.get(msg.chat.id)

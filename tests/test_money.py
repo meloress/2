@@ -115,6 +115,59 @@ def test_send_command():
     run(t())
 
 
+def test_couple_flow():
+    async def t():
+        a, b, c = BASE + 700, BASE + 701, BASE + 702
+        for u in (a, b, c):
+            await mkuser(u, 0)
+        await db.upsert_user(b, "Bek", "BekUZ")
+        bot = FakeBot()
+        bot.edited = []
+
+        async def edit_message_text(text, chat_id, message_id, **kw):
+            bot.edited.append(text)
+        bot.edit_message_text = edit_message_text
+        cmd = lambda args=None: SimpleNamespace(args=args)
+
+        m, _ = fake_msg(a)
+        replies = []
+
+        async def reply(text, **kw):
+            replies.append(text)
+        m.reply, m.entities = reply, None
+        await handlers.cmd_couple(m, bot, cmd())  # nishonsiz
+        assert replies[-1] == texts.COUPLE_HOW
+        await handlers.cmd_couple(m, bot, cmd("@bekuz"))  # username bo'yicha
+        assert "para bo'lish so'rovini" in bot.sent[-1]
+
+        def cq(uid, yes):
+            answers = []
+
+            async def answer(text=None, **kw):
+                answers.append(text)
+            return SimpleNamespace(data=f"cp:{a}:{b}:{yes}", from_user=SimpleNamespace(
+                id=uid, full_name=f"u{uid}", username=None), message=SimpleNamespace(
+                chat=SimpleNamespace(id=-5), message_id=1), answer=answer), answers
+
+        q, ans = cq(c, 1)  # begona bosa olmaydi
+        await handlers.cb_couple(q, bot)
+        assert ans == [texts.COUPLE_NOT_YOU] and await db.partner(a) is None
+        q, _ = cq(b, 0)
+        await handlers.cb_couple(q, bot)
+        assert "rad etdi" in bot.edited[-1] and await db.partner(a) is None
+        q, _ = cq(b, 1)
+        await handlers.cb_couple(q, bot)
+        assert "endi para" in bot.edited[-1] and await db.partner(a) == b and await db.partner(b) == a
+        assert not await db.make_couple(c, b)  # b band
+        await handlers.cmd_mycouple(m)
+        assert replies[-1].count("❤️") == 2
+        await handlers.cmd_uncouple(m)
+        assert "bekor qilindi" in replies[-1] and await db.partner(b) is None
+        await handlers.cmd_uncouple(m)
+        assert replies[-1] == texts.COUPLE_NONE
+    run(t())
+
+
 def test_concurrent_buys_and_new_users():
     async def t():
         u = BASE + 800

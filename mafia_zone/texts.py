@@ -370,6 +370,38 @@ GIVEAWAY_GOT = "🎉 +{} 💵 oldingiz!"
 GIVEAWAY_NO = "😔 Tugagan yoki siz allaqachon olgansiz"
 
 
+# ---------- para ----------
+COUPLE_HOW = "❌ Reply qilib yoki /couple @username yozing."
+COUPLE_NOT_FOUND = "❌ Bu foydalanuvchi topilmadi. U avval botga /start yozgan bo'lishi kerak yoki reply qiling."
+COUPLE_SELF = "❌ O'zingizga para bo'lolmaysiz 🙂"
+COUPLE_YOU_TAKEN = "❌ Sizda allaqachon para bor. Avval /uncouple qiling."
+COUPLE_THEY_TAKEN = "❌ Bu foydalanuvchining allaqachon parasi bor."
+COUPLE_NOT_YOU = "❌ Bu so'rov siz uchun emas"
+COUPLE_FAILED = "❌ Bo'lmadi: kimdir allaqachon para bo'lib ulgurdi."
+COUPLE_NONE = "💔 Sizda para yo'q. /couple bilan taklif qiling."
+
+
+def couple_request(a: int, a_name: str, b: int, b_name: str) -> str:
+    return (f"💌 {mention(b, b_name)}, diqqat qiling!\n"
+            f"{mention(a, a_name)} sizga para bo'lish so'rovini yubormoqda 🪽")
+
+
+def couple_rejected(b: int, b_name: str) -> str:
+    return f"❌ 🪽 {mention(b, b_name)} taklifni rad etdi."
+
+
+def couple_made(a: int, a_name: str, b: int, b_name: str) -> str:
+    return f"❤️ 🪽 ❤️ {mention(a, a_name)} va {mention(b, b_name)} endi para!"
+
+
+def couple_broken(a: int, a_name: str, b: int, b_name: str) -> str:
+    return f"💔 🪽 {mention(a, a_name)} va {mention(b, b_name)} parasi bekor qilindi."
+
+
+def couple_show(a: int, a_name: str, b: int, b_name: str) -> str:
+    return f"❤️ {mention(a, a_name)} ❤️ {mention(b, b_name)}"
+
+
 NO_GAME ="🎮 Hozir o'yinda emassiz. Guruhda /game bilan boshlang!"
 
 

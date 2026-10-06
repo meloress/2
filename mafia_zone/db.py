@@ -1,7 +1,7 @@
 """PostgreSQL (lokalda SQLite) modellari va so'rovlar. Balans o'zgarishlari atomar UPDATE bilan."""
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import (JSON, BigInteger, Boolean, DateTime, Index, Integer, String, func, select, text,
+from sqlalchemy import (JSON, BigInteger, Boolean, DateTime, Index, Integer, String, delete, func, select, text,
                         update)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -132,6 +132,48 @@ async def create_giveaway(chat_id: int, sender: int, per: int, parts: int) -> in
 async def get_giveaway(gid: int) -> Giveaway | None:
     async with Session() as s:
         return await s.get(Giveaway, gid)
+
+
+class Couple(Base):
+    """Har juftlik ikki qator (a->b, b->a). PK: bir odamning faqat bitta parasi bo'ladi."""
+    __tablename__ = "couples"
+    user_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    partner_id: Mapped[int] = mapped_column(BigInteger, index=True)
+
+
+async def partner(uid: int) -> int | None:
+    async with Session() as s:
+        c = await s.get(Couple, uid)
+        return c.partner_id if c else None
+
+
+async def make_couple(a: int, b: int) -> bool:
+    """Ikkalasi ham bo'sh bo'lsa juftlaydi. Bir vaqtda bosilsa ham PK ikkinchi parani yo'l qo'ymaydi."""
+    from sqlalchemy.exc import IntegrityError
+    if a == b:
+        return False
+    try:
+        async with Session.begin() as s:
+            s.add_all([Couple(user_id=a, partner_id=b), Couple(user_id=b, partner_id=a)])
+    except IntegrityError:
+        return False
+    return True
+
+
+async def break_couple(uid: int) -> int | None:
+    """Parani bekor qiladi, sobiq parani qaytaradi."""
+    async with Session.begin() as s:
+        c = await s.get(Couple, uid)
+        if not c:
+            return None
+        await s.execute(delete(Couple).where(Couple.user_id.in_([uid, c.partner_id])))
+        return c.partner_id
+
+
+async def user_by_username(username: str) -> User | None:
+    async with Session() as s:
+        return (await s.scalars(select(User).where(func.lower(User.username) == username.lower().lstrip("@"))
+                                .limit(1))).first()
 
 
 async def giveaway_takers(gid: int) -> list[tuple[int, str]]:
