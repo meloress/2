@@ -1,0 +1,515 @@
+"""O'yin holati va qoidalari. Telegramdan bexabar: faqat Event qaytaradi.
+
+Tungi hisob-kitob tartibi (spec, 3-bo'lim):
+  1a blok -> 1b Aferist, Qaroqchi -> 2 himoya -> 3 axborot -> 4 hujum -> 5 qasos/vorislik
+"""
+import random
+from dataclasses import asdict, dataclass, field
+
+from .roles import MAFIA, NEUTRAL, NO_TARGET, ROLES, TOWN
+from .setup import deal
+
+NIGHT, DAY, VOTING, CONFIRM, FINISHED = "night", "day", "voting", "confirm", "finished"
+MAX_DAYS = 20
+GAZAB_KILLS = 3
+AFK_LIMIT = 3  # ketma-ket o'tkazib yuborilgan navbatlar (0 = o'chiq)
+ATTACKS = {"mafia_kill", "hit", "kill", "bite", "shoot", "curse", "rage"}
+DRAW = "draw"
+
+
+@dataclass
+class Event:
+    kind: str
+    uid: int | None = None
+    target: int | None = None
+    data: dict = field(default_factory=dict)
+
+
+@dataclass
+class Player:
+    uid: int
+    name: str
+    role: str = "tinch"
+    alive: bool = True
+    items: dict = field(default_factory=dict)  # shield / verbena / doc -> soni
+    last_target: int | None = None  # Doktor, Kezuvchi, Qorovul: ketma-ket cheklovi
+    self_heal_used: bool = False
+    kills: int = 0  # G'azabkor
+    won: bool = False
+    mute_day: int = 0  # Qaroqchi ovoz huquqini o'g'irlagan kun
+    idle: int = 0  # AFK hisoblagich
+
+    @property
+    def team(self) -> str:
+        return ROLES[self.role].team
+
+
+@dataclass
+class Game:
+    chat_id: int
+    seed: int
+    players: list[Player]
+    phase: str = NIGHT
+    day: int = 1
+    actions: dict = field(default_factory=dict)  # uid -> [kind, target]
+    mafia_votes: dict = field(default_factory=dict)  # uid -> target
+    votes: dict = field(default_factory=dict)  # voter -> target | None (o'tkazib yuborish)
+    vote_log: list = field(default_factory=list)  # [voter, target] berilish tartibida
+    guarded: int | None = None
+    winner: str | None = None
+    afk_limit: int = AFK_LIMIT
+    max_days: int = MAX_DAYS  # katta o'yinda ko'proq kun kerak
+    confirm: bool = False  # ikki bosqichli osish: nomzod -> 👍/👎
+    candidate: int | None = None
+    confirms: dict = field(default_factory=dict)  # uid -> True (osish) / False (rahm)
+
+    # ---------- yaratish va saqlash ----------
+    @classmethod
+    def create(cls, chat_id: int, members: list[tuple[int, str]], seed: int,
+               disabled: frozenset = frozenset(), items: dict | None = None,
+               afk_limit: int = AFK_LIMIT, confirm: bool = False) -> "Game":
+        roles = deal(len(members), random.Random(seed), disabled)
+        items = items or {}
+        players = [Player(uid, name, role, items=dict(items.get(uid, {})))
+                   for (uid, name), role in zip(members, roles)]
+        return cls(chat_id, seed, players, afk_limit=afk_limit, confirm=confirm,
+                   max_days=max(MAX_DAYS, len(players)))
+
+    def use_tickets(self) -> list[int]:
+        """🎟 Faol rol: chipta egasi Tinch aholi bo'lsa, rolini tasodifiy maxsus rol bilan almashtiradi."""
+        rng = random.Random(f"{self.seed}:tickets")
+        used = []
+        for p in self.players:
+            if p.items.get("ticket", 0) > 0 and p.role == "tinch":
+                pool = [x for x in self.players if x.role != "tinch" and not x.items.get("ticket")]
+                if pool:
+                    x = rng.choice(pool)
+                    p.role, x.role = x.role, p.role
+                    p.items["ticket"] -= 1
+                    used.append(p.uid)
+        return used
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "Game":
+        d = dict(d)
+        d["players"] = [Player(**p) for p in d["players"]]
+        for k in ("actions", "mafia_votes", "votes", "confirms"):
+            d[k] = {int(u): v for u, v in d.get(k, {}).items()}
+        return cls(**d)
+
+    # ---------- yordamchilar ----------
+    def get(self, uid: int) -> Player | None:
+        return next((p for p in self.players if p.uid == uid), None)
+
+    def alive(self) -> list[Player]:
+        return [p for p in self.players if p.alive]
+
+    def by_role(self, role: str) -> Player | None:
+        return next((p for p in self.alive() if p.role == role), None)
+
+    def teammates(self, uid: int) -> list[Player]:
+        """Bir-birini taniydiganlar: mafiya jamoasi, Komissar+Serjant."""
+        p = self.get(uid)
+        if p.team == MAFIA:
+            return [x for x in self.players if x.team == MAFIA and x.uid != uid]
+        if p.role in ("komissar", "serjant"):
+            return [x for x in self.players if x.role in ("komissar", "serjant") and x.uid != uid]
+        return []
+
+    # ---------- tun ----------
+    def available_actions(self, uid: int) -> list[str]:
+        p = self.get(uid)
+        if not p or not p.alive or self.phase != NIGHT:
+            return []
+        if p.role == "gazabkor" and p.kills < GAZAB_KILLS:
+            return ["rage"]
+        return list(ROLES[p.role].actions)
+
+    def targets(self, uid: int, kind: str) -> list[int]:
+        p = self.get(uid)
+        alive = self.alive()
+        if kind in NO_TARGET:
+            return []
+        if kind == "heal":
+            return [x.uid for x in alive if x.uid != p.last_target and (x.uid != uid or not p.self_heal_used)]
+        if kind == "guard":
+            return [x.uid for x in alive if x.uid != p.last_target]
+        if kind == "block":
+            return [x.uid for x in alive if x.uid not in (uid, p.last_target)]
+        if kind == "disguise":
+            return [x.uid for x in alive if x.team == MAFIA]
+        if kind in ("mafia_kill", "hit", "pair"):
+            return [x.uid for x in alive if x.team != MAFIA]
+        return [x.uid for x in alive if x.uid != uid]
+
+    def submit(self, uid: int, kind: str, target: int | None = None) -> bool:
+        if kind not in self.available_actions(uid):
+            return False
+        if kind in NO_TARGET:
+            target = None
+        elif target not in self.targets(uid, kind):
+            return False
+        if kind == "mafia_kill":
+            self.mafia_votes[uid] = target
+        else:
+            self.actions[uid] = [kind, target]
+        return True
+
+    def all_acted(self) -> bool:
+        for p in self.alive():
+            acts = self.available_actions(p.uid)
+            if not acts:
+                continue
+            done = self.mafia_votes if "mafia_kill" in acts else self.actions
+            if p.uid not in done:
+                return False
+        return True
+
+    def _mafia_target(self, rng: random.Random) -> tuple[int, int] | None:
+        don = self.by_role("don")
+        if not don:
+            return None
+        if don.uid in self.mafia_votes:
+            return don.uid, self.mafia_votes[don.uid]
+        votes = [t for u, t in self.mafia_votes.items() if self.get(u).alive]
+        if not votes:
+            return None
+        top = max(votes.count(t) for t in votes)
+        return don.uid, rng.choice(sorted({t for t in votes if votes.count(t) == top}))
+
+    def _use(self, p: Player, item: str, ev: list) -> bool:
+        if p.items.get(item, 0) <= 0:
+            return False
+        p.items[item] -= 1
+        ev.append(Event("item_used", p.uid, data={"item": item}))
+        return True
+
+    def _immune(self, v: Player, kind: str, src: str) -> bool:
+        if v.role == "sehrgar":
+            return kind in ("mafia_kill", "kill") or (kind == "shoot" and src == "komissar")
+        if v.role == "qotil":
+            return kind in ("mafia_kill", "hit")
+        return False
+
+    def resolve_night(self) -> list[Event]:
+        rng = random.Random(f"{self.seed}:{self.day}:night")
+        ev: list[Event] = []
+        self._track_idle([p for p in self.alive() if self.available_actions(p.uid)],
+                         self.actions.keys() | self.mafia_votes.keys())
+        # acts: actor -> (kind, target, harakat egasining roli)
+        acts = {u: (k, t, self.get(u).role) for u, (k, t) in self.actions.items() if self.get(u).alive}
+        m = self._mafia_target(rng)
+        if m:
+            acts[m[0]] = ("mafia_kill", m[1], "don")
+
+        # 1a. Kezuvchi
+        blocked = {t for k, t, _ in acts.values() if k == "block"}
+        for t in blocked:
+            acts.pop(t, None)
+            ev.append(Event("blocked", t))
+
+        # 1b. Aferist
+        for u in [u for u, a in acts.items() if a[0] == "steal"]:
+            _, t, _ = acts.pop(u)
+            stolen = acts.get(t)
+            if stolen and stolen[0] not in ("steal", "sacrifice"):
+                del acts[t]
+                acts[u] = stolen
+                ev.append(Event("stolen", u, t, {"kind": stolen[0]}))
+            else:
+                ev.append(Event("saw_role", u, t, {"role": self.get(t).role}))
+
+        # 1b. Qaroqchi (himoyadan oldin: o'g'irlangan qalqon shu tun ishlamaydi)
+        for u, (k, t, _) in acts.items():
+            if k != "rob":
+                continue
+            v, thief = self.get(t), self.get(u)
+            owned = sorted(i for i, q in v.items.items() if q > 0)
+            what = rng.choice(["dollars", "vote"] + (["item"] if owned else []))
+            data = {"what": what}
+            if what == "item":
+                item = rng.choice(owned)
+                v.items[item] -= 1
+                thief.items[item] = thief.items.get(item, 0) + 1
+                data["item"] = item
+            elif what == "vote":
+                v.mute_day = self.day
+            ev.append(Event("robbed", u, t, data))
+
+        # 2. Himoya va niqob
+        healed, disguised = set(), set()
+        for u, (k, t, _) in acts.items():
+            if k == "heal":
+                healed.add(t)
+                if t == u:
+                    self.get(u).self_heal_used = True
+            elif k == "guard":
+                self.guarded = t
+            elif k == "disguise":
+                disguised.add(t)
+        for p in self.players:
+            if p.role in ("doktor", "kezuvchi", "qorovul"):
+                p.last_target = self.actions.get(p.uid, [None, None])[1]
+
+        # 3. Axborot
+        visitors: dict[int, list[int]] = {}
+        for u, (k, t, _) in acts.items():
+            if t is not None:
+                visitors.setdefault(t, []).append(u)
+        for u, (k, t, _) in acts.items():
+            if k == "check":
+                ev.append(Event("checked", u, t, {"result": self._appear(t, disguised, ev)}))
+            elif k == "interview":
+                ev.append(Event("interview", u, t, {"visitors": [x for x in visitors.get(t, []) if x != u]}))
+            elif k == "dig":
+                ev.append(Event("dug", u, data={"dollars": rng.randint(10, 30), "diamond": rng.random() < 0.05}))
+
+        # 4. Hujumlar
+        attacks: dict[int, list[tuple[int, str, str]]] = {}  # target -> [(actor, kind, src)]
+        pairs: dict[int, list[int]] = {}
+        for u, (k, t, src) in acts.items():
+            if k in ATTACKS:
+                attacks.setdefault(t, []).append((u, k, src))
+            elif k == "pair":
+                pairs.setdefault(t, []).append(u)
+        for t, us in pairs.items():
+            if len(us) >= 2:
+                attacks.setdefault(t, []).extend((u, "pair", "aka") for u in us)
+
+        for u, (k, t, _) in acts.items():  # Ovchi jarimasi: haqiqiy jamoa bo'yicha
+            if k == "shoot" and self.get(u).role == "ovchi" and self.get(t).team == TOWN:
+                self.get(u).role = "tinch"
+                ev.append(Event("penalty", u, t))
+
+        for u, (k, t, _) in acts.items():
+            if k == "sacrifice":
+                p = self.get(u)
+                p.alive, p.won = False, True
+                ev.append(Event("sacrificed", u))
+
+        deaths: dict[int, list[tuple[int, str, str]]] = {}
+        for t, alist in attacks.items():
+            v = self.get(t)
+            alist = [a for a in alist if not self._immune(v, a[1], a[2])]
+            if not alist or not v.alive:
+                continue
+            if t in healed:
+                ev.append(Event("saved", target=t))
+                continue
+            if v.role == "voris" and all(a[1] == "mafia_kill" or (a[1] == "shoot" and a[2] == "komissar") for a in alist):
+                v.role = "mafiya" if any(a[1] == "mafia_kill" for a in alist) else "serjant"
+                ev.append(Event("transformed", t, data={"role": v.role}))
+                continue
+            only_bites = all(a[1] == "bite" for a in alist)
+            if (only_bites and self._use(v, "verbena", ev)) or self._use(v, "shield", ev):
+                ev.append(Event("saved", target=t))
+                continue
+            deaths[t] = alist
+
+        for u, (k, t, _) in acts.items():
+            if k == "visit" and t in deaths:
+                ev.append(Event("witness", u, t, {"killers": sorted({a[0] for a in deaths[t]})}))
+
+        for t, alist in deaths.items():
+            self.get(t).alive = False
+            ev.append(Event("killed", target=t, data={"by": sorted({a[1] for a in alist}),
+                                                      "killers": sorted({a[0] for a in alist})}))
+            for a in alist:
+                if a[1] == "rage":
+                    self.get(a[0]).kills += 1
+
+        # 5. Qasos
+        for t, alist in deaths.items():
+            v = self.get(t)
+            if v.role == "afsungar":
+                avengers = {a[0] for a in alist}
+            elif v.role == "suitsid" and any(a[1] == "mafia_kill" for a in alist):
+                avengers = {a[0] for a in alist if a[1] == "mafia_kill"}
+                v.won = True
+            else:
+                continue
+            for u in sorted(avengers):
+                if self.get(u).alive:
+                    self.get(u).alive = False
+                    ev.append(Event("revenge", t, u))
+
+        # Mafiya ovozining natijasi (sheriklarga) yoki Don umuman tanlamagani (guruhga)
+        if m:
+            ev.append(Event("mafia_result", m[0], m[1], {"killed": not self.get(m[1]).alive}))
+        elif self.by_role("don"):
+            ev.append(Event("mafia_idle"))
+
+        self.actions, self.mafia_votes = {}, {}
+        self.phase = DAY
+        self._kick_afk(ev)
+        self._after_deaths(ev)
+        self._check_win(ev)
+        return ev
+
+    def _appear(self, t: int, disguised: set, ev: list) -> str:
+        v = self.get(t)
+        if t in disguised or v.role == "sotqin" or self._use(v, "doc", ev):
+            return TOWN
+        return v.team
+
+    def _after_deaths(self, ev: list) -> None:
+        bros = [p for p in self.players if p.role in ("aka", "uka")]
+        if len(bros) == 2 and bros[0].alive != bros[1].alive:
+            b = bros[0] if bros[0].alive else bros[1]
+            b.alive = False
+            ev.append(Event("linked", target=b.uid))
+        if not self.by_role("komissar") and (s := self.by_role("serjant")):
+            s.role = "komissar"
+            ev.append(Event("promoted", s.uid, data={"role": "komissar"}))
+        if not self.by_role("don"):
+            mafia = sorted((p for p in self.alive() if p.team == MAFIA), key=lambda p: p.role != "mafiya")
+            if mafia:
+                mafia[0].role = "don"
+                ev.append(Event("promoted", mafia[0].uid, data={"role": "don"}))
+
+    # ---------- kun ----------
+    def start_voting(self) -> None:
+        self.phase, self.votes, self.vote_log = VOTING, {}, []
+
+    def can_vote(self, uid: int) -> bool:
+        p = self.get(uid)
+        return bool(p and p.alive and p.mute_day != self.day and self.phase == VOTING)
+
+    def cast_vote(self, voter: int, target: int | None) -> bool:
+        if not self.can_vote(voter):
+            return False
+        if target is not None and (target == voter or not (t := self.get(target)) or not t.alive):
+            return False
+        self.votes[voter] = target
+        self.vote_log.append([voter, target])
+        return True
+
+    def resolve_vote(self) -> list[Event]:
+        ev: list[Event] = []
+        self._track_idle([p for p in self.alive() if self.can_vote(p.uid)], self.votes.keys())
+        tally: dict = {}
+        for v, t in self.votes.items():
+            tally[t] = tally.get(t, 0) + (2 if self.get(v).role == "janob" else 1)
+        top = max(tally.values(), default=0)
+        leaders = [t for t, c in tally.items() if c == top]
+        if len(leaders) != 1 or leaders[0] is None:
+            ev.append(Event("no_hang"))
+        elif leaders[0] == self.guarded:
+            ev.append(Event("guard_saved", target=leaders[0]))
+        elif self.confirm:
+            self.candidate, self.confirms, self.phase = leaders[0], {}, CONFIRM
+            ev.append(Event("candidate", target=leaders[0], data={"votes": top}))
+            return ev
+        elif self._hang(leaders[0], {"votes": top}, ev):
+            return ev
+        return self._end_day(ev)
+
+    def can_confirm(self, uid: int) -> bool:
+        p = self.get(uid)
+        return bool(p and p.alive and self.phase == CONFIRM and uid != self.candidate and p.mute_day != self.day)
+
+    def cast_confirm(self, uid: int, yes: bool) -> bool:
+        if not self.can_confirm(uid):
+            return False
+        self.confirms[uid] = bool(yes)
+        return True
+
+    def confirm_tally(self) -> tuple[int, int]:
+        """(👍, 👎) - Janob ovozi 2 ta."""
+        w = lambda u: 2 if self.get(u).role == "janob" else 1
+        return (sum(w(u) for u, c in self.confirms.items() if c),
+                sum(w(u) for u, c in self.confirms.items() if not c))
+
+    def resolve_confirm(self) -> list[Event]:
+        ev: list[Event] = []
+        yes, no = self.confirm_tally()
+        t, self.candidate = self.candidate, None
+        if yes > no:
+            if self._hang(t, {"votes": yes, "yes": yes, "no": no}, ev):
+                return ev
+        else:
+            ev.append(Event("spared", target=t, data={"yes": yes, "no": no}))
+        return self._end_day(ev)
+
+    def _hang(self, t: int, data: dict, ev: list) -> bool:
+        """Osish. True qaytarsa, o'yin shu zahoti tugadi (Podshoh)."""
+        v = self.get(t)
+        v.alive = False
+        ev.append(Event("hanged", target=t, data={**data, "role": v.role}))
+        if v.role == "podshoh":
+            self.guarded = None
+            self._finish(MAFIA, ev, podshoh=True)
+            return True
+        if v.role == "tulki":
+            first = next(u for u, x in self.vote_log if x == t and self.votes.get(u) == t)
+            self.get(first).alive = False
+            v.won = True
+            ev.append(Event("tulki", t, first))
+        return False
+
+    def _end_day(self, ev: list) -> list[Event]:
+        self.day += 1
+        self.phase = NIGHT
+        self._kick_afk(ev)
+        self._after_deaths(ev)
+        self.guarded = None
+        self._check_win(ev)
+        return ev
+
+    def _track_idle(self, expected: list[Player], acted) -> None:
+        for p in expected:
+            p.idle = 0 if p.uid in acted else p.idle + 1
+
+    def _kick_afk(self, ev: list) -> None:
+        for p in self.alive():
+            if self.afk_limit and p.idle >= self.afk_limit:
+                p.alive = False
+                ev.append(Event("afk", target=p.uid))
+
+    def kill_player(self, uid: int) -> list[Event]:
+        """O'yinchi guruhdan chiqdi yoki /leave qildi."""
+        ev: list[Event] = []
+        p = self.get(uid)
+        if p and p.alive and self.phase != FINISHED:
+            p.alive = False
+            ev.append(Event("left", target=uid))
+            self._after_deaths(ev)
+            self._check_win(ev)
+        return ev
+
+    # ---------- g'alaba ----------
+    def _check_win(self, ev: list) -> None:
+        if self.phase == FINISHED:
+            return
+        alive = self.alive()
+        killers = [p for p in alive if p.role in ("qotil", "vampir")]
+        mafia = [p for p in alive if p.team == MAFIA]
+        if not alive:
+            w = DRAW
+        elif len(alive) <= 2 and killers:
+            w = killers[0].role
+        elif not mafia and not killers:
+            w = TOWN
+        elif mafia and len(mafia) >= len(alive) - len(mafia) and not killers:
+            w = MAFIA
+        elif self.day > self.max_days:
+            w = DRAW
+        else:
+            return
+        self._finish(w, ev)
+
+    def _finish(self, w: str, ev: list, podshoh: bool = False) -> None:
+        self.winner, self.phase = w, FINISHED
+        for p in self.players:
+            if w == TOWN and p.team == TOWN:
+                p.won = True
+            elif w == MAFIA and (p.team == MAFIA or (p.alive and (p.role == "sotqin" or (podshoh and p.team == NEUTRAL)))):
+                p.won = True
+            elif p.role == w and p.alive:
+                p.won = True
+            if p.alive and p.role in ("konchi", "sehrgar", "aferist"):
+                p.won = True
+        ev.append(Event("game_over", data={"winner": w, "winners": [p.uid for p in self.players if p.won]}))

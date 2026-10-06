@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+.env
+mafia.db
+.pytest_cache/
+assets/

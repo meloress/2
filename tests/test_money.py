@@ -1,0 +1,130 @@
+"""/send: o'tkazish va tarqatish. Pul hech qachon yo'qolmasin, ikki marta berilmasin."""
+import asyncio
+from types import SimpleNamespace
+
+from mafia_zone import db, handlers, runner, texts
+
+runner.GLOBAL_INTERVAL = 0
+runner.GROUP_PER_MIN = 10 ** 9
+BASE = 7_000_000
+
+
+async def mkuser(uid: int, dollars: int) -> None:
+    await db.upsert_user(uid, f"u{uid}", None)
+    u = await db.get_user(uid)
+    await db.add_balance(uid, dollars - u.dollars)
+
+
+async def bal(uid: int) -> int:
+    return (await db.get_user(uid)).dollars
+
+
+def run(coro):
+    async def go():
+        await db.init()
+        return await coro
+    return asyncio.run(go())
+
+
+def test_transfer():
+    async def t():
+        a, b = BASE + 1, BASE + 2
+        await mkuser(a, 150)
+        await mkuser(b, 0)
+        assert await db.transfer(a, b, 100)
+        assert (await bal(a), await bal(b)) == (50, 100)
+        assert not await db.transfer(a, b, 51)  # yetmaydi
+        assert not await db.transfer(a, a, 10)  # o'ziga
+        assert not await db.transfer(a, BASE + 999, 10)  # qabul qiluvchi yo'q
+        assert await bal(a) == 50  # hech narsa yo'qolmadi
+    run(t())
+
+
+def test_giveaway_claims_and_concurrency():
+    async def t():
+        s = BASE + 10
+        await mkuser(s, 100)
+        assert await db.create_giveaway(-1, s, 10, 11) is None  # 110 > 100
+        gid = await db.create_giveaway(-1, s, 10, 10)
+        assert await bal(s) == 0
+        assert await db.claim(gid, s) is None  # o'zi ololmaydi
+        users = [BASE + 100 + i for i in range(50)]
+        for u in users:
+            await mkuser(u, 0)
+        res = await asyncio.gather(*(db.claim(gid, u) for u in users + users))  # har biri 2 marta
+        assert sum(r is not None for r in res) == 10
+        assert sum([await bal(u) for u in users]) == 100  # jami taqsimlangan = yechilgan
+        assert all(b in (0, 10) for b in [await bal(u) for u in users])
+        assert (await db.get_giveaway(gid)).left == 0
+        takers = await db.giveaway_takers(gid)
+        got = [u for u, r in zip(users + users, res) if r is not None]
+        assert len(takers) == 10 and {u for u, _ in takers} == set(got)
+        text = texts.giveaway("Ali", s, 10, 10, takers)
+        assert "100</b> 💵 ulashmoqda" in text and "10. " in text and "- 10💵" in text
+    run(t())
+
+
+class FakeBot:
+    def __init__(self):
+        self.sent = []
+
+    async def send_message(self, chat_id, text, **kw):
+        self.sent.append(text)
+        return SimpleNamespace(message_id=1)
+
+
+def fake_msg(uid, reply_uid=None):
+    deleted = []
+
+    async def delete():
+        deleted.append(True)
+
+    user = lambda i: SimpleNamespace(id=i, full_name=f"u{i}", username=None, is_bot=False)
+    reply = SimpleNamespace(from_user=user(reply_uid)) if reply_uid else None
+    return SimpleNamespace(from_user=user(uid), chat=SimpleNamespace(id=-5), reply_to_message=reply,
+                           delete=delete), deleted
+
+
+def test_send_command():
+    async def t():
+        a, b = BASE + 500, BASE + 501
+        await mkuser(a, 100)
+        bot = FakeBot()
+        cmd = lambda args: SimpleNamespace(args=args)
+
+        m, deleted = fake_msg(a, reply_uid=b)  # reply + /send 30
+        await handlers.cmd_send(m, bot, cmd("30"))
+        assert not deleted and await bal(a) == 70 and await bal(b) == 30
+
+        for args in ("500", "abc", "0", "-5", "", "1 2 3"):  # yetmaydi yoki noto'g'ri: jim o'chadi
+            m, deleted = fake_msg(a, reply_uid=b)
+            await handlers.cmd_send(m, bot, cmd(args))
+            assert deleted, args
+        m, deleted = fake_msg(a)  # reply'siz bitta son: bitta kishi hammasini oladi
+        await handlers.cmd_send(m, bot, cmd("10"))
+        assert not deleted and await bal(a) == 60 and "10</b> 💵 ulashmoqda" in bot.sent[-1]
+
+        n = len(bot.sent)
+        m, deleted = fake_msg(a)  # /send 60 6 -> 10 ulush
+        await handlers.cmd_send(m, bot, cmd("60 6"))
+        assert not deleted and await bal(a) == 0 and len(bot.sent) == n + 1 and "60</b>" in bot.sent[-1]
+
+        m, deleted = fake_msg(a)  # endi pul yo'q
+        await handlers.cmd_send(m, bot, cmd("10 1"))
+        assert deleted and len(bot.sent) == n + 1
+    run(t())
+
+
+def test_concurrent_buys_and_new_users():
+    async def t():
+        u = BASE + 800
+        await mkuser(u, 1000)
+        res = await asyncio.gather(*(db.buy(u, "shield") for _ in range(15)))
+        inv = {i.item: i.qty for i in await db.inventory(u)}
+        assert sum(res) == 10 and inv["shield"] == 10 and await bal(u) == 0  # 1000/100
+        await db.change_item(u, "shield", -50)  # manfiyga tushmaydi
+        assert {i.item: i.qty for i in await db.inventory(u)}["shield"] == 10
+        await asyncio.gather(*(db.upsert_user(BASE + 900, "yangi", None) for _ in range(10)))  # xatosiz
+        assert await db.get_user(BASE + 900)
+        await asyncio.gather(*(db.group_settings(-424242, "g") for _ in range(10)))
+    run(t())
