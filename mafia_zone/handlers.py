@@ -11,7 +11,7 @@ from . import config, db, texts
 from .engine.game import CONFIRM, DAY, FINISHED, NIGHT, VOTING
 from .engine.roles import ROLES
 from .engine.setup import CORE
-from .runner import NEXT, PLAYING, RUNNERS, Runner, _call, bot_link, edit, send
+from .runner import NEXT, PLAYING, RUNNERS, Runner, _call, bot_link, edit, profile_kb, send
 
 log = logging.getLogger(__name__)
 router = Router()
@@ -361,14 +361,6 @@ async def cmd_start(msg: Message, bot: Bot, command: CommandObject):
         r = RUNNERS.get(int(arg[4:])) if arg[4:].lstrip("-").isdigit() else None
         return await msg.answer(r.join(msg.from_user.id, msg.from_user.full_name) if r else texts.NO_LOBBY)
     await msg.answer(texts.start_pm())
-
-
-def profile_kb(inv) -> Kb:
-    rows = [[Btn(text=f"{texts.ITEMS[i.item]} {'✅' if i.enabled else '❌'}", callback_data=f"t:{i.item}",
-                 style="success" if i.enabled else "danger")] for i in inv]
-    rows.append([Btn(text=texts.EXCHANGE_BTN, callback_data="x", style="primary"),
-                 Btn(text="🛒 Do'kon", callback_data="shop", style="primary")])
-    return Kb(inline_keyboard=rows)
 
 
 def shop_kb() -> Kb:

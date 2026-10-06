@@ -137,6 +137,17 @@ async def send_gif(bot: Bot, chat_id: int, name: str, caption: str, kb: Kb | Non
     return m
 
 
+def profile_kb(inv) -> Kb:
+    """Profil tugmalari: har buyum ON/OFF (3 tadan qatorda), almashtirish, do'kon."""
+    toggles = [Btn(text=f"{texts.ITEMS[i.item].split(' ', 1)[0]} - {'🟢 ON' if i.enabled else '🔴 OFF'}",
+                   callback_data=f"t:{i.item}", style="success" if i.enabled else "danger")
+               for i in inv if i.item in texts.ITEMS and i.qty > 0]
+    rows = grid(toggles, 3) if toggles else []
+    rows.append([Btn(text=texts.EXCHANGE_BTN, callback_data="x", style="primary"),
+                 Btn(text="🛒 Do'kon", callback_data="shop", style="primary")])
+    return Kb(inline_keyboard=rows)
+
+
 def grid(btns: list[Btn], cols: int | None = None) -> list[list[Btn]]:
     """Ko'p o'yinchida tugmalar 2-3 ustunda."""
     cols = cols or (1 if len(btns) <= 8 else 2 if len(btns) <= 30 else 3)
@@ -430,7 +441,8 @@ class Runner:
                 continue
             u = await db.get_user(p.uid)
             inv = await db.inventory(p.uid) if u else []
-            await send(self.bot, p.uid, texts.result_pm(p.won, reward, u, inv), effect=EFFECT_WIN if p.won else None)
+            await send(self.bot, p.uid, texts.result_pm(p.won, reward, u, inv), profile_kb(inv) if u else None,
+                       effect=EFFECT_WIN if p.won else None)
 
     async def abort(self, text: str = texts.STOPPED) -> None:
         if self.game_id:

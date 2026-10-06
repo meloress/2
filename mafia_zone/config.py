@@ -20,6 +20,6 @@ DATABASE_URL = _url.replace("postgres://", "postgresql://", 1).replace("postgres
 DEFAULT_SETTINGS = {"lobby": 120, "night": 60, "day": 60, "vote": 45, "items": True, "afk": True, "confirm": True, "disabled": []}
 
 # Iqtisod (spec, 7-bo'lim)
-REWARD_PLAY, REWARD_WIN, DAILY_BONUS, REF_BONUS = 10, 30, 20, 50
+REWARD_PLAY, REWARD_WIN, DAILY_BONUS, REF_BONUS = 0, 40, 20, 50  # yutsa 40$, yutqazsa 0
 DIAMOND_RATE = 50
 SHOP = {"shield": 100, "verbena": 80, "doc": 120, "ticket": 150}

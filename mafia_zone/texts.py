@@ -429,7 +429,7 @@ def game_over(g: Game, minutes: int | None = None) -> str:
 
 def result_pm(won: bool, reward: int, u=None, inv=()) -> str:
     head = (f"🎉 <b>Siz g'alaba qozondingiz!</b>\nYutganingiz uchun sizga {reward} 💵 berildi" if won
-            else f"😔 <b>O'yin tugadi!</b>\nIshtirok uchun sizga {reward} 💵 berildi")
+            else "😔 <b>O'yin tugadi!</b>\nBu safar yutqazdingiz." + (f" Ishtirok uchun {reward} 💵" if reward else ""))
     return head + ("\n\n" + profile_card(u, inv) if u else "")
 
 

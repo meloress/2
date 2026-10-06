@@ -168,6 +168,18 @@ def test_couple_flow():
     run(t())
 
 
+def test_game_reward_win_40_lose_0():
+    async def t():
+        w, l = BASE + 950, BASE + 951
+        await mkuser(w, 0)
+        await mkuser(l, 0)
+        gid = await db.create_game(-950, {})
+        await db.finish_game(gid, -950, "finished", "town", [(w, "tinch", "town", True, True),
+                                                               (l, "don", "mafia", False, False)])
+        assert await bal(w) == 40 and await bal(l) == 0
+    run(t())
+
+
 def test_concurrent_buys_and_new_users():
     async def t():
         u = BASE + 800

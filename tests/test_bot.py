@@ -70,6 +70,8 @@ def test_full_games_through_runner():
     async def go():
         await db.init()
         bot = FakeBot()
+        await db.upsert_user(2, "o'yinchi 2", None)
+        u0 = await db.get_user(2)  # boshqa testlar ham shu bazani ishlatadi: farqni tekshiramiz
         settings = {"lobby": 0, "night": 0, "day": 0, "vote": 0, "items": True, "disabled": []}
         for chat in range(-1, -21, -1):
             n = 4 + (-chat) % 27
@@ -90,7 +92,7 @@ def test_full_games_through_runner():
             assert_telegram_html(text)
         assert any("Rostdan ham" in t for _, t in bot.sent)  # ikki bosqichli osish ishladi
         u = await db.get_user(2)
-        assert u.games == 20 and u.dollars >= 200
+        assert u.games - u0.games == 20  # pul: Qaroqchi o'g'irlashi mumkin, shuning uchun mukofot test_money'da
         assert await db.top(-1)
 
     asyncio.run(go())

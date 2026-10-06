@@ -10,7 +10,8 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from . import config
 
 Json = JSON().with_variant(JSONB(), "postgresql")
-engine = create_async_engine(config.DATABASE_URL, pool_pre_ping=True)
+engine = create_async_engine(config.DATABASE_URL, pool_pre_ping=True,  # SQLite: qulf bo'lsa 30 s kutadi
+                             connect_args={"timeout": 30} if config.DATABASE_URL.startswith("sqlite") else {})
 Session = async_sessionmaker(engine, expire_on_commit=False)
 
 
