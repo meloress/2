@@ -9,7 +9,7 @@ if _env.exists():
         if sep and not key.strip().startswith("#"):
             os.environ.setdefault(key.strip(), val.strip().strip("\"'"))
 
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip().strip("'\"")  # Railway'da qo'shtirnoq/bo'shliq bilan kiritilsa ham
 ADMIN_IDS = {int(x) for x in os.environ.get("ADMIN_IDS", "").replace(" ", "").split(",") if x}
 
 # Railway "postgresql://..." beradi, SQLAlchemy async uchun drayverni qo'shamiz.
