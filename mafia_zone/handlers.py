@@ -81,11 +81,14 @@ async def cmd_next(msg: Message):
 
 
 @router.message(Command("extend"), GROUPS)
-async def cmd_extend(msg: Message):
+async def cmd_extend(msg: Message, command: CommandObject):
+    """/extend - 30 soniya, /extend 60 - 60 soniya (1..600)."""
     r = RUNNERS.get(msg.chat.id)
     if r and not r.game:
-        r.extend()
-        await msg.answer("⏳ Ro'yxatdan o'tish 30 soniyaga uzaytirildi.")
+        arg = (command.args or "").strip()
+        secs = min(600, max(1, int(arg))) if arg.isdigit() else 30
+        r.extend(secs)
+        await msg.answer(f"⏳ Ro'yxatdan o'tish {secs} soniyaga uzaytirildi.")
 
 
 @router.message(Command("begin"), GROUPS)
@@ -107,12 +110,52 @@ async def cmd_stop(msg: Message, bot: Bot):
         await r.abort()
 
 
+def _in_game(r, uid: int) -> bool:
+    """O'yin ketyapti va o'yinchi tirik: chiqish limiti/jarimasi faqat shunda."""
+    p = r.game.get(uid) if r.game else None
+    return bool(p and p.alive and r.game.phase != FINISHED)
+
+
+LEAVING: set[int] = set()  # ikki marta bosilsa jarima ikki marta yechilmasin
+
+
 @router.message(Command("leave"), GROUPS)
 async def cmd_leave(msg: Message):
-    r = RUNNERS.get(msg.chat.id)
-    if r and PLAYING.get(msg.from_user.id) is r:
-        await r.leave(msg.from_user.id)
-        await msg.answer(f"🚪 {texts.mention(msg.from_user.id, msg.from_user.full_name)} o'yindan chiqdi.")
+    """Kuniga config.LEAVE_FREE ta chiqish bepul, keyingisi tasdiq bilan -LEAVE_FINE (balans minusga tushadi)."""
+    r, u = RUNNERS.get(msg.chat.id), msg.from_user
+    if not r or PLAYING.get(u.id) is not r:
+        return
+    if not _in_game(r, u.id):  # ro'yxat bosqichi yoki o'lgan - bepul, sanalmaydi
+        await r.leave(u.id)
+        return await msg.answer(f"🚪 {texts.mention(u.id, u.full_name)} o'yindan chiqdi.")
+    n = await db.leaves_today(u.id)
+    if n < config.LEAVE_FREE:
+        await db.count_leave(u.id)
+        await r.leave(u.id)
+        return await msg.answer(texts.left_free(u.id, u.full_name, n + 1))
+    kb = Kb(inline_keyboard=[[Btn(text=texts.leave_yes_btn(), callback_data=f"lv:{r.game_id}:{u.id}:1", style="danger")],
+                             [Btn(text=texts.LEAVE_NO_BTN, callback_data=f"lv:{r.game_id}:{u.id}:0", style="success")]])
+    await msg.answer(texts.leave_warn(u.id, u.full_name), reply_markup=kb)
+
+
+@router.callback_query(F.data.startswith("lv:"))
+async def cb_leave(cq: CallbackQuery):
+    _, gid, uid, yes = cq.data.split(":")
+    uid = int(uid)
+    if cq.from_user.id != uid:
+        return await cq.answer(texts.NOT_YOUR_BTN, show_alert=True)
+    await _call(cq.message.delete)
+    r = PLAYING.get(uid)
+    if yes != "1" or not r or str(r.game_id) != gid or not _in_game(r, uid) or uid in LEAVING:
+        return await cq.answer(texts.LEAVE_STAY)
+    LEAVING.add(uid)
+    try:
+        await db.count_leave(uid, config.LEAVE_FINE)
+        await r.leave(uid)
+    finally:
+        LEAVING.discard(uid)
+    await send(cq.bot, r.chat_id, texts.left_fined(uid, cq.from_user.full_name))
+    await cq.answer()
 
 
 @router.message(Command("top"), GROUPS)
@@ -374,6 +417,9 @@ async def cmd_start(msg: Message, bot: Bot, command: CommandObject):
     if arg == "panel":
         return await send_panel_link(msg)
     if arg.startswith("join"):
+        u = await db.get_user(msg.from_user.id)
+        if u and u.dollars <= config.DEBT_LIMIT:
+            return await msg.answer(texts.debt_block(u.dollars))
         r = RUNNERS.get(int(arg[4:])) if arg[4:].lstrip("-").isdigit() else None
         return await msg.answer(r.join(msg.from_user.id, msg.from_user.full_name) if r else texts.NO_LOBBY)
     await msg.answer(texts.welcome(), reply_markup=start_kb(msg.from_user.id))
@@ -457,7 +503,7 @@ async def cmd_bonus(msg: Message):
     if not await _user(msg):
         return await msg.answer(texts.BANNED)
     ok = await db.claim_bonus(msg.from_user.id)
-    await msg.answer(f"{texts.BONUS_OK} +{config.DAILY_BONUS} 💵" if ok else texts.BONUS_WAIT)
+    await msg.answer(f"{texts.BONUS_OK} <b>+{config.DAILY_BONUS} 💵</b>" if ok else texts.BONUS_WAIT)
 
 
 @router.message(Command("top"), PRIVATE)
@@ -615,6 +661,11 @@ async def on_left(msg: Message):
     r = RUNNERS.get(msg.chat.id)
     uid = msg.left_chat_member.id
     if r and PLAYING.get(uid) is r:
+        if _in_game(r, uid):  # guruhdan chiqib ketish ham chiqish: limitdan keyin so'ramasdan jarima
+            fine = config.LEAVE_FINE if await db.leaves_today(uid) >= config.LEAVE_FREE else 0
+            await db.count_leave(uid, fine)
+            if fine:
+                await send(msg.bot, msg.chat.id, texts.left_fined(uid, msg.left_chat_member.full_name))
         await r.leave(uid)
 
 

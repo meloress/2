@@ -426,13 +426,17 @@ class Runner:
             self.confirm_dirty = True
         return True
 
+    def _labeler(self, uid: int):
+        """Tugmadagi ism: sheriklar (mafiya, Komissar+Serjant) oldida rolining emojisi."""
+        g = self.game
+        mates = {m.uid: ROLES[m.role].name.split(" ", 1)[0] for m in g.teammates(uid)}
+        return lambda t: f"{mates[t]} {g.get(t).name}" if t in mates else g.get(t).name
+
     def vote_kb(self, uid: int) -> Kb:
         g = self.game
-        # bir ustunda; sheriklar (mafiya, Komissar+Serjant) oldida rolining emojisi
-        mates = {m.uid: ROLES[m.role].name.split(" ", 1)[0] for m in g.teammates(uid)}
-        rows = [[Btn(text=f"{mates[p.uid]} {p.name}" if p.uid in mates else p.name,
-                     callback_data=f"v:{self.game_id}:{g.day}:{p.uid}", style="danger")]
-                for p in g.alive() if p.uid != uid]
+        label = self._labeler(uid)
+        rows = [[Btn(text=label(p.uid), callback_data=f"v:{self.game_id}:{g.day}:{p.uid}", style="danger")]
+                for p in g.alive() if p.uid != uid]  # bir ustunda
         rows.append([Btn(text=texts.SKIP_BTN, callback_data=f"v:{self.game_id}:{g.day}:0")])
         return Kb(inline_keyboard=rows)
 
@@ -522,7 +526,8 @@ class Runner:
         if kind in NO_TARGET:
             return Kb(inline_keyboard=[[Btn(text=ACTION_LABELS[kind], callback_data=f"a:{pre}:{kind}:0",
                                             style=kind_style(kind))], skip])
-        rows = grid([Btn(text=g.get(t).name, callback_data=f"a:{pre}:{kind}:{t}", style=kind_style(kind))
+        label = self._labeler(uid)
+        rows = grid([Btn(text=label(t), callback_data=f"a:{pre}:{kind}:{t}", style=kind_style(kind))
                      for t in g.targets(uid, kind)])
         return Kb(inline_keyboard=rows + [skip])
 

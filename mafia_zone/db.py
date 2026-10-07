@@ -44,6 +44,8 @@ class User(Base):
     banned: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     last_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # migratsiya: _migrate()
+    leave_date: Mapped[str | None] = mapped_column(String(10))  # o'yindan chiqishlar: kun (Toshkent)
+    leave_count: Mapped[int] = mapped_column(Integer, default=0)  # ... va shu kundagi soni
 
 
 class Inventory(Base):
@@ -221,7 +223,8 @@ async def claim(gid: int, uid: int) -> Giveaway | None:
 
 # Mavjud jadvalga qo'shilgan ustunlar: create_all ularni qo'sha olmaydi.
 # ponytail: qo'lda ADD COLUMN; murakkab o'zgarishlar boshlanganda Alembic'ga o'tiladi
-COLUMNS = [("users", "last_seen", "TIMESTAMP WITH TIME ZONE")]
+COLUMNS = [("users", "last_seen", "TIMESTAMP WITH TIME ZONE"), ("users", "leave_date", "VARCHAR(10)"),
+           ("users", "leave_count", "INTEGER NOT NULL DEFAULT 0")]
 
 
 def _migrate(conn) -> None:
@@ -273,6 +276,25 @@ async def add_balance(uid: int, dollars: int = 0, diamonds: int = 0) -> None:
                         .values(dollars=User.dollars + dollars, diamonds=User.diamonds + diamonds))
 
 
+def _today() -> str:
+    return (now() + timedelta(hours=5)).date().isoformat()  # Toshkent kuni
+
+
+async def leaves_today(uid: int) -> int:
+    async with Session() as s:
+        row = (await s.execute(select(User.leave_date, User.leave_count).where(User.telegram_id == uid))).first()
+    return row.leave_count if row and row.leave_date == _today() else 0
+
+
+async def count_leave(uid: int, fine: int = 0) -> None:
+    """O'yindan chiqishni sanaydi (yangi kunda 1 dan) va jarimani yechadi. Jarima balansni minusga tushiradi."""
+    t = _today()
+    async with Session.begin() as s:
+        await s.execute(update(User).where(User.telegram_id == uid).values(
+            leave_count=case((User.leave_date == t, User.leave_count + 1), else_=1),
+            leave_date=t, dollars=User.dollars - fine))
+
+
 async def claim_bonus(uid: int) -> bool:
     t = now()
     async with Session.begin() as s:
@@ -293,7 +315,7 @@ async def exchange_diamond(uid: int) -> bool:
 async def rob_dollars(victim: int, thief: int) -> int:
     async with Session.begin() as s:
         u = await s.get(User, victim)
-        amount = min(50, (u.dollars if u else 0) * 20 // 100)
+        amount = max(0, min(50, (u.dollars if u else 0) * 20 // 100))  # minus balansdan o'g'irlanmaydi
         if amount:
             r = await s.execute(update(User).where(User.telegram_id == victim, User.dollars >= amount)
                                 .values(dollars=User.dollars - amount))

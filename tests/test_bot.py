@@ -266,7 +266,7 @@ def test_last_words_for_every_death_kind():
     ev = [Event("killed", target=1), Event("hanged", target=2), Event("revenge", 5, 3), Event("linked", target=4),
           Event("tulki", 2, 6), Event("afk", target=7), Event("left", target=8), Event("killed", target=1)]
     assert texts.victims(ev) == [1, 2, 3, 4, 6]  # AFK/chiqib ketgan yo'q, takror yo'q
-    assert "60 sekund" in texts.death_pm(False) and "osib" in texts.death_pm(True)
+    assert "<b>60</b> sekund" in texts.death_pm(False) and "osib" in texts.death_pm(True)
 
 
 def test_late_confirm_click_does_not_crash_next_phase():

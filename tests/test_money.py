@@ -251,3 +251,98 @@ def test_menu_sections_have_back_button():
             cbs = [b.callback_data for row in rows for b in row]
             assert ("m:home" in cbs) == (what != "home"), what
     run(t())
+
+
+def test_extend_default_and_custom():
+    async def t():
+        said = []
+        async def answer(text):
+            said.append(text)
+        r = SimpleNamespace(game=None, lobby_deadline=100.0, lobby_dirty=False)
+        r.extend = lambda secs=30: setattr(r, "lobby_deadline", r.lobby_deadline + secs)
+        handlers.RUNNERS[-78] = r
+        try:
+            for args, total in ((None, 130), ("60", 190), ("abc", 220), ("99999", 820)):
+                await handlers.cmd_extend(SimpleNamespace(chat=SimpleNamespace(id=-78), answer=answer),
+                                          SimpleNamespace(args=args))
+                assert r.lobby_deadline == total, args
+        finally:
+            handlers.RUNNERS.pop(-78, None)
+        assert "60 soniya" in said[1] and "600 soniya" in said[3]
+    run(t())
+
+
+def test_leave_limit_fine_and_debt_block():
+    from mafia_zone.engine.game import Game, Player
+
+    async def t():
+        a, other = BASE + 1000, BASE + 1001
+        await mkuser(a, 100)
+        await mkuser(other, 0)
+        sent, answers = [], []
+
+        async def fake_send(bot, chat_id, text, kb=None, **kw):
+            sent.append((chat_id, text))
+        orig_send, handlers.send = handlers.send, fake_send
+        try:
+            for round_ in range(5):  # 3 ta bepul, keyin ogohlantirish + tugmalar
+                g = Game(-79, 1, [Player(a, "Ali", "don"), Player(other, "Vali", "tinch")], phase="day")
+                left = []
+
+                async def leave(uid):
+                    left.append(uid)
+                    g.get(uid).alive = False
+                r = SimpleNamespace(game=g, game_id=500 + round_, chat_id=-79, leave=leave)
+                handlers.RUNNERS[-79] = r
+                handlers.PLAYING[a] = r
+
+                async def answer(text, reply_markup=None):
+                    answers.append((text, reply_markup))
+                m = SimpleNamespace(chat=SimpleNamespace(id=-79), from_user=SimpleNamespace(id=a, full_name="Ali"),
+                                    answer=answer)
+                await handlers.cmd_leave(m)
+                if round_ < 3:
+                    assert left == [a] and f"{round_ + 1}/3" in answers[-1][0] and await bal(a) == 100
+                    continue
+                assert not left and answers[-1][1] is not None  # ogohlantirish, hali chiqmadi
+                deleted = []
+
+                async def delete():
+                    deleted.append(1)
+                for who, data in ((other, f"lv:{r.game_id}:{a}:1"), (a, f"lv:{r.game_id}:{a}:{1 if round_ == 4 else 0}")):
+                    said = []
+
+                    async def cq_answer(text=None, show_alert=False):
+                        said.append(text)
+                    cq = SimpleNamespace(data=data, from_user=SimpleNamespace(id=who, full_name="Ali"), bot=None,
+                                         message=SimpleNamespace(delete=delete), answer=cq_answer)
+                    await handlers.cb_leave(cq)
+                    if who == other:
+                        assert said == [texts.NOT_YOUR_BTN] and not left
+                if round_ == 3:  # "davom ettirish"
+                    assert not left and await bal(a) == 100
+                else:  # "chiqish": -200, minusga tushadi
+                    assert left == [a] and await bal(a) == -100 and "jarima" in sent[-1][1]
+        finally:
+            handlers.send = orig_send
+            handlers.RUNNERS.pop(-79, None)
+            handlers.PLAYING.pop(a, None)
+        assert await db.leaves_today(a) == 4
+        await db.count_leave(a, 1000)  # -1100: o'yinga qo'shila olmaydi
+        said = []
+
+        async def answer2(text, reply_markup=None):
+            said.append(text)
+        m = SimpleNamespace(from_user=SimpleNamespace(id=a, full_name="Ali", username=None), answer=answer2)
+        await handlers.cmd_start(m, None, SimpleNamespace(args="join-79"))
+        assert "-1100" in said[-1] and "qo'shila olmaydi" in said[-1]
+    run(t())
+
+
+def test_rob_negative_balance_steals_nothing():
+    async def t():
+        v, th = BASE + 1010, BASE + 1011
+        await mkuser(v, -300)
+        await mkuser(th, 0)
+        assert await db.rob_dollars(v, th) == 0 and await bal(v) == -300 and await bal(th) == 0
+    run(t())

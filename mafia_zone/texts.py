@@ -44,13 +44,13 @@ def role(code: str) -> str:
 def lobby(members: list[tuple[int, str]], left: int) -> str:
     body = "\n".join(f"{i}. {mention(u, n)}" for i, (u, n) in enumerate(members, 1)) or "— hali hech kim yo'q —"
     return (f"🎮 <b>ADMIRAL MAFIA</b> — ro'yxatdan o'tish boshlandi!\n\n"
-            f"👥 O'yinchilar ({len(members)}):\n{body}\n\n⏳ Qoldi: {left} soniya")
+            f"👥 <b>O'yinchilar ({len(members)}):</b>\n{body}\n\n⏳ Qoldi: <b>{left}</b> soniya")
 
 
 JOIN_BTN = "🤝 Qo'shilish"
 
 
-NEED_PLAYERS = "😔 O'yinchilar yetarli emas (kamida 4 kishi kerak). O'yin bekor qilindi."
+NEED_PLAYERS = "😔 O'yinchilar yetarli emas (kamida <b>4</b> kishi kerak).\n<b>O'yin bekor qilindi.</b>"
 GAME_EXISTS = "⚠️ Bu guruhda o'yin allaqachon ketmoqda."
 NOT_ADMIN_WARN = ("⚠️ Bot guruhda admin emas. O'yin bo'ladi, lekin tunda va o'liklarning xabarlarini "
                   "o'chira olmayman. Botni admin qiling (xabarlarni o'chirish huquqi bilan).")
@@ -60,8 +60,39 @@ NO_LOBBY = "⚠️ Bu guruhda ro'yxatdan o'tish ketmayapti."
 LOBBY_FULL = ("⚠️ O'yin to'lgan (60 kishi). Sizni keyingi o'yin navbatiga yozdim — "
               "ro'yxat ochilishi bilan xabar beraman 🔔")
 BANNED = "⛔️ Siz botdan foydalanishdan chetlatilgansiz."
-STOPPED = "🛑 O'yin to'xtatildi."
+STOPPED = "🛑 <b>O'yin to'xtatildi.</b>"
 ONLY_ADMIN = "⚠️ Bu buyruq faqat guruh adminlari uchun."
+def left_free(uid: int, name: str, n: int) -> str:
+    return (f"🚪 {mention(uid, name)} o'yindan chiqdi.\n"
+            f"ℹ️ Bugungi chiqishlar: <b>{n}/{config.LEAVE_FREE}</b>. "
+            f"Limitdan keyin har bir chiqish <b>-{config.LEAVE_FINE} 💵</b>.")
+
+
+def leave_warn(uid: int, name: str) -> str:
+    return (f"⚠️ {mention(uid, name)}, diqqat qiling!\n\n"
+            f"Siz bugun o'yindan <b>{config.LEAVE_FREE} marta</b> chiqdingiz.\n"
+            f"Bu safar chiqsangiz, hisobingizdan <b>{config.LEAVE_FINE} 💵</b> yechiladi "
+            "(pul yetmasa, balans minusga tushadi).\n\n"
+            f"❗️ Hisobi <b>{config.DEBT_LIMIT} 💵</b> ga yetgan o'yinchi o'yinlarga qo'shila olmaydi.")
+
+
+def left_fined(uid: int, name: str) -> str:
+    return f"🚪 {mention(uid, name)} o'yindan chiqdi va <b>{config.LEAVE_FINE} 💵</b> jarima to'ladi."
+
+
+def debt_block(dollars: int) -> str:
+    return (f"⛔️ Hisobingiz: <b>{dollars} 💵</b>\n"
+            f"Hisobi <b>{config.DEBT_LIMIT} 💵</b> yoki undan kam bo'lgan o'yinchilar o'yinga qo'shila olmaydi.\n\n"
+            "Balansni to'ldirish uchun 🎁 /bonus oling yoki 🤝 do'stlaringizni taklif qiling.")
+
+
+def leave_yes_btn() -> str:
+    return f"🚪 Chiqish (-{config.LEAVE_FINE} 💵)"
+
+
+LEAVE_NO_BTN = "🎮 O'yinni davom ettirish"
+LEAVE_STAY = "🎮 O'yinda qoldingiz. Omad!"
+NOT_YOUR_BTN = "❌ Bu tugma siz uchun emas"
 ONLY_STARTER = "⚠️ O'yinni faqat guruh adminlari yoki /game bosgan odam boshlay oladi."
 GROUP_ONLY = "Bu buyruq guruhda ishlaydi."
 
@@ -72,10 +103,10 @@ def role_card(g: Game, uid: int) -> str:
     mates = g.teammates(uid)
     if mates:
         text += "\n\n🤝 <b>Sheriklaringizni eslab qoling!</b>\n" + "\n".join(
-            f"{escape(m.name)} - {role(m.role)}" + ("" if m.alive else " 💀") for m in mates)
+            f"<b>{escape(m.name)}</b> - {role(m.role)}" + ("" if m.alive else " 💀") for m in mates)
     own = [f"{ITEMS[i]} ×{q}" for i, q in p.items.items() if q > 0 and i in ITEMS]
     if own:
-        text += "\n\n🎒 Buyumlaringiz: " + ", ".join(own)
+        text += "\n\n🎒 <b>Buyumlaringiz:</b> " + ", ".join(own)
     return text
 
 
@@ -211,7 +242,7 @@ LAST_WORDS_SECS = 60
 
 
 LAST_WORDS_LATE = f"⌛️ Kechikdingiz — so'nggi so'z uchun {LAST_WORDS_SECS} soniya tugadi. Xabaringiz hech kimga yuborilmadi."
-LAST_WORDS_SENT = "✅ So'nggi so'zingiz guruhga yetkazildi."
+LAST_WORDS_SENT = "✅ <b>So'nggi so'zingiz guruhga yetkazildi.</b>"
 LAST_WORDS_TIMEOUT = "⌛️ So'nggi so'z vaqti tugadi — siz hech narsa yozmadingiz."
 
 
@@ -247,7 +278,7 @@ def morning(g: Game, ev: list[Event]) -> tuple[list[str], list[tuple[int, str]]]
         k = e.kind
         if k == "killed":
             # rollar tun boshidagi holatda (masalan, jarimadan oldingi Ovchi)
-            victim = f"{role(e.data.get('role') or g.get(e.target).role)} - {n(e.target)}"
+            victim = f"{role(e.data.get('role') or g.get(e.target).role)} - <b>{n(e.target)}</b>"
             if e.data["by"] == ["curse"]:
                 pub.append(f"🔮 {victim} la'natlangan insonga duch keldi va shafqatsiz o'lim topdi.\n"
                            f"Aytishlaricha, bu ishni {role('sehrgar')} qilgan")
@@ -283,8 +314,8 @@ def morning(g: Game, ev: list[Event]) -> tuple[list[str], list[tuple[int, str]]]
             pub.append(f"📊 <b>Tasdiqlash natijalari:</b>\n{e.data['yes']} 👍 | {e.data['no']} 👎\n\n"
                        f"Aholi <b>{pm(g, e.target)}</b>ni osishga rozi bo'lmadi... Bu safar u omon qoldi.")
         elif k == "no_hang":
-            pub.append(choice(["Ovoz berish yakunlandi:\nAholi kelisha olmadi... Shu sababli bugun hech kim osilmadi...",
-                               "Ovoz berish yakunlandi:\nFikrlar ikkiga bo'lindi... Dor bugun bo'sh qoldi..."]))
+            pub.append(choice(["<b>Ovoz berish yakunlandi:</b>\nAholi kelisha olmadi... Shu sababli bugun hech kim osilmadi...",
+                               "<b>Ovoz berish yakunlandi:</b>\nFikrlar ikkiga bo'lindi... Dor bugun bo'sh qoldi..."]))
         elif k == "guard_saved":
             pub.append(f"👨‍🦳 Arqon tortilay deganda {role('qorovul')} yetib keldi va <b>{pm(g, e.target)}</b>ni "
                        "dordan qutqarib qoldi!")
@@ -339,12 +370,12 @@ def morning(g: Game, ev: list[Event]) -> tuple[list[str], list[tuple[int, str]]]
 def day_start(g: Game, secs: int) -> str:
     """Kunduzgi GIF'dan keyingi xabar: tiriklar, tarkib, muhokama vaqti."""
     return (f"☀️ <b>{g.day}-kun</b>\n\n{alive_list(g)}\n\n{alive_composition(g)}\n\n"
-            f"🗣 Muhokama uchun {secs} sekund")
+            f"🗣 Muhokama uchun <b>{secs}</b> sekund")
 
 
 def vote_prompt(g: Game, secs: int) -> str:
     return (f"⚖️ <b>Aybdorlarni aniqlash va jazolash vaqti keldi!</b>\n"
-            f"Ovoz berish uchun {secs} sekund\nOvoz berish uchun botga o'ting!")
+            f"Ovoz berish uchun <b>{secs}</b> sekund\nOvoz berish uchun botga o'ting!")
 
 
 SKIP_BTN = "🤐 Hech kimga ovoz bermayman"
@@ -352,12 +383,12 @@ SKIP_BTN = "🤐 Hech kimga ovoz bermayman"
 
 def confirm_prompt(g: Game, secs: int) -> str:
     return (f"Rostdan ham <b>{pm(g, g.candidate)}</b> ni osishni hohlaysizmi?\n\n"
-            f"⏰ Tasdiqlash uchun vaqt: {secs} sekund")
+            f"⏰ Tasdiqlash uchun vaqt: <b>{secs}</b> sekund")
 
 
 def confirm_result(g: Game) -> str:
     yes, no = g.confirm_tally()
-    return f"Rostdan ham <b>{pm(g, g.candidate)}</b> ni osishni hohlaysizmi?\n\n{yes} 👍 | {no} 👎 — vaqt tugadi"
+    return f"Rostdan ham <b>{pm(g, g.candidate)}</b> ni osishni hohlaysizmi?\n\n<b>{yes} 👍 | {no} 👎</b> — vaqt tugadi"
 
 
 def ghost(name: str, text: str) -> str:
@@ -440,19 +471,22 @@ WINNER_STORY = {
 def game_over(g: Game, minutes: int | None = None) -> str:
     won = [p for p in g.players if p.won]
     rest = [p for p in g.players if not p.won]
-    lines = ["🏁 <b>O'yin tugadi!</b>", "", "🏆 <b>G'oliblar:</b>"]
+    lines = ["🏁 <b>O'yin tugadi!</b>"]
+    if g.winner in WINNER:  # qaysi tomon yutgani
+        lines += [f"<b>{WINNER[g.winner]}</b>", f"<i>{WINNER_STORY[g.winner]}</i>"]
+    lines += ["", "🏆 <b>G'oliblar:</b>"]
     lines += [f"    {i}. {pm(g, p.uid)} - {role(p.role)}" for i, p in enumerate(won, 1)] or ["    —"]
     if rest:
         lines += ["", "<b>Qolgan o'yinchilar:</b>"]
         lines += [f"    {i}. {pm(g, p.uid)} - {role(p.role)}" for i, p in enumerate(rest, len(won) + 1)]
     if minutes is not None:
-        lines += ["", f"O'yin: {minutes} minut davom etdi"]
+        lines += ["", f"⏱ O'yin <b>{minutes}</b> minut davom etdi"]
     return "\n".join(lines)
 
 
 def result_pm(won: bool, reward: int, u=None, inv=()) -> str:
-    head = (f"🎉 <b>Siz g'alaba qozondingiz!</b>\nYutganingiz uchun sizga {reward} 💵 berildi" if won
-            else "😔 <b>O'yin tugadi!</b>\nBu safar yutqazdingiz." + (f" Ishtirok uchun {reward} 💵" if reward else ""))
+    head = (f"🎉 <b>Siz g'alaba qozondingiz!</b>\nYutganingiz uchun sizga <b>{reward} 💵</b> berildi" if won
+            else "😔 <b>O'yin tugadi!</b>\nBu safar yutqazdingiz." + (f" Ishtirok uchun <b>{reward} 💵</b>" if reward else ""))
     return head + ("\n\n" + profile_card(u, inv) if u else "")
 
 
@@ -502,8 +536,9 @@ def ref_bonus(name: str) -> str:
 
 
 def shop(dollars: int) -> str:
-    rows = "\n".join(f"{ITEMS[i]} — {p} 💵: {ITEM_ABOUT[i]}" for i, p in config.SHOP.items() if i not in config.SHOP_OFF)
-    return f"🛒 <b>Do'kon</b>\n\nBalans: {dollars} 💵\n\n{rows}"
+    rows = "\n".join(f"<b>{ITEMS[i]}</b> — <b>{p} 💵</b>\n<i>{ITEM_ABOUT[i]}</i>"
+                     for i, p in config.SHOP.items() if i not in config.SHOP_OFF)
+    return f"🛒 <b>Do'kon</b>\n\n💰 Balans: <b>{dollars} 💵</b>\n\n{rows}"
 
 
 BOUGHT = "✅ Sotib olindi!"
@@ -516,7 +551,7 @@ def exchange_btn() -> str:
 
 def top(rows, title: str) -> str:
     if not rows:
-        return f"🏆 {title}\n\n— hali o'yinlar yo'q —"
+        return f"🏆 <b>{title}</b>\n\n— hali o'yinlar yo'q —"
     medals = ["🥇", "🥈", "🥉"]
     body = "\n".join(f"{medals[i] if i < 3 else f'{i + 1}.'} {mention(uid, name or '?')} — {w} 🏆 / {gm} 🎮 · {rank(w or 0)}"
                      for i, (uid, name, w, gm) in enumerate(rows))
@@ -527,7 +562,7 @@ def rules() -> str:
     out = ["📜 <b>ADMIRAL MAFIA rollari</b>"]
     for team in (TOWN, MAFIA, NEUTRAL):
         out.append(f"\n<b>{TEAM[team]}</b>")
-        out += [f"{r.name} — {r.about}" for r in ROLES.values() if r.team == team]
+        out += [f"{role(c)} — {r.about}" for c, r in ROLES.items() if r.team == team]
     return "\n".join(out)
 
 
@@ -583,7 +618,7 @@ composition = alive_composition
 
 def death_pm(hanged: bool) -> str:
     how = "Sizni shafqatsizlarcha osib o'ldirishdi!" if hanged else "Sizni vahshiylarcha otib o'ldirishdi!"
-    return f"{how}\n💀 So'nggi so'zingizni aytishingiz mumkin.\n⏰ Vaqt: {LAST_WORDS_SECS} sekund"
+    return f"<b>{how}</b>\n💀 So'nggi so'zingizni aytishingiz mumkin.\n⏰ Vaqt: <b>{LAST_WORDS_SECS}</b> sekund"
 
 
 def profile_card(u, inv) -> str:
