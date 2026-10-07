@@ -1,4 +1,5 @@
 """Barcha o'zbekcha matnlar. Dvijok hodisalarini xabarlarga aylantiradi."""
+from datetime import timedelta
 from html import escape
 from random import choice
 
@@ -6,6 +7,7 @@ from . import config, pro
 from .engine.game import DRAW, Event, Game
 from .engine.roles import MAFIA, NEUTRAL, ROLES, TOWN
 
+PRO_TZ = timedelta(hours=5)  # sanalar Toshkent vaqtida
 TEAM = {TOWN: "👨 Tinch aholi", MAFIA: "🤵 Mafiya", NEUTRAL: "🎭 Neytral"}
 ITEMS = {"shield": "🛡 Qalqon", "verbena": "🧄 Verbena", "doc": "📄 Hujjat", "ticket": "🎟 Faol rol"}
 ITEM_ABOUT = {
@@ -76,15 +78,15 @@ def giveaway_refund(amount: int) -> str:
 
 STOPPED = "🛑 <b>O'yin to'xtatildi.</b>"
 ONLY_ADMIN = "⚠️ Bu buyruq faqat guruh adminlari uchun."
-def left_free(uid: int, name: str, n: int) -> str:
+def left_free(uid: int, name: str, n: int, limit: int) -> str:
     return (f"🚪 {mention(uid, name)} o'yindan chiqdi.\n"
-            f"ℹ️ Bugungi chiqishlar: <b>{n}/{config.LEAVE_FREE}</b>. "
+            f"ℹ️ Bugungi chiqishlar: <b>{n}/{limit}</b>. "
             f"Limitdan keyin har bir chiqish <b>-{config.LEAVE_FINE} 💵</b>.")
 
 
-def leave_warn(uid: int, name: str) -> str:
+def leave_warn(uid: int, name: str, limit: int) -> str:
     return (f"⚠️ {mention(uid, name)}, diqqat qiling!\n\n"
-            f"Siz bugun o'yindan <b>{config.LEAVE_FREE} marta</b> chiqdingiz.\n"
+            f"Siz bugun o'yindan <b>{limit} marta</b> chiqdingiz.\n"
             f"Bu safar chiqsangiz, hisobingizdan <b>{config.LEAVE_FINE} 💵</b> yechiladi "
             "(pul yetmasa, balans minusga tushadi).\n\n"
             f"❗️ Hisobi <b>{config.DEBT_LIMIT} 💵</b> ga yetgan o'yinchi o'yinlarga qo'shila olmaydi.")
@@ -566,10 +568,15 @@ def claim_locked() -> str:
     return f"🔒 Tarqatmadan olish uchun kamida {config.CLAIM_GAMES} ta o'yin o'ynagan bo'lishingiz kerak"
 
 
-def shop(dollars: int) -> str:
-    rows = "\n".join(f"<b>{ITEMS[i]}</b> — <b>{p} 💵</b>\n<i>{ITEM_ABOUT[i]}</i>"
+def shop(dollars: int, uid: int | None = None) -> str:
+    on = uid is not None and pro.is_pro(uid)
+
+    def cost(i: str, p: int) -> str:
+        return f"<s>{p}</s> <b>{pro.price(uid, p)} 💵</b>" if on else f"<b>{p} 💵</b>"
+    rows = "\n".join(f"<b>{ITEMS[i]}</b> — {cost(i, p)}\n<i>{ITEM_ABOUT[i]}</i>"
                      for i, p in config.SHOP.items() if i not in config.SHOP_OFF)
-    return f"🛒 <b>Do'kon</b>\n\n💰 Balans: <b>{dollars} 💵</b>\n\n{rows}"
+    sale = f"\n{pro.badge()} <b>PRO chegirmasi: -25%</b>" if on else ""
+    return f"🛒 <b>Do'kon</b>\n\n💰 Balans: <b>{dollars} 💵</b>{sale}\n\n{rows}"
 
 
 BOUGHT = "✅ Sotib olindi!"
@@ -654,8 +661,15 @@ def profile_card(u, inv) -> str:
     have = {i.item: i.qty for i in inv}
     items = "\n".join(f"{label.split(' ', 1)[0]} {bold(label.split(' ', 1)[1])}: {have.get(code, 0)} ta"
                       for code, label in ITEMS.items())
-    return (f"<b>{bold('Admiral Mafia')}</b>\n\n"
-            f"{bold('ID')}: <code>{u.telegram_id}</code>\n👤 {bold('Ism')}: {escape(u.full_name)}\n"
-            f"🎖 {bold('Unvon')}: {rank(u.wins)}\n\n"
+    end = pro.until(u.telegram_id)
+    head = (f"{pro.badge()} <b>{bold('PRO')} · {bold('Admiral Mafia')}</b>" if end
+            else f"<b>{bold('Admiral Mafia')}</b>")
+    status = ""
+    if end:
+        days = max(1, -(-int((end - pro._now()).total_seconds()) // 86400))  # yuqoriga yaxlitlash
+        status = f"{pro.badge()} {bold('PRO')}: <b>{end + PRO_TZ:%d.%m.%Y}</b> gacha ({days} kun)\n"
+    return (f"{head}\n\n"
+            f"{bold('ID')}: <code>{u.telegram_id}</code>\n👤 {bold('Ism')}: {escape(pro.name(u.telegram_id, u.full_name))}\n"
+            f"🎖 {bold('Unvon')}: {rank(u.wins)}\n{status}\n"
             f"💵 {bold('Dollar')}: {u.dollars}\n💎 {bold('Olmos')}: {u.diamonds}\n\n{items}\n\n"
             f"🎲 {bold('Jami o' + chr(39) + 'yinlar')}: {u.games}\n🏆 {bold('G' + chr(39) + 'alabalar')}: {u.wins}")

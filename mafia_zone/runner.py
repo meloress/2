@@ -13,7 +13,7 @@ from aiogram.exceptions import (TelegramBadRequest, TelegramForbiddenError, Tele
                                 TelegramRetryAfter, TelegramServerError)
 from aiogram.types import FSInputFile, InlineKeyboardButton as Btn, InlineKeyboardMarkup as Kb
 
-from . import config, db, texts
+from . import config, db, pro, texts
 from .engine.game import AFK_LIMIT, CONFIRM, DAY, FINISHED, NIGHT, SKIP, VOTING, Game
 from .engine.roles import ACTION_LABELS, MAFIA, NO_TARGET, ROLES
 from .engine.setup import MAX_PLAYERS, MIN_PLAYERS
@@ -269,7 +269,7 @@ class Runner:
             NEXT[self.chat_id].add(uid)
             return texts.LOBBY_FULL
         if all(u != uid for u, _ in self.members):
-            self.members.append((uid, name))
+            self.members.append((uid, pro.name(uid, name)))  # PRO: nickname
             PLAYING[uid] = self
             self.lobby_dirty = True
         return texts.JOINED
@@ -446,15 +446,22 @@ class Runner:
         return True
 
     def _labeler(self, uid: int):
-        """Tugmadagi ism: sheriklar (mafiya, Komissar+Serjant) oldida rolining emojisi."""
+        """Tugma: (matn, icon). Sheriklar (mafiya, Komissar+Serjant) oldida rolining emojisi; PRO - belgi ikonkasi."""
         g = self.game
         mates = {m.uid: ROLES[m.role].name.split(" ", 1)[0] for m in g.teammates(uid)}
-        return lambda t: f"{mates[t]} {g.get(t).name}" if t in mates else g.get(t).name
+
+        def label(t: int) -> tuple[str, str | None]:
+            text, icon = pro.label(t, g.get(t).name)
+            return (f"{mates[t]} {text}" if t in mates else text), icon
+        return label
+
+    def _btn(self, lab: tuple[str, str | None], data: str, style: str | None) -> Btn:
+        return Btn(text=lab[0], callback_data=data, style=style, icon_custom_emoji_id=lab[1])
 
     def vote_kb(self, uid: int) -> Kb:
         g = self.game
         label = self._labeler(uid)
-        rows = [[Btn(text=label(p.uid), callback_data=f"v:{self.game_id}:{g.day}:{p.uid}", style="danger")]
+        rows = [[self._btn(label(p.uid), f"v:{self.game_id}:{g.day}:{p.uid}", "danger")]
                 for p in g.alive() if p.uid != uid]  # bir ustunda
         rows.append([Btn(text=texts.SKIP_BTN, callback_data=f"v:{self.game_id}:{g.day}:0")])
         return Kb(inline_keyboard=rows)
@@ -508,7 +515,7 @@ class Runner:
         minutes = max(1, round((time.time() - self.meta["started"]) / 60)) if "started" in self.meta else None
         await send(self.bot, self.chat_id, texts.game_over(g, minutes))
         for p in g.players:
-            reward = config.REWARD_PLAY + (config.REWARD_WIN if p.won else 0)
+            reward = config.REWARD_PLAY + (pro.win_reward(p.uid) if p.won else 0)
             if p.uid >= FAKE_BASE:
                 continue
             u = await db.get_user(p.uid)
@@ -549,8 +556,7 @@ class Runner:
             return Kb(inline_keyboard=[[Btn(text=ACTION_LABELS[kind], callback_data=f"a:{pre}:{kind}:0",
                                             style=kind_style(kind))], skip])
         label = self._labeler(uid)
-        rows = grid([Btn(text=label(t), callback_data=f"a:{pre}:{kind}:{t}", style=kind_style(kind))
-                     for t in g.targets(uid, kind)])
+        rows = grid([self._btn(label(t), f"a:{pre}:{kind}:{t}", kind_style(kind)) for t in g.targets(uid, kind)])
         return Kb(inline_keyboard=rows + [skip])
 
     async def on_action(self, uid: int, day: int, kind: str, target: int) -> bool:

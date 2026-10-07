@@ -8,7 +8,7 @@ from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.types import CallbackQuery, ChatMemberUpdated, ErrorEvent, InlineKeyboardButton as Btn, InlineKeyboardMarkup as Kb, Message
 
-from . import config, db, texts
+from . import config, db, pro, texts
 from .engine.game import CONFIRM, DAY, FINISHED, NIGHT, VOTING
 from .engine.roles import ROLES
 from .engine.setup import CORE
@@ -135,14 +135,14 @@ async def cmd_leave(msg: Message):
     if not _in_game(r, u.id):  # ro'yxat bosqichi yoki o'lgan - bepul, sanalmaydi
         await r.leave(u.id)
         return await msg.answer(f"🚪 {texts.mention(u.id, u.full_name)} o'yindan chiqdi.")
-    n = await db.leaves_today(u.id)
-    if n < config.LEAVE_FREE:
+    n, limit = await db.leaves_today(u.id), pro.leave_free(u.id)
+    if n < limit:
         await db.count_leave(u.id)
         await r.leave(u.id)
-        return await msg.answer(texts.left_free(u.id, u.full_name, n + 1))
+        return await msg.answer(texts.left_free(u.id, u.full_name, n + 1, limit))
     kb = Kb(inline_keyboard=[[Btn(text=texts.leave_yes_btn(), callback_data=f"lv:{r.game_id}:{u.id}:1", style="danger")],
                              [Btn(text=texts.LEAVE_NO_BTN, callback_data=f"lv:{r.game_id}:{u.id}:0", style="success")]])
-    await msg.answer(texts.leave_warn(u.id, u.full_name), reply_markup=kb)
+    await msg.answer(texts.leave_warn(u.id, u.full_name, limit), reply_markup=kb)
 
 
 @router.callback_query(F.data.startswith("lv:"))
@@ -500,7 +500,7 @@ async def cb_menu(cq: CallbackQuery):
         if not (u := await _user(cq)):
             return await cq.answer(texts.BANNED, show_alert=True)
         if what == "shop":
-            await show(cq, texts.shop(u.dollars), shop_kb())
+            await show(cq, texts.shop(u.dollars, u.telegram_id), shop_kb(u.telegram_id))
         else:
             inv = await db.inventory(u.telegram_id)
             await show(cq, texts.profile(u, inv), profile_kb(inv, u.telegram_id))
@@ -516,8 +516,9 @@ async def show(cq: CallbackQuery, text: str, kb: Kb) -> None:
             await cq.message.answer(text, reply_markup=kb)
 
 
-def shop_kb() -> Kb:
-    return Kb(inline_keyboard=[[Btn(text=f"{texts.ITEMS[i]} — {p} 💵", callback_data=f"b:{i}", style="success")]
+def shop_kb(uid: int | None = None) -> Kb:
+    price = (lambda p: pro.price(uid, p)) if uid is not None else (lambda p: p)  # PRO: -25%
+    return Kb(inline_keyboard=[[Btn(text=f"{texts.ITEMS[i]} — {price(p)} 💵", callback_data=f"b:{i}", style="success")]
                                for i, p in config.SHOP.items() if i not in config.SHOP_OFF] + [[back_btn()]])
 
 
@@ -541,7 +542,7 @@ async def cmd_role(msg: Message):
 async def cmd_shop(msg: Message):
     if not (u := await _user(msg)):
         return await msg.answer(texts.BANNED)
-    await msg.answer(texts.shop(u.dollars), reply_markup=shop_kb())
+    await msg.answer(texts.shop(u.dollars, u.telegram_id), reply_markup=shop_kb(u.telegram_id))
 
 
 @router.message(Command("top"), PRIVATE)
@@ -578,7 +579,7 @@ async def cb_shop(cq: CallbackQuery):
         ok = await db.buy(cq.from_user.id, item)
         await cq.answer(texts.BOUGHT if ok else texts.NO_MONEY, show_alert=not ok)
     u = await db.get_user(cq.from_user.id)
-    await cq.message.edit_text(texts.shop(u.dollars), reply_markup=shop_kb())
+    await cq.message.edit_text(texts.shop(u.dollars, u.telegram_id), reply_markup=shop_kb(u.telegram_id))
 
 
 @router.callback_query(F.data.startswith("r:"))
@@ -714,7 +715,7 @@ async def on_left(msg: Message):
     uid = msg.left_chat_member.id
     if r and PLAYING.get(uid) is r:
         if _in_game(r, uid):  # guruhdan chiqib ketish ham chiqish: limitdan keyin so'ramasdan jarima
-            fine = config.LEAVE_FINE if await db.leaves_today(uid) >= config.LEAVE_FREE else 0
+            fine = config.LEAVE_FINE if await db.leaves_today(uid) >= pro.leave_free(uid) else 0
             await db.count_leave(uid, fine)
             if fine:
                 await send(msg.bot, msg.chat.id, texts.left_fined(uid, msg.left_chat_member.full_name))
@@ -744,6 +745,8 @@ def may_write(game, uid: int | None, text: str, admin: bool) -> bool:
     if admin and text.startswith("!"):
         return True
     p = game.get(uid) if uid else None
+    if p is None and uid is not None and pro.is_pro(uid):  # PRO tomoshabin: faqat kunduzi
+        return game.phase in TALK_PHASES
     return bool(p and p.alive and game.phase in TALK_PHASES)
 
 

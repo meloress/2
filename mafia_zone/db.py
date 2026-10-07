@@ -544,7 +544,7 @@ async def _add_item(s, uid: int, item: str, n: int) -> None:
 async def buy(uid: int, item: str) -> bool:
     if item not in config.SHOP or item in config.SHOP_OFF:
         return False
-    price = config.SHOP[item]
+    price = pro.price(uid, config.SHOP[item])  # PRO: -25%
     async with Session.begin() as s:
         r = await s.execute(update(User).where(User.telegram_id == uid, User.dollars >= price)
                             .values(dollars=User.dollars - price))
@@ -636,7 +636,7 @@ async def finish_game(game_id: int, chat_id: int, status: str, winner: str | Non
                              alive=alive, won=won))
             await s.execute(update(User).where(User.telegram_id == uid).values(
                 games=User.games + 1, wins=User.wins + int(won),
-                dollars=User.dollars + config.REWARD_PLAY + (config.REWARD_WIN if won else 0)))
+                dollars=User.dollars + config.REWARD_PLAY + (pro.win_reward(uid) if won else 0)))
 
 
 # ============ ADMIN PANEL ============

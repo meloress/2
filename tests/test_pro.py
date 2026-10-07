@@ -82,3 +82,60 @@ def test_pro_purchase_db():
         await db.set_pro(u, 3)
         assert pro.is_pro(u) and pro.name(u, "Ali") == "Shoh"
     asyncio.run(t())
+
+
+def test_pro_perks_reward_and_shop():
+    async def t():
+        await db.init()
+        p, o = 8_200_010, 8_200_011
+        for u in (p, o):
+            await db.upsert_user(u, f"u{u}", None)
+        await db.set_pro(p, 7)
+        gid = await db.create_game(-1990, {})
+        await db.finish_game(gid, -1990, "finished", "town",
+                             [(p, "tinch", "town", True, True), (o, "tinch", "town", True, True)])
+        assert (await db.get_user(p)).dollars == config.REWARD_WIN * 3 // 2
+        assert (await db.get_user(o)).dollars == config.REWARD_WIN
+        await db.add_balance(p, 1000)
+        before = (await db.get_user(p)).dollars
+        assert await db.buy(p, "shield")
+        assert before - (await db.get_user(p)).dollars == config.SHOP["shield"] * 3 // 4
+        shop = texts.shop(500, p)
+        assert f"<s>{config.SHOP['shield']}</s>" in shop and "-25%" in shop
+        assert "<s>" not in texts.shop(500, o)
+    asyncio.run(t())
+
+
+def test_pro_spectator_writes_only_by_day():
+    from mafia_zone import handlers
+    from mafia_zone.engine.game import DAY, NIGHT, Game, Player
+    pro.set_user(77, db.now() + timedelta(days=1), None)
+    g = Game(-1, 1, [Player(1, "a", "tinch"), Player(2, "b", "don", alive=False)], phase=DAY)
+    assert handlers.may_write(g, 77, "salom", False)          # PRO tomoshabin kunduzi
+    assert not handlers.may_write(g, 78, "salom", False)      # oddiy tomoshabin
+    pro.set_user(2, db.now() + timedelta(days=1), None)
+    assert not handlers.may_write(g, 2, "salom", False)       # o'lgan PRO ham yo'q
+    g.phase = NIGHT
+    assert not handlers.may_write(g, 77, "salom", False)      # tunda yo'q
+
+
+def test_pro_buttons_profile_and_lobby_name():
+    from mafia_zone import runner
+    from mafia_zone.engine.game import Game, Player
+    pro.set_user(5, db.now() + timedelta(days=2), "Shoh")
+    bot = SimpleNamespace()
+    r = runner.Runner(bot, -1991, dict(config.DEFAULT_SETTINGS))
+    assert r.join(5, "Ali") == texts.JOINED and r.members[-1] == (5, "Shoh")
+    r.game = Game(-1991, 1, [Player(4, "Vali", "don"), Player(5, "Shoh", "mafiya"), Player(6, "Hasan", "tinch")],
+                  phase="voting")
+    r.game_id = 3
+    rows = r.vote_kb(4).inline_keyboard
+    b = rows[0][0]
+    assert b.text == "🤵🏼 PRO Shoh" and b.icon_custom_emoji_id == pro.BADGE_ID
+    assert rows[1][0].text == "Hasan" and rows[1][0].icon_custom_emoji_id is None
+    r.close()
+    u = SimpleNamespace(telegram_id=5, full_name="Ali", wins=0, dollars=0, diamonds=0, games=0)
+    card = texts.profile_card(u, [])
+    assert pro.BADGE_ID in card and "Shoh" in card and "gacha" in card
+    assert "gacha" not in texts.profile_card(SimpleNamespace(telegram_id=6, full_name="H", wins=0, dollars=0,
+                                                             diamonds=0, games=0), [])
