@@ -49,8 +49,6 @@ def lobby(names: list[str], left: int) -> str:
 JOIN_BTN = "🤝 Qo'shilish"
 
 
-def lobby_reminder(n: int) -> str:
-    return f"⏳ <b>30 soniya qoldi!</b> Hozir {n} kishi ro'yxatda. Ulgurib qoling 👇"
 NEED_PLAYERS = "😔 O'yinchilar yetarli emas (kamida 4 kishi kerak). O'yin bekor qilindi."
 GAME_EXISTS = "⚠️ Bu guruhda o'yin allaqachon ketmoqda."
 NOT_ADMIN_WARN = ("⚠️ Bot guruhda admin emas. O'yin bo'ladi, lekin tunda va o'liklarning xabarlarini "

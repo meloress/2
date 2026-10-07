@@ -199,12 +199,8 @@ class Runner:
 
     async def _lobby_loop(self) -> None:
         last_edit = time.time()
-        reminded = self.lobby_deadline - time.time() <= 45
         while time.time() < self.lobby_deadline and len(self.members) < MAX_PLAYERS:
             await asyncio.sleep(1)
-            if not reminded and self.lobby_deadline - time.time() <= 30:
-                reminded = True
-                await send(self.bot, self.chat_id, texts.lobby_reminder(len(self.members)), self._lobby_kb())
             if self.lobby_msg and (self.lobby_dirty and time.time() - last_edit > 5 or time.time() - last_edit > 30):
                 self.lobby_dirty, last_edit = False, time.time()
                 await edit(self.bot, self.chat_id, self.lobby_msg, self._lobby_text(), self._lobby_kb())
