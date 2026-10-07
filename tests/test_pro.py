@@ -139,3 +139,76 @@ def test_pro_buttons_profile_and_lobby_name():
     assert pro.BADGE_ID in card and "Shoh" in card and "gacha" in card
     assert "gacha" not in texts.profile_card(SimpleNamespace(telegram_id=6, full_name="H", wins=0, dollars=0,
                                                              diamonds=0, games=0), [])
+
+
+def test_stars_payment_flow():
+    from mafia_zone import handlers
+
+    async def t():
+        await db.init()
+        u = 8_200_020
+        await db.upsert_user(u, "Ali", None)
+        said, ok = [], []
+
+        async def answer(text=None, **kw):
+            said.append(text)
+
+        async def pcq_answer(ok_=None, error_message=None, **kw):
+            ok.append(kw.get("ok", ok_))
+        for amount, payload in ((100, "pro:7"), (1, "pro:7"), (100, "pro:8"), (100, "xyz")):
+            await handlers.on_pre_checkout(SimpleNamespace(invoice_payload=payload, total_amount=amount, currency="XTR",
+                                                           from_user=SimpleNamespace(id=u), answer=pcq_answer))
+        assert ok == [True, False, False, False]
+        pay = SimpleNamespace(invoice_payload="pro:7", total_amount=100, currency="XTR", telegram_payment_charge_id="c9")
+        m = SimpleNamespace(from_user=SimpleNamespace(id=u, full_name="Ali", username=None), successful_payment=pay,
+                            answer=answer)
+        await handlers.on_paid(m)
+        await handlers.on_paid(m)  # Telegram takror yuborsa - ikkinchi marta hisoblanmaydi
+        assert pro.is_pro(u) and len(said) == 1 and "PRO" in said[0]
+        assert round((pro.until(u) - db.now()).total_seconds() / 86400) == 7
+    asyncio.run(t())
+
+
+def test_pro_menu_diamonds_and_nickname():
+    from mafia_zone import handlers
+
+    async def t():
+        await db.init()
+        u = 8_200_030
+        await db.upsert_user(u, "Ali", None)
+        alerts, shown = [], []
+
+        async def cq_answer(text=None, show_alert=False):
+            alerts.append(text)
+
+        async def edit_text(text, reply_markup=None):
+            shown.append((text, reply_markup))
+        cq = lambda data: SimpleNamespace(data=data, from_user=SimpleNamespace(id=u, full_name="Ali", username=None),
+                                          message=SimpleNamespace(edit_text=edit_text), answer=cq_answer, bot=None)
+        await handlers.cb_menu(cq("m:pro"))
+        text, kb = shown[-1]
+        assert "PRO AKKAUNT" in text and "x1.5" in text
+        cbs = [b.callback_data for row in kb.inline_keyboard for b in row]
+        assert {"pro:d:7", "pro:s:7", "pro:d:30", "pro:s:30", "m:home"} <= set(cbs)
+        await handlers.cb_pro(cq("pro:d:7"))  # olmos yo'q
+        assert alerts[-1] == texts.PRO_NO_DIAMONDS and not pro.is_pro(u)
+        await db.add_balance(u, 0, 30)
+        await handlers.cb_pro(cq("pro:d:7"))
+        assert pro.is_pro(u) and (await db.get_user(u)).diamonds == 0
+        said = []
+
+        async def answer(text=None, **kw):
+            said.append(text)
+        nick = lambda args: handlers.cmd_nickname(
+            SimpleNamespace(from_user=SimpleNamespace(id=u, full_name="Ali", username=None), answer=answer),
+            SimpleNamespace(args=args))
+        await nick("@shoh")
+        assert "❌" in said[-1] and pro.name(u, "Ali") == "Ali"
+        await nick("Shoh")
+        assert pro.name(u, "Ali") == "Shoh" and (await db.get_user(u)).nickname == "Shoh"
+        await nick(None)
+        assert pro.name(u, "Ali") == "Ali"
+        await db.set_pro(u, 0)
+        await nick("Shoh")
+        assert said[-1] == texts.NICK_ONLY_PRO
+    asyncio.run(t())

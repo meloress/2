@@ -172,10 +172,15 @@ def profile_kb(inv, uid: int | None = None) -> Kb:
     rows = grid(toggles, 3) if toggles else []
     rows.append([Btn(text=texts.exchange_btn(), callback_data="x", style="primary"),
                  Btn(text="🛒 Do'kon", callback_data="shop", style="primary")])
+    rows.append([pro_btn()])
     if uid is not None:
         rows.append([Btn(text=texts.INVITE_BTN, url=invite_url(uid), style="success")])
     rows.append([back_btn()])
     return Kb(inline_keyboard=rows)
+
+
+def pro_btn() -> Btn:
+    return Btn(text=texts.PRO_BTN, callback_data="m:pro", style="success", icon_custom_emoji_id=pro.BADGE_ID)
 
 
 def back_btn() -> Btn:

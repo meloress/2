@@ -6,13 +6,13 @@ import time
 from aiogram import Bot, F, Router
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command, CommandObject, CommandStart
-from aiogram.types import CallbackQuery, ChatMemberUpdated, ErrorEvent, InlineKeyboardButton as Btn, InlineKeyboardMarkup as Kb, Message
+from aiogram.types import CallbackQuery, ChatMemberUpdated, ErrorEvent, LabeledPrice, PreCheckoutQuery, InlineKeyboardButton as Btn, InlineKeyboardMarkup as Kb, Message
 
 from . import config, db, pro, texts
 from .engine.game import CONFIRM, DAY, FINISHED, NIGHT, VOTING
 from .engine.roles import ROLES
 from .engine.setup import CORE
-from .runner import NEXT, PLAYING, RUNNERS, Runner, _call, spawn, back_btn, bot_link, edit, invite_url, profile_kb, send
+from .runner import NEXT, PLAYING, RUNNERS, Runner, _call, spawn, back_btn, pro_btn, bot_link, edit, invite_url, profile_kb, send
 
 log = logging.getLogger(__name__)
 router = Router()
@@ -479,7 +479,7 @@ def start_kb(uid: int | None = None) -> Kb:
     if config.NEWS_URL:
         rows.append([Btn(text="📰 Yangiliklar", url=config.NEWS_URL)])
     rows += [[Btn(text="🎭 Rollar", callback_data="m:rules"), Btn(text="🛒 Do'kon", callback_data="m:shop")],
-             [Btn(text="👤 Mening profilim", callback_data="m:profile")]]
+             [Btn(text="👤 Mening profilim", callback_data="m:profile")], [pro_btn()]]
     if uid is not None:
         rows.append([Btn(text=texts.INVITE_BTN, url=invite_url(uid), style="success")])
     return Kb(inline_keyboard=rows)
@@ -494,6 +494,8 @@ async def cb_menu(cq: CallbackQuery):
         await show(cq, texts.welcome(), start_kb(cq.from_user.id))
     elif what == "rules":
         await show(cq, texts.rules(), back)
+    elif what == "pro":
+        await show(cq, texts.pro_info(cq.from_user.id), pro_kb())
     elif what == "top":
         await show(cq, texts.top(await db.top(), "Umumiy reyting"), back)
     elif what in ("profile", "shop"):
@@ -520,6 +522,94 @@ def shop_kb(uid: int | None = None) -> Kb:
     price = (lambda p: pro.price(uid, p)) if uid is not None else (lambda p: p)  # PRO: -25%
     return Kb(inline_keyboard=[[Btn(text=f"{texts.ITEMS[i]} — {price(p)} 💵", callback_data=f"b:{i}", style="success")]
                                for i, p in config.SHOP.items() if i not in config.SHOP_OFF] + [[back_btn()]])
+
+
+def pro_kb() -> Kb:
+    """Har paket: olmos va Stars tugmasi yonma-yon."""
+    rows = [[Btn(text=f"{d} kun — {dm} 💎", callback_data=f"pro:d:{d}"),
+             Btn(text=f"{d} kun — {st} ⭐", callback_data=f"pro:s:{d}", style="primary")]
+            for d, (dm, st) in pro.PACKS.items()]
+    return Kb(inline_keyboard=rows + [[back_btn()]])
+
+
+@router.message(Command("pro"), PRIVATE)
+async def cmd_pro(msg: Message):
+    if not await _user(msg):
+        return await msg.answer(texts.BANNED)
+    await msg.answer(texts.pro_info(msg.from_user.id), reply_markup=pro_kb())
+
+
+@router.callback_query(F.data.startswith("pro:"))
+async def cb_pro(cq: CallbackQuery):
+    """pro:d:<kun> - olmos bilan; pro:s:<kun> - Telegram Stars hisob-fakturasi."""
+    _, how, days = cq.data.split(":")
+    days = int(days) if days.isdigit() else 0
+    if days not in pro.PACKS or not await _user(cq):
+        return await cq.answer()
+    if how == "d":
+        end = await db.buy_pro_diamonds(cq.from_user.id, days)
+        if not end:
+            return await cq.answer(texts.PRO_NO_DIAMONDS, show_alert=True)
+        await show(cq, texts.pro_info(cq.from_user.id), pro_kb())
+        return await cq.answer(f"🎉 PRO faollashdi! {days} kun qo'shildi.", show_alert=True)
+    stars = pro.PACKS[days][1]
+    await _call(cq.bot.send_invoice, chat_id=cq.from_user.id, title=f"PRO · {days} kun",
+                description=f"Admiral Mafia PRO akkaunt: belgi, nickname, x1.5 g'alaba puli, -25% do'kon — {days} kun.",
+                payload=f"pro:{days}", currency="XTR",
+                prices=[LabeledPrice(label=f"PRO {days} kun", amount=stars)])
+    await cq.answer()
+
+
+def _pro_payload(payload: str) -> int | None:
+    days = payload[4:] if payload.startswith("pro:") else ""
+    return int(days) if days.isdigit() and int(days) in pro.PACKS else None
+
+
+@router.pre_checkout_query()
+async def on_pre_checkout(q: PreCheckoutQuery):
+    """Telegram to'lovdan oldin so'raydi: paket va narx mos bo'lsagina tasdiqlanadi."""
+    days = _pro_payload(q.invoice_payload)
+    if days and q.currency == "XTR" and q.total_amount == pro.PACKS[days][1]:
+        return await q.answer(ok=True)
+    await q.answer(ok=False, error_message="To'lov ma'lumoti noto'g'ri. /pro orqali qaytadan urinib ko'ring.")
+
+
+@router.message(F.successful_payment)
+async def on_paid(msg: Message):
+    pay = msg.successful_payment
+    days = _pro_payload(pay.invoice_payload)
+    if not days:
+        return
+    await db.upsert_user(msg.from_user.id, msg.from_user.full_name, msg.from_user.username)
+    end = await db.add_pro(msg.from_user.id, days, "stars", pay.total_amount, pay.telegram_payment_charge_id)
+    if end:  # None - shu to'lov avval hisoblangan (takror xabar)
+        await msg.answer(texts.pro_done(end))
+
+
+@router.message(Command("nickname"), PRIVATE)
+async def cmd_nickname(msg: Message, command: CommandObject):
+    uid = msg.from_user.id
+    if not pro.is_pro(uid):
+        return await msg.answer(texts.NICK_ONLY_PRO)
+    nick = " ".join((command.args or "").split())  # ortiqcha bo'shliqlar
+    if not nick:
+        await db.set_nickname(uid, None)
+        return await msg.answer(texts.NICK_CLEARED + "\n\n" + texts.NICK_HOW)
+    if err := pro.check_nick(nick):
+        return await msg.answer(err)
+    await db.set_nickname(uid, nick)
+    await msg.answer(texts.nick_set(nick))
+
+
+async def pro_reminder(bot: Bot) -> None:
+    """Soatiga bir marta: 24 soat ichida tugaydigan PRO'larga eslatma (har biriga bir marta)."""
+    while True:
+        try:
+            for uid in await db.pro_expiring(24):
+                await send(bot, uid, texts.PRO_EXPIRING)
+        except Exception:
+            log.exception("pro eslatma")
+        await asyncio.sleep(3600)
 
 
 @router.message(Command("profile"), PRIVATE)

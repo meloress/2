@@ -537,6 +537,46 @@ def start_pm() -> str:
             "🎭 /rules — rollar")
 
 
+# ---------- PRO ----------
+PRO_BTN = "PRO akkaunt"  # tugmada PRO belgisi ikonka bo'lib turadi
+PRO_NO_DIAMONDS = "😔 Olmos yetarli emas. Olmos Konchi qazishidan chiqadi — yoki ⭐ Stars bilan oling."
+NICK_ONLY_PRO = "🏷 Nickname faqat PRO foydalanuvchilar uchun. /pro"
+NICK_CLEARED = "✅ Nickname o'chirildi. O'yinlarda Telegram ismingiz ko'rinadi."
+NICK_HOW = "🏷 Nickname qo'yish: <code>/nickname Laqabingiz</code>\nO'chirish: <code>/nickname</code>"
+PRO_EXPIRING = (f"⏳ PRO muddatingiz <b>24 soat ichida</b> tugaydi.\n"
+                "Belgi, chegirma va boshqa imkoniyatlar saqlanib qolishi uchun /pro orqali uzaytiring.")
+
+
+def _pro_date(t) -> str:
+    return f"{t + PRO_TZ:%d.%m.%Y}"
+
+
+def pro_info(uid: int) -> str:
+    end = pro.until(uid)
+    have = (f"\n\n{pro.badge()} Sizda PRO bor: <b>{_pro_date(end)}</b> gacha.\n"
+            "<i>Yana sotib olsangiz, muddat ustiga qo'shiladi.</i>") if end else ""
+    win = config.REWARD_WIN
+    return (f"{pro.badge()} <b>PRO AKKAUNT</b>\n\n"
+            "<b>PRO</b> sizga quyidagilarni beradi:\n\n"
+            f"{pro.badge()} <b>PRO belgisi</b> — ismingiz yonida, hamma ko'radi\n"
+            "🏷 <b>Nickname</b> — o'yinlarda o'z laqabingiz (/nickname)\n"
+            "💬 <b>Kunduzi yozish</b> — o'yinda bo'lmasangiz ham muhokamaga qo'shiling\n"
+            f"💵 <b>G'alaba puli x1.5</b> — {win} o'rniga {win * 3 // 2} 💵\n"
+            "🛒 <b>Do'konda -25%</b> chegirma\n"
+            f"🚪 <b>Kuniga 5 ta</b> bepul chiqish (oddiylarga {config.LEAVE_FREE} ta)\n"
+            "✨ <b>Maxsus profil</b> — PRO sarlavha va muddat"
+            f"{have}\n\n🛒 <b>Sotib olish usulini tanlang:</b>")
+
+
+def pro_done(end) -> str:
+    return (f"🎉 {pro.badge()} <b>PRO faollashdi!</b>\nMuddat: <b>{_pro_date(end)}</b> gacha.\n\n"
+            "🏷 Laqab qo'yish: /nickname")
+
+
+def nick_set(nick: str) -> str:
+    return f"✅ Nickname: <b>{escape(nick)}</b>\nEndi o'yinlarda shu ism ko'rinadi."
+
+
 INVITE_BTN = "🤝 Do'stni taklif qilish"
 BACK_BTN = "⬅️ Orqaga"
 INVITE_TEXT = "🎭 Admiral Mafia — Telegramdagi mafiya o'yini! Men bilan o'yna 👇"
