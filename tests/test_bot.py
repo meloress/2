@@ -310,3 +310,51 @@ def test_last_words_late_goes_nowhere():
         r.close()
 
     asyncio.run(go())
+
+
+def test_game_again_reposts_lobby_with_same_players():
+    async def t():
+        bot = FakeBot()
+        deleted, pinned = [], []
+        async def delete_message(chat_id, message_id):
+            deleted.append(message_id)
+        async def pin_chat_message(chat_id, message_id, **kw):
+            pinned.append(message_id)
+        bot.delete_message, bot.pin_chat_message = delete_message, pin_chat_message
+        r = runner.Runner(bot, -991, dict(runner.config.DEFAULT_SETTINGS, lobby=600))
+        r.members = [(1, "Ali"), (2, "Vali")]
+        await r.open_lobby()
+        first = r.lobby_msg
+        await r.repost_lobby()
+        assert r.lobby_msg != first and deleted == [first] and pinned[-1] == r.lobby_msg
+        assert "Ali" in bot.sent[-1][1] and "Vali" in bot.sent[-1][1]
+        r.task.cancel()
+        r.close()
+    asyncio.run(t())
+
+
+def test_cancelled_lobby_is_unpinned_and_deleted():
+    async def t():
+        bot = FakeBot()
+        log = []
+        async def delete_message(chat_id, message_id):
+            log.append(("del", message_id))
+        async def unpin_chat_message(chat_id, message_id=None):
+            log.append(("unpin", message_id))
+        async def pin_chat_message(chat_id, message_id, **kw):
+            pass
+        bot.delete_message, bot.unpin_chat_message, bot.pin_chat_message = delete_message, unpin_chat_message, pin_chat_message
+        for how in ("stop", "few"):
+            log.clear()
+            r = runner.Runner(bot, -992, dict(runner.config.DEFAULT_SETTINGS, lobby=600))
+            r.members = [(1, "Ali")]
+            await r.open_lobby()
+            lobby = r.lobby_msg
+            if how == "stop":
+                await r.abort()
+            else:
+                r.task.cancel()
+                await r._start_game()
+            assert log == [("unpin", lobby), ("del", lobby)], how
+            assert -992 not in runner.RUNNERS
+    asyncio.run(t())

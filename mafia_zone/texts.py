@@ -30,8 +30,9 @@ def mention(uid: int, name: str) -> str:
 
 
 def pm(g: Game, uid: int) -> str:
-    p = g.get(uid)
-    return mention(p.uid, p.name)
+    """Bosilsa Telegram profili ochiladigan ism."""
+    p = g.get(uid) if uid is not None else None
+    return mention(p.uid, p.name) if p else "?"
 
 
 def role(code: str) -> str:
@@ -153,8 +154,8 @@ def act_feed(role_code: str, kind: str = "") -> str:
 
 def vote_feed(g: Game, voter: int, target: int | None) -> str:
     if target is None:
-        return f"{nm(g, voter)} hech kimga ovoz bermadi"
-    return f"{nm(g, voter)} - {nm(g, target)} ga ovoz berdi"
+        return f"{pm(g, voter)} hech kimga ovoz bermadi"
+    return f"{pm(g, voter)} - {pm(g, target)} ga ovoz berdi"
 
 
 NIGHT_CAPTION = ("🌚🌃 <b>Tun</b>\nKo'chaga faqat jasur va qo'rqmas odamlar chiqishdi.\n"
@@ -261,15 +262,15 @@ def morning(g: Game, ev: list[Event]) -> tuple[list[str], list[tuple[int, str]]]
         elif k == "hanged":
             score = (f"📊 <b>Tasdiqlash natijalari:</b>\n{e.data['yes']} 👍 | {e.data['no']} 👎\n\n"
                      if "yes" in e.data else "")
-            pub.append(score + f"<b>{n(e.target)}</b> kunduzgi yig'ilishda osildi!\nU {role(e.data['role'])} edi..")
+            pub.append(score + f"<b>{pm(g, e.target)}</b> kunduzgi yig'ilishda osildi!\nU {role(e.data['role'])} edi..")
         elif k == "spared":
             pub.append(f"📊 <b>Tasdiqlash natijalari:</b>\n{e.data['yes']} 👍 | {e.data['no']} 👎\n\n"
-                       f"Aholi <b>{n(e.target)}</b>ni osishga rozi bo'lmadi... Bu safar u omon qoldi.")
+                       f"Aholi <b>{pm(g, e.target)}</b>ni osishga rozi bo'lmadi... Bu safar u omon qoldi.")
         elif k == "no_hang":
             pub.append(choice(["Ovoz berish yakunlandi:\nAholi kelisha olmadi... Shu sababli bugun hech kim osilmadi...",
                                "Ovoz berish yakunlandi:\nFikrlar ikkiga bo'lindi... Dor bugun bo'sh qoldi..."]))
         elif k == "guard_saved":
-            pub.append(f"👨‍🦳 Arqon tortilay deganda {role('qorovul')} yetib keldi va <b>{n(e.target)}</b>ni "
+            pub.append(f"👨‍🦳 Arqon tortilay deganda {role('qorovul')} yetib keldi va <b>{pm(g, e.target)}</b>ni "
                        "dordan qutqarib qoldi!")
         elif k == "tulki":
             pub.append(f"🦊 {w(e.uid)} ayyorlik qildi: unga birinchi ovoz bergan {w(e.target)} ham u bilan ketdi!")
@@ -334,13 +335,13 @@ SKIP_BTN = "🤐 Hech kimga ovoz bermayman"
 
 
 def confirm_prompt(g: Game, secs: int) -> str:
-    return (f"Rostdan ham <b>{nm(g, g.candidate)}</b> ni osishni hohlaysizmi?\n\n"
+    return (f"Rostdan ham <b>{pm(g, g.candidate)}</b> ni osishni hohlaysizmi?\n\n"
             f"⏰ Tasdiqlash uchun vaqt: {secs} sekund")
 
 
 def confirm_result(g: Game) -> str:
     yes, no = g.confirm_tally()
-    return f"Rostdan ham <b>{nm(g, g.candidate)}</b> ni osishni hohlaysizmi?\n\n{yes} 👍 | {no} 👎 — vaqt tugadi"
+    return f"Rostdan ham <b>{pm(g, g.candidate)}</b> ni osishni hohlaysizmi?\n\n{yes} 👍 | {no} 👎 — vaqt tugadi"
 
 
 def ghost(name: str, text: str) -> str:
@@ -470,6 +471,7 @@ def start_pm() -> str:
 
 
 INVITE_BTN = "🤝 Do'stni taklif qilish"
+BACK_BTN = "⬅️ Orqaga"
 INVITE_TEXT = "🎭 Admiral Mafia — Telegramdagi mafiya o'yini! Men bilan o'yna 👇"
 
 
@@ -549,7 +551,7 @@ def alive_composition(g: Game) -> str:
 
 def alive_list(g: Game) -> str:
     return "<b>Tirik o'yinchilar:</b>\n" + "\n".join(
-        f"{i}. {escape(p.name)}" for i, p in enumerate(g.players, 1) if p.alive)
+        f"{i}. {mention(p.uid, p.name)}" for i, p in enumerate(g.alive(), 1))
 
 
 def vote_pm(g: Game) -> str:

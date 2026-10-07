@@ -158,7 +158,13 @@ def profile_kb(inv, uid: int | None = None) -> Kb:
                  Btn(text="🛒 Do'kon", callback_data="shop", style="primary")])
     if uid is not None:
         rows.append([Btn(text=texts.INVITE_BTN, url=invite_url(uid), style="success")])
+    rows.append([back_btn()])
     return Kb(inline_keyboard=rows)
+
+
+def back_btn() -> Btn:
+    """Bosh menyuga qaytish (handlers.cb_menu, m:home)."""
+    return Btn(text=texts.BACK_BTN, callback_data="m:home")
 
 
 def grid(btns: list[Btn], cols: int | None = None) -> list[list[Btn]]:
@@ -200,6 +206,27 @@ class Runner:
         for uid in NEXT.pop(self.chat_id, set()):
             await send(self.bot, uid, texts.next_game(self.title), self._lobby_kb())
 
+    async def repost_lobby(self) -> None:
+        """Ro'yxat yozishmalar orasida tepada qolib ketganda: o'sha ro'yxat bilan pastda qayta chiqadi."""
+        old = self.lobby_msg
+        m = await send(self.bot, self.chat_id, self._lobby_text(), self._lobby_kb())
+        if not m:
+            return
+        if self.game or self.chat_id not in RUNNERS:  # yuborish paytida o'yin boshlangan/bekor bo'lgan bo'lishi mumkin
+            await _call(self.bot.delete_message, self.chat_id, m.message_id)
+            return
+        self.lobby_msg = m.message_id
+        if old:
+            await _call(self.bot.delete_message, self.chat_id, old)
+        await _call(self.bot.pin_chat_message, self.chat_id, self.lobby_msg, disable_notification=True)
+
+    async def _drop_lobby_msg(self) -> None:
+        """O'yin bekor bo'lganda: ro'yxat xabari pindan olinadi va o'chiriladi."""
+        if self.lobby_msg:
+            msg, self.lobby_msg = self.lobby_msg, None
+            await _call(self.bot.unpin_chat_message, self.chat_id, message_id=msg)
+            await _call(self.bot.delete_message, self.chat_id, msg)
+
     def _lobby_text(self) -> str:
         return texts.lobby(self.members, max(0, int(self.lobby_deadline - time.time())))
 
@@ -237,14 +264,13 @@ class Runner:
         self.lobby_deadline = 0
 
     async def _start_game(self) -> None:
-        if self.lobby_msg:
-            await _call(self.bot.unpin_chat_message, self.chat_id, message_id=self.lobby_msg)
         if len(self.members) < MIN_PLAYERS:  # ro'yxat xabari o'chadi, bekor qilingani alohida yoziladi
-            if self.lobby_msg:
-                await _call(self.bot.delete_message, self.chat_id, self.lobby_msg)
+            await self._drop_lobby_msg()
             await send(self.bot, self.chat_id, texts.NEED_PLAYERS)
             self.close()
             return
+        if self.lobby_msg:
+            await _call(self.bot.unpin_chat_message, self.chat_id, message_id=self.lobby_msg)
         uids = [u for u, _ in self.members]
         items = await db.game_items(uids) if self.s["items"] else {}
         self.game = Game.create(self.chat_id, self.members, random.SystemRandom().randrange(2 ** 31),
@@ -463,8 +489,8 @@ class Runner:
     async def abort(self, text: str = texts.STOPPED) -> None:
         if self.game_id:
             await db.finish_game(self.game_id, self.chat_id, "aborted", None, [])
-        elif self.lobby_msg:
-            await edit(self.bot, self.chat_id, self.lobby_msg, text)
+        else:  # ro'yxat bosqichida /stop
+            await self._drop_lobby_msg()
         await send(self.bot, self.chat_id, text)
         self.close()
         if self.task and self.task is not asyncio.current_task():

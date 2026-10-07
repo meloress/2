@@ -233,3 +233,21 @@ def test_begin_allowed_for_admins_and_opener():
         finally:
             handlers.RUNNERS.pop(-77, None)
     run(t())
+
+
+def test_menu_sections_have_back_button():
+    async def t():
+        edits = []
+        async def edit_text(text, reply_markup=None):
+            edits.append((text, reply_markup))
+        async def answer(*a, **kw):
+            pass
+        runner.BOT_USERNAME = "AdmiralMafiaBot"
+        for what in ("rules", "top", "shop", "profile", "home"):
+            u = SimpleNamespace(id=BASE + 950, full_name="Ali", username=None, is_bot=False)
+            cq = SimpleNamespace(data=f"m:{what}", from_user=u, message=SimpleNamespace(edit_text=edit_text), answer=answer)
+            await handlers.cb_menu(cq)
+            rows = edits[-1][1].inline_keyboard
+            cbs = [b.callback_data for row in rows for b in row]
+            assert ("m:home" in cbs) == (what != "home"), what
+    run(t())

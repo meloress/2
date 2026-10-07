@@ -4,6 +4,7 @@ import re
 import time
 
 from aiogram import Bot, F, Router
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.types import CallbackQuery, ErrorEvent, InlineKeyboardButton as Btn, InlineKeyboardMarkup as Kb, Message
 
@@ -11,7 +12,7 @@ from . import config, db, texts
 from .engine.game import CONFIRM, DAY, FINISHED, NIGHT, VOTING
 from .engine.roles import ROLES
 from .engine.setup import CORE
-from .runner import NEXT, PLAYING, RUNNERS, Runner, _call, bot_link, edit, invite_url, profile_kb, send
+from .runner import NEXT, PLAYING, RUNNERS, Runner, _call, back_btn, bot_link, edit, invite_url, profile_kb, send
 
 log = logging.getLogger(__name__)
 router = Router()
@@ -43,7 +44,9 @@ async def is_admin(bot: Bot, chat_id: int, uid: int) -> bool:
 # ============ GURUH ============
 @router.message(Command("game"), GROUPS)
 async def cmd_game(msg: Message, bot: Bot):
-    if msg.chat.id in RUNNERS:
+    if r := RUNNERS.get(msg.chat.id):
+        if not r.game:  # ro'yxat hali ochiq: pastga qayta chiqariladi
+            return await r.repost_lobby()
         return await msg.answer(texts.GAME_EXISTS)
     me = await bot.get_chat_member(msg.chat.id, bot.id)
     if me.status != "administrator":
@@ -392,25 +395,38 @@ def start_kb(uid: int | None = None) -> Kb:
 
 @router.callback_query(F.data.startswith("m:"))
 async def cb_menu(cq: CallbackQuery):
+    """Bosh menyu bo'limlari o'sha xabarning o'zida ochiladi, ⬅️ Orqaga bilan menyuga qaytiladi."""
     what = cq.data[2:]
-    if what == "rules":
-        await cq.message.answer(texts.rules())
+    back = Kb(inline_keyboard=[[back_btn()]])
+    if what == "home":
+        await show(cq, texts.welcome(), start_kb(cq.from_user.id))
+    elif what == "rules":
+        await show(cq, texts.rules(), back)
     elif what == "top":
-        await cq.message.answer(texts.top(await db.top(), "Umumiy reyting"))
+        await show(cq, texts.top(await db.top(), "Umumiy reyting"), back)
     elif what in ("profile", "shop"):
         if not (u := await _user(cq)):
             return await cq.answer(texts.BANNED, show_alert=True)
         if what == "shop":
-            await cq.message.answer(texts.shop(u.dollars), reply_markup=shop_kb())
-            return await cq.answer()
-        inv = await db.inventory(u.telegram_id)
-        await cq.message.answer(texts.profile(u, inv), reply_markup=profile_kb(inv, u.telegram_id))
+            await show(cq, texts.shop(u.dollars), shop_kb())
+        else:
+            inv = await db.inventory(u.telegram_id)
+            await show(cq, texts.profile(u, inv), profile_kb(inv, u.telegram_id))
     await cq.answer()
+
+
+async def show(cq: CallbackQuery, text: str, kb: Kb) -> None:
+    """Xabarni joyida almashtiradi; tahrirlab bo'lmasa (eski yoki media xabar) - yangisini yuboradi."""
+    try:
+        await cq.message.edit_text(text, reply_markup=kb)
+    except TelegramBadRequest as e:
+        if "not modified" not in str(e):
+            await cq.message.answer(text, reply_markup=kb)
 
 
 def shop_kb() -> Kb:
     return Kb(inline_keyboard=[[Btn(text=f"{texts.ITEMS[i]} — {p} 💵", callback_data=f"b:{i}", style="success")]
-                               for i, p in config.SHOP.items() if i not in config.SHOP_OFF])
+                               for i, p in config.SHOP.items() if i not in config.SHOP_OFF] + [[back_btn()]])
 
 
 @router.message(Command("profile"), PRIVATE)
