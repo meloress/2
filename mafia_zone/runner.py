@@ -192,7 +192,7 @@ class Runner:
             await send(self.bot, uid, texts.next_game(self.title), self._lobby_kb())
 
     def _lobby_text(self) -> str:
-        return texts.lobby([n for _, n in self.members], max(0, int(self.lobby_deadline - time.time())))
+        return texts.lobby(self.members, max(0, int(self.lobby_deadline - time.time())))
 
     def _lobby_kb(self) -> Kb:
         return Kb(inline_keyboard=[[Btn(text=texts.JOIN_BTN, url=bot_link(f"join{self.chat_id}"), style="success")]])

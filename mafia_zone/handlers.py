@@ -19,6 +19,20 @@ GROUPS = F.chat.type.in_({"group", "supergroup"})
 PRIVATE = F.chat.type == "private"
 
 
+@router.message.outer_middleware()
+async def drop_commands(handler, msg: Message, data):
+    """Guruhda botga yozilgan /buyruq ishlangandan keyin o'chiriladi (chat toza tursin)."""
+    try:
+        return await handler(msg, data)
+    finally:
+        text = msg.text or ""
+        if msg.chat.type in ("group", "supergroup") and text.startswith("/"):
+            cmd = text.split()[0]
+            bot: Bot = data["bot"]
+            if "@" not in cmd or cmd.split("@", 1)[1].lower() == ((await bot.me()).username or "").lower():
+                await _call(msg.delete)
+
+
 async def is_admin(bot: Bot, chat_id: int, uid: int) -> bool:
     if uid in config.ADMIN_IDS:
         return True
@@ -189,10 +203,9 @@ _refresh: dict[int, asyncio.Task] = {}  # giveaway_id -> kechiktirilgan tahrir
 @router.message(Command("send"), GROUPS)
 async def cmd_send(msg: Message, bot: Bot, command: CommandObject):
     """/send 100 10 - 10 dan 10 kishiga; /send 100 - bitta kishiga hammasi; reply + /send 100 - o'tkazish.
-    Xato bo'lsa jim o'chiriladi."""
+    Buyruq har doim o'chiriladi (drop_commands)."""
     args = (command.args or "").split()
     nums = [int(a) for a in args] if args and all(a.isdigit() for a in args) else []
-    ok = False
     if nums and len(nums) <= 2 and all(0 < x <= MAX_AMOUNT for x in nums) and await _user(msg):
         u, reply = msg.from_user, msg.reply_to_message
         target = reply.from_user if reply else None
@@ -200,7 +213,6 @@ async def cmd_send(msg: Message, bot: Bot, command: CommandObject):
             await db.upsert_user(target.id, target.full_name, target.username)
             if await db.transfer(u.id, target.id, nums[0]):
                 await send(bot, msg.chat.id, texts.transfer_done(u.full_name, u.id, target.full_name, target.id, nums[0]))
-                ok = True
         elif len(nums) == 1 and not reply or len(nums) == 2 and nums[1] <= nums[0]:
             per = nums[-1]
             parts = nums[0] // per
@@ -208,9 +220,6 @@ async def cmd_send(msg: Message, bot: Bot, command: CommandObject):
             if gid:
                 kb = Kb(inline_keyboard=[[Btn(text=texts.GIVEAWAY_BTN, callback_data=f"g:{gid}", style="success")]])
                 await send(bot, msg.chat.id, texts.giveaway(u.full_name, u.id, per, parts), kb)
-                ok = True
-    if not ok:
-        await _call(msg.delete)
 
 
 @router.callback_query(F.data.startswith("g:"))

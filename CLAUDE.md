@@ -11,19 +11,23 @@ python -m mafia_zone                       # run the bot (reads .env: BOT_TOKEN,
 python -m pytest -q                        # full suite, ~4 min (10k+ random-game simulations)
 python -m pytest -q -k "not simulate"      # fast run, seconds
 python -m pytest -q tests/test_engine.py::test_voris_transforms   # single test
+node --check mafia_zone/panel_static/app.js   # syntax check for the panel frontend (no build step)
 ```
 
+- Env (`.env` locally, Railway Variables in prod): `BOT_TOKEN`, `ADMIN_IDS` (comma-separated owner ids), `DATABASE_URL`, plus optional `PANEL_URL` (else `https://$RAILWAY_PUBLIC_DOMAIN`, which Railway only injects on the deploy *after* a domain is generated), `PANEL_SECRET` (else derived from `BOT_TOKEN`), `PORT` (default 8080), `NEWS_URL`.
 - No `DATABASE_URL` (or empty) → local SQLite `mafia.db`. Railway gives `postgresql://…`; `config.py` rewrites it to `postgresql+asyncpg://`.
 - Tests never touch `mafia.db`: `tests/conftest.py` points `DATABASE_URL` at a temp file before `mafia_zone.db` is imported.
-- Schema is created with `Base.metadata.create_all` (no Alembic yet) — it adds new tables but **cannot add columns** to existing ones.
-- Deploy: `Dockerfile` (copies `mafia_zone/` plus `kun.mp4`, `tun.mp4`), Railway + Railway PostgreSQL, exactly **one replica** (state and rate limiters live in process memory).
+- Schema: `db.init()` runs `Base.metadata.create_all` (new tables) then `_migrate` (adds columns listed in `db.COLUMNS` to existing tables). No Alembic — add every new column on an existing table to `COLUMNS`. SQLite returns naive datetimes; compare via `db._aware()`.
+- Deploy: `Dockerfile` (copies `mafia_zone/` plus `kun.mp4`, `tun.mp4`), Railway + Railway PostgreSQL, exactly **one replica** (game state, rate limiters, one-time login nonces live in process memory). Bot polling and the web panel run in the same process.
 
 ## Architecture
 
 **`engine/` is pure Python and knows nothing about Telegram.** `Game` (dataclass, JSON-serializable via `to_dict`/`from_dict`) takes actions and returns lists of `Event(kind, uid, target, data)`. All game rules live in `engine/game.py`; `roles.py` is data only (team, action kinds, description); `setup.py` deals roles by player count (4–60). Randomness is seeded (`Random(f"{seed}:{day}:night")`) so any game is reproducible.
 
 - Phases: `NIGHT → DAY → VOTING → (CONFIRM) → NIGHT …`, `FINISHED`. CONFIRM (👍/👎 before hanging) only when `Game.confirm` is on.
-- `resolve_night()` runs the spec's priority order in one function: 1a block (Kezuvchi) → 1b Aferist steal, Qaroqchi rob → 2 heal/guard/disguise → 3 checks/info → 4 attacks (immunities, heal, Voris transform, items) → 5 revenge (Afsungar/Suitsid) → `_after_deaths` (Aka/Uka link, Serjant→Komissar, Mafiya→Don promotion) → `_check_win`. The mafia kill is stored as an action owned by the Don, so blocking/stealing the Don affects it.
+- `resolve_night()` runs the spec's priority order in one function: 1a block (Kezuvchi) → 1b Aferist steal, Qaroqchi rob → 2 heal/guard/disguise → 3 checks/info → 4 attacks (immunities, heal, Voris transform, items) → 5 revenge (Afsungar/Suitsid) → `_after_deaths` (Aka/Uka link, Serjant→Komissar, Mafiya→Don promotion) → `_check_win`. The mafia kill is stored as an action owned by the Don, so blocking/stealing the Don affects it; if the Don submits `SKIP` nobody is killed.
+- Roles can change mid-night (Ovchi penalty → `tinch`, Voris transform), so `resolve_night` snapshots `roles0` at the start and puts `role` / `killer_roles` into `killed` and `witness` events. Texts must read roles from event data, not from the mutated `Player`.
+- Every night role can submit `SKIP` ("Hech narsa qilmayman"): it counts as acting (not AFK) and is never posted to the group feed.
 - Adding a role = entry in `roles.py`, pool membership in `setup.py`, rule branches in `game.py`, texts in `texts.py` (`ACT_FEED`, `ROLE_PROMPT`), plus a scenario test.
 
 **`runner.py` — one `Runner` per group chat** (registries: `RUNNERS[chat_id]`, `PLAYING[uid]`). It owns the lobby, the phase loop (`_step`: intro → wait until deadline or everyone acted → resolve under `asyncio.Lock` → announce), and persistence: the whole game state is saved as JSON into `games.state` after every action and phase change; `restore()` resumes running games on startup from `meta["deadline"]`.
@@ -38,7 +42,7 @@ python -m pytest -q tests/test_engine.py::test_voris_transforms   # single test
 
 **`db.py`** — every balance/inventory/giveaway change is a single atomic `UPDATE … WHERE` (e.g. `dollars >= amount`, `left > 0`). Do not use read-modify-write on ORM objects for money: a concurrency test caught 49 claims on a 10-share giveaway that way.
 
-**`panel.py` + `panel_static/` — web admin panel** (aiohttp, same process, listens on `PORT`). Login: admin sends `/panel` to the bot → one-time 5-min signed link → HttpOnly session cookie (12 h). Roles: `owner` (ADMIN_IDS) > `moderator` > `viewer` (`panel_admins` table); every handler calls `need(req, role)`. Mutating requests need `X-CSRF` + same Origin. Every action goes to `admin_log`. Frontend is vanilla JS with a `h()` DOM builder — never use `innerHTML` (user names are untrusted). Economy values live on `config` and are overridden from the `settings` table (`db.load_settings`) — read them as `config.X`, never `from .config import X`. New columns on existing tables go in `db.COLUMNS` (`_migrate`). Tests: `tests/test_panel.py`.
+**`panel.py` + `panel_static/` — web admin panel** (aiohttp, same process, listens on `PORT`). Login: admin sends `/panel` to the bot → one-time 5-min signed link → HttpOnly session cookie (12 h). Roles: `owner` (ADMIN_IDS) > `moderator` > `viewer` (`panel_admins` table); every handler calls `need(req, role)`. Mutating requests need `X-CSRF` + same Origin. Every action goes to `admin_log`. Frontend is vanilla JS with a `h()` DOM builder — never use `innerHTML` (user names are untrusted). CSP is `script-src 'self'; style-src 'self'`: no inline `<script>`/`style=""` in HTML (setting `el.style` from JS is fine). Broadcast text is normalized (`normalize_html`) and validated (`check_html`) server-side before sending. Economy values live on `config` and are overridden from the `settings` table (`db.load_settings`) — read them as `config.X`, never `from .config import X`. New columns on existing tables go in `db.COLUMNS` (`_migrate`). Tests: `tests/test_panel.py`.
 
 ## Working notes
 

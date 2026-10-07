@@ -40,10 +40,10 @@ def role(code: str) -> str:
 
 
 # ---------- lobby ----------
-def lobby(names: list[str], left: int) -> str:
-    body = "\n".join(f"{i}. {escape(n)}" for i, n in enumerate(names, 1)) or "— hali hech kim yo'q —"
+def lobby(members: list[tuple[int, str]], left: int) -> str:
+    body = "\n".join(f"{i}. {mention(u, n)}" for i, (u, n) in enumerate(members, 1)) or "— hali hech kim yo'q —"
     return (f"🎮 <b>MAFIA ZONE</b> — ro'yxatdan o'tish boshlandi!\n\n"
-            f"👥 O'yinchilar ({len(names)}):\n{body}\n\n⏳ Qoldi: {left} soniya")
+            f"👥 O'yinchilar ({len(members)}):\n{body}\n\n⏳ Qoldi: {left} soniya")
 
 
 JOIN_BTN = "🤝 Qo'shilish"
@@ -388,19 +388,19 @@ COUPLE_NONE = "💔 Sizda para yo'q. /couple bilan taklif qiling."
 
 def couple_request(a: int, a_name: str, b: int, b_name: str) -> str:
     return (f"💌 {mention(b, b_name)}, diqqat qiling!\n"
-            f"{mention(a, a_name)} sizga para bo'lish so'rovini yubormoqda 🪽")
+            f"{mention(a, a_name)} sizga para bo'lish so'rovini yubormoqda")
 
 
 def couple_rejected(b: int, b_name: str) -> str:
-    return f"❌ 🪽 {mention(b, b_name)} taklifni rad etdi."
+    return f"❌ {mention(b, b_name)} taklifni rad etdi."
 
 
 def couple_made(a: int, a_name: str, b: int, b_name: str) -> str:
-    return f"❤️ 🪽 ❤️ {mention(a, a_name)} va {mention(b, b_name)} endi para!"
+    return f"❤️ {mention(a, a_name)} va {mention(b, b_name)} endi para!"
 
 
 def couple_broken(a: int, a_name: str, b: int, b_name: str) -> str:
-    return f"💔 🪽 {mention(a, a_name)} va {mention(b, b_name)} parasi bekor qilindi."
+    return f"💔 {mention(a, a_name)} va {mention(b, b_name)} parasi bekor qilindi."
 
 
 def couple_show(a: int, a_name: str, b: int, b_name: str) -> str:

@@ -64,6 +64,24 @@ def test_giveaway_claims_and_concurrency():
     run(t())
 
 
+def test_group_commands_deleted():
+    async def t():
+        me = SimpleNamespace(username="MafiaZoneBot")
+        bot = SimpleNamespace(me=lambda: asyncio.sleep(0, me))
+        async def handler(m, d):
+            return "ok"
+        for text, chat, gone in [("/game", "group", True), ("/game@mafiazonebot x", "supergroup", True),
+                                 ("/start@OtherBot", "group", False), ("salom", "group", False),
+                                 ("/profile", "private", False)]:
+            deleted = []
+            async def delete():
+                deleted.append(1)
+            m = SimpleNamespace(text=text, chat=SimpleNamespace(type=chat), delete=delete)
+            assert await handlers.drop_commands(handler, m, {"bot": bot}) == "ok"
+            assert bool(deleted) == gone, text
+    run(t())
+
+
 class FakeBot:
     def __init__(self):
         self.sent = []
@@ -96,10 +114,11 @@ def test_send_command():
         await handlers.cmd_send(m, bot, cmd("30"))
         assert not deleted and await bal(a) == 70 and await bal(b) == 30
 
-        for args in ("500", "abc", "0", "-5", "", "1 2 3"):  # yetmaydi yoki noto'g'ri: jim o'chadi
-            m, deleted = fake_msg(a, reply_uid=b)
+        n = len(bot.sent)
+        for args in ("500", "abc", "0", "-5", "", "1 2 3"):  # yetmaydi yoki noto'g'ri: jim (buyruqni middleware o'chiradi)
+            m, _ = fake_msg(a, reply_uid=b)
             await handlers.cmd_send(m, bot, cmd(args))
-            assert deleted, args
+            assert len(bot.sent) == n and await bal(a) == 70, args
         m, deleted = fake_msg(a)  # reply'siz bitta son: bitta kishi hammasini oladi
         await handlers.cmd_send(m, bot, cmd("10"))
         assert not deleted and await bal(a) == 60 and "10</b> 💵 ulashmoqda" in bot.sent[-1]
@@ -111,7 +130,7 @@ def test_send_command():
 
         m, deleted = fake_msg(a)  # endi pul yo'q
         await handlers.cmd_send(m, bot, cmd("10 1"))
-        assert deleted and len(bot.sent) == n + 1
+        assert len(bot.sent) == n + 1
     run(t())
 
 
