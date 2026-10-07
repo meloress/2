@@ -76,23 +76,53 @@ def iconize(kb):
     return InlineKeyboardMarkup(inline_keyboard=[[_icon_button(b) for b in row] for row in kb.inline_keyboard])
 
 
+TG_EMOJI = re.compile(r'<tg-emoji emoji-id="\d+">(.*?)</tg-emoji>', re.S)
+DISABLED = False  # Telegram bir marta rad etgach: custom emoji'siz yuboriladi (qayta ishga tushguncha)
+METHODS = (SendMessage, EditMessageText, EditMessageReplyMarkup, SendAnimation)
+
+
+def _field(method) -> str:
+    return "caption" if isinstance(method, SendAnimation) else "text"
+
+
+def plain(method):
+    """Custom emoji'siz nusxa: matndagi <tg-emoji> -> ichidagi oddiy emoji, tugma ikonkalari olib tashlanadi."""
+    upd = {}
+    if (t := getattr(method, _field(method), None)) is not None:
+        upd[_field(method)] = TG_EMOJI.sub(r"\1", t)
+    kb = method.reply_markup
+    if isinstance(kb, InlineKeyboardMarkup):
+        upd["reply_markup"] = InlineKeyboardMarkup(inline_keyboard=[
+            [b.model_copy(update={"icon_custom_emoji_id": None}) for b in row] for row in kb.inline_keyboard])
+    return method.model_copy(update=upd)
+
+
+def _has_custom(method) -> bool:
+    t = getattr(method, _field(method), None) or ""
+    kb = method.reply_markup
+    icons = isinstance(kb, InlineKeyboardMarkup) and any(b.icon_custom_emoji_id for r in kb.inline_keyboard for b in r)
+    return "<tg-emoji" in t or icons
+
+
 class PremiumEmoji(BaseRequestMiddleware):
     async def __call__(self, make_request, bot, method):
-        if not _pattern or not isinstance(method, (SendMessage, EditMessageText, EditMessageReplyMarkup,
-                                                   SendAnimation)):
+        global DISABLED
+        if not isinstance(method, METHODS):
             return await make_request(bot, method)
-        field = "caption" if isinstance(method, SendAnimation) else "text"
-        text = getattr(method, field, None)
+        if DISABLED:
+            return await make_request(bot, plain(method))
+        text = getattr(method, _field(method), None)
         new = method.model_copy(update={"reply_markup": iconize(method.reply_markup)}
-                                | ({field: premiumize(text)} if text is not None else {}))
-        if new == method:
+                                | ({_field(method): premiumize(text)} if text is not None else {}))
+        if not _has_custom(new):
             return await make_request(bot, method)
         try:
             return await make_request(bot, new)
         except TelegramBadRequest as e:
             if "not modified" in str(e).lower():
                 raise
-            res = await make_request(bot, method)  # shu ham yiqilsa - xato emojida emas, odatdagidek ko'tariladi
-            log.warning("animatsion emoji rad etildi, o'chirildi: %s", e)
+            res = await make_request(bot, plain(method))  # shu ham yiqilsa - xato emojida emas, odatdagidek ko'tariladi
+            log.warning("custom emoji rad etildi, o'chirildi: %s", e)
+            DISABLED = True
             load({})
             return res

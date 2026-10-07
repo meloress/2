@@ -2,7 +2,7 @@
 from html import escape
 from random import choice
 
-from . import config
+from . import config, pro
 from .engine.game import DRAW, Event, Game
 from .engine.roles import MAFIA, NEUTRAL, ROLES, TOWN
 
@@ -26,7 +26,9 @@ WINNER = {TOWN: "👨 Tinch aholi g'alaba qildi!", MAFIA: "🤵 Mafiya g'alaba q
 
 
 def mention(uid: int, name: str) -> str:
-    return f'<a href="tg://user?id={uid}">{escape(name)}</a>'
+    """Bosilsa profil ochiladigan ism. PRO bo'lsa: [✅] PRO <nickname yoki ism>."""
+    link = f'<a href="tg://user?id={uid}">{escape(pro.name(uid, name))}</a>'
+    return f"{pro.badge()} <b>PRO</b> {link}" if pro.is_pro(uid) else link
 
 
 def pm(g: Game, uid: int) -> str:

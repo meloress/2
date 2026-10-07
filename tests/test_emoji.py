@@ -10,9 +10,11 @@ from mafia_zone import emoji
 
 @pytest.fixture(autouse=True)
 def mapping():
+    emoji.DISABLED = False
     emoji.load({"⚖️": "222", "💼": "555", "💣": "777", "🙂": "1", "🙂️": "2"})
     yield
     emoji.load({})
+    emoji.DISABLED = False
 
 
 def test_premiumize_only_known_and_whole_emoji():
