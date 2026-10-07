@@ -360,7 +360,37 @@ async def cmd_start(msg: Message, bot: Bot, command: CommandObject):
     if arg.startswith("join"):
         r = RUNNERS.get(int(arg[4:])) if arg[4:].lstrip("-").isdigit() else None
         return await msg.answer(r.join(msg.from_user.id, msg.from_user.full_name) if r else texts.NO_LOBBY)
-    await msg.answer(texts.start_pm())
+    await msg.answer(texts.welcome(), reply_markup=start_kb())
+
+
+def start_kb() -> Kb:
+    # admin=...: guruhga qo'shishda kerakli huquqlar so'raladi (xabar o'chirish, cheklash, pin)
+    add = bot_link() + "?startgroup=true&admin=delete_messages+restrict_members+pin_messages"
+    rows = [[Btn(text="🎮 O'yinni guruhingizga qo'shing", url=add)],
+            [Btn(text="🏆 Reyting", callback_data="m:top", style="danger")]]
+    if config.NEWS_URL:
+        rows.append([Btn(text="📰 Yangiliklar", url=config.NEWS_URL)])
+    rows += [[Btn(text="🎭 Rollar", callback_data="m:rules"), Btn(text="🛒 Do'kon", callback_data="m:shop")],
+             [Btn(text="👤 Mening profilim", callback_data="m:profile")]]
+    return Kb(inline_keyboard=rows)
+
+
+@router.callback_query(F.data.startswith("m:"))
+async def cb_menu(cq: CallbackQuery):
+    what = cq.data[2:]
+    if what == "rules":
+        await cq.message.answer(texts.rules())
+    elif what == "top":
+        await cq.message.answer(texts.top(await db.top(), "Umumiy reyting"))
+    elif what in ("profile", "shop"):
+        if not (u := await _user(cq)):
+            return await cq.answer(texts.BANNED, show_alert=True)
+        if what == "shop":
+            await cq.message.answer(texts.shop(u.dollars), reply_markup=shop_kb())
+            return await cq.answer()
+        inv = await db.inventory(u.telegram_id)
+        await cq.message.answer(texts.profile(u, inv, bot_link(f"ref{u.telegram_id}")), reply_markup=profile_kb(inv))
+    await cq.answer()
 
 
 def shop_kb() -> Kb:

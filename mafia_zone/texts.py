@@ -441,6 +441,14 @@ def next_game(title: str) -> str:
 
 
 # ---------- PM: profil, do'kon ----------
+def welcome() -> str:
+    return ("👋 <b>Salom! Mafiya olamiga xush kelibsan!</b>\n"
+            "<b>Men 🤵 Mafia Zone o'yinining rasmiy botiman.</b>\n\n"
+            "<b>Bu shunchaki o'yin emas — sirlar, hiyla va ishonch dunyosi.</b>\n"
+            "<b>Guruhga qo'sh, rolingni ol, o'zingni ko'rsat!</b> 🎯\n"
+            "🎭 <b>Seni roling kutmoqda...</b>")
+
+
 def start_pm() -> str:
     return ("🎮 <b>MAFIA ZONE</b> ga xush kelibsiz!\n\n"
             "Meni guruhga qo'shing, admin qiling va /game buyrug'ini yozing.\n\n"
