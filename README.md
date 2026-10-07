@@ -35,7 +35,7 @@ python -m mafia_zone           # DATABASE_URL bo'sh bo'lsa mafia.db (SQLite) yar
 |---|---|
 | Guruh | `/game` `/extend` `/begin` `/stop` `/leave` `/next` `/players` `/settings` `/top` `/rules` |
 | Shaxsiy chat | `/start` `/profile` `/role` `/shop` `/bonus` `/top` `/rules` |
-| Bot egasi (shaxsiy chat) | `/stats` `/broadcast` `/ban` `/unban` `/give` `/emoji` (premium emoji) |
+| Bot egasi (shaxsiy chat) | `/stats` `/broadcast` `/ban` `/unban` `/give` |
 | Bot egasi (guruh) | `/testgame [soni]` — bot-o'yinchilar bilan test o'yin |
 
 ## Tuzilma
@@ -48,5 +48,3 @@ docs/superpowers/specs/  # dizayn spetsifikatsiyasi
 ```
 
 ## Litsenziyalar
-
-Premium emoji to'plamidagi belgilar: [Twemoji](https://github.com/jdecked/twemoji) (c) Twitter / jdecked, CC-BY 4.0.

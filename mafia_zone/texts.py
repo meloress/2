@@ -96,19 +96,19 @@ def _game_started(g: Game) -> str:
 
 # ---------- tun ----------
 ROLE_PROMPT = {
-    "don": "🤵‍♂️ Don, oila sizning buyrug'ingizni kutyapti. Bu tun kim yo'qoladi?",
+    "don": "🤵🏻 Don, oila sizning buyrug'ingizni kutyapti. Bu tun kim yo'qoladi?",
     "mafiya": "🤵 Oila yig'ildi. Kimni nishonga olamiz? (Yakuniy so'z Donniki)",
     "komissar": "🕵️‍♂️ Komissar, shahar sizga umid bog'lagan. Tekshiramizmi yoki otamizmi?",
     "doktor": "👨‍⚕️ Doktor, chamadoningiz tayyor. Bu tun kimning hayotini saqlaysiz?",
     "kezuvchi": "💃 Kezuvchi, kimga uyqu dori berasiz? U bu tun hech narsa qila olmaydi.",
-    "daydi": "🧙‍♂️ Daydi, bu tun qaysi uy oldida tunaysiz? Qotillik bo'lsa, guvoh bo'lasiz.",
+    "daydi": "🍾 Daydi, bu tun qaysi uy oldida tunaysiz? Qotillik bo'lsa, guvoh bo'lasiz.",
     "qorovul": "👨‍🦳 Qorovul, ertaga kimni dordan himoya qilasiz?",
     "ovchi": "🏹 Ovchi, miltiq o'qlangan. Iz olamizmi yoki o'q uzamizmi? Ehtiyot bo'ling — tinchga tegsa, jazo bor!",
     "jurnalist": "👩‍💻 Jurnalist, bu tun kimdan intervyu olamiz? Uning mehmonlarini ko'rasiz.",
     "yollanma": "🕴 Yollanma qotil, buyurtma bor. Kim?",
     "advokat": "👨‍💼 Advokat, qaysi mijozingizni bu tun himoya qilasiz?",
-    "aka": "👥 Aka, ukangiz bilan bir nishonni tanlang — shundagina zarba o'tadi.",
-    "uka": "👥 Uka, akangiz bilan bir nishonni tanlang — shundagina zarba o'tadi.",
+    "aka": "🧔 Aka, ukangiz bilan bir nishonni tanlang — shundagina zarba o'tadi.",
+    "uka": "👦 Uka, akangiz bilan bir nishonni tanlang — shundagina zarba o'tadi.",
     "qotil": "🔪 Qotil, pichoq o'tkir. Bu tun kimning navbati?",
     "gazabkor": "🧟 G'azabkor, g'azab ichingizni yondiryapti. Kim qurbon bo'ladi?",
     "sehrgar": "🧙 Sehrgar, qaysi uyni la'natlaysiz?",
@@ -301,7 +301,7 @@ def morning(g: Game, ev: list[Event]) -> tuple[list[str], list[tuple[int, str]]]
             new = e.data["role"]
             done = "serjantga aylandi" if new == "serjant" else "mafiyaga qo'shildi"
             pub.append(f"{ROLES['voris'].name.split(' ')[0]}➡️{ROLES[new].name.split(' ')[0]} {bold('Voris')} {done}")
-            priv.append((e.uid, f"👥 O'lim yoqasida taqdiringiz o'zgardi! Siz endi {role(new)}siz!\n\n"
+            priv.append((e.uid, f"🧬 O'lim yoqasida taqdiringiz o'zgardi! Siz endi {role(new)}siz!\n\n"
                                 + role_card(g, e.uid)))
             for m in g.teammates(e.uid):
                 if m.alive:

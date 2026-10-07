@@ -73,7 +73,7 @@ FAKE_BASE = 9_000_000_000_000  # /testgame bot-o'yinchilari: ularga xabar yubori
 LAST_WORDS_SECS = texts.LAST_WORDS_SECS
 
 
-MAX_TEXT = 3800  # Telegram limiti 4096; teglar va premium emoji uchun zaxira
+MAX_TEXT = 3800  # Telegram limiti 4096; teglar uchun zaxira
 
 
 def split_text(text: str, limit: int = MAX_TEXT) -> list[str]:

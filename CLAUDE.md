@@ -24,7 +24,7 @@ python -m pytest -q tests/test_engine.py::test_voris_transforms   # single test
 
 - Phases: `NIGHT → DAY → VOTING → (CONFIRM) → NIGHT …`, `FINISHED`. CONFIRM (👍/👎 before hanging) only when `Game.confirm` is on.
 - `resolve_night()` runs the spec's priority order in one function: 1a block (Kezuvchi) → 1b Aferist steal, Qaroqchi rob → 2 heal/guard/disguise → 3 checks/info → 4 attacks (immunities, heal, Voris transform, items) → 5 revenge (Afsungar/Suitsid) → `_after_deaths` (Aka/Uka link, Serjant→Komissar, Mafiya→Don promotion) → `_check_win`. The mafia kill is stored as an action owned by the Don, so blocking/stealing the Don affects it.
-- Adding a role = entry in `roles.py`, pool membership in `setup.py`, rule branches in `game.py`, texts in `texts.py` (`ACT_FEED`, `ROLE_PROMPT`), plus a scenario test. The emoji catalog is derived from `ROLES`/`ACTION_LABELS` automatically.
+- Adding a role = entry in `roles.py`, pool membership in `setup.py`, rule branches in `game.py`, texts in `texts.py` (`ACT_FEED`, `ROLE_PROMPT`), plus a scenario test.
 
 **`runner.py` — one `Runner` per group chat** (registries: `RUNNERS[chat_id]`, `PLAYING[uid]`). It owns the lobby, the phase loop (`_step`: intro → wait until deadline or everyone acted → resolve under `asyncio.Lock` → announce), and persistence: the whole game state is saved as JSON into `games.state` after every action and phase change; `restore()` resumes running games on startup from `meta["deadline"]`.
 
@@ -34,8 +34,6 @@ python -m pytest -q tests/test_engine.py::test_voris_transforms   # single test
 
 **`texts.py`** turns events into messages: `morning(g, ev)` returns `(public_messages, [(uid, private_text)])`. All HTML must stay within Telegram's subset (`b`, `i`, `a`, `code`) — tests validate every generated message. Role names are rendered in math-bold via `bold()`.
 
-**`emoji.py` — premium emoji is a session middleware**, not something texts know about: it rewrites plain emoji to `<tg-emoji>` in outgoing text/captions and turns a button's leading emoji into `icon_custom_emoji_id`, using the mapping in the `emojis` table. If Telegram rejects it (bot owner lost Premium), the original request is resent. Owner commands: `/emoji` (map manually), `/emojipack` (`emoji_pack.py` builds 100×100 badges from Twemoji, CC-BY, and uploads a custom-emoji sticker set).
-
 **`handlers.py`** — aiogram router. Handler order matters: the catch-all `@router.message(GROUPS)` (`on_group_message`, enforces who may write during a game: numbers for everyone, `!`-prefixed for admins, normal text only for alive players by day) must stay at the end of the file. Edited messages are intentionally not checked (number → text edit is a deliberate loophole). A global `@router.errors()` handler swallows exceptions.
 
 **`db.py`** — every balance/inventory/giveaway change is a single atomic `UPDATE … WHERE` (e.g. `dollars >= amount`, `left > 0`). Do not use read-modify-write on ORM objects for money: a concurrency test caught 49 claims on a 10-share giveaway that way.
@@ -43,4 +41,4 @@ python -m pytest -q tests/test_engine.py::test_voris_transforms   # single test
 ## Working notes
 
 - When patching files from the shell, write the Python patch script to a file and run it; `\\n` inside Bash heredocs has repeatedly turned into real newlines and broken string literals.
-- The bot owner (`ADMIN_IDS`) has Telegram Premium; premium emoji only works because of that.
+- Plain Unicode emoji only — premium/custom emoji was removed on request. Each role's emoji (first token of `Role.name`) must be unique.

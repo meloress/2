@@ -210,33 +210,6 @@ async def claim(gid: int, uid: int) -> Giveaway | None:
         return None
 
 
-class Emoji(Base):
-    __tablename__ = "emojis"
-    char: Mapped[str] = mapped_column(String(32), primary_key=True)  # oddiy emoji (VS16siz)
-    emoji_id: Mapped[str] = mapped_column(String(32))
-
-
-async def emojis() -> dict[str, str]:
-    async with Session() as s:
-        return {r.char: r.emoji_id for r in await s.scalars(select(Emoji))}
-
-
-async def set_emojis(pairs: dict[str, str]) -> None:
-    async with Session.begin() as s:
-        for char, eid in pairs.items():
-            row = await s.get(Emoji, char)
-            if row:
-                row.emoji_id = eid
-            else:
-                s.add(Emoji(char=char, emoji_id=eid))
-
-
-async def clear_emojis() -> None:
-    from sqlalchemy import delete
-    async with Session.begin() as s:
-        await s.execute(delete(Emoji))
-
-
 async def init() -> None:
     # ponytail: create_all; sxema birinchi marta o'zgarganda Alembic qo'shiladi
     async with engine.begin() as c:

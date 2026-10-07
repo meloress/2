@@ -6,7 +6,7 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.types import BotCommand, BotCommandScopeAllGroupChats, BotCommandScopeAllPrivateChats
 
-from . import config, db, emoji, runner
+from . import config, db, runner
 from .handlers import router
 
 
@@ -16,8 +16,6 @@ async def main() -> None:
         raise SystemExit("BOT_TOKEN env o'zgaruvchisi kerak")
     bot = Bot(config.BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     await db.init()
-    bot.session.middleware(emoji.PremiumEmoji())
-    emoji.load(await db.emojis())
     runner.BOT_USERNAME = (await bot.me()).username
     await bot.set_my_commands([
         BotCommand(command="game", description="🎮 Yangi o'yin"),
