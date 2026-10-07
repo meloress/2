@@ -38,6 +38,8 @@ python -m pytest -q tests/test_engine.py::test_voris_transforms   # single test
 
 **`db.py`** — every balance/inventory/giveaway change is a single atomic `UPDATE … WHERE` (e.g. `dollars >= amount`, `left > 0`). Do not use read-modify-write on ORM objects for money: a concurrency test caught 49 claims on a 10-share giveaway that way.
 
+**`panel.py` + `panel_static/` — web admin panel** (aiohttp, same process, listens on `PORT`). Login: admin sends `/panel` to the bot → one-time 5-min signed link → HttpOnly session cookie (12 h). Roles: `owner` (ADMIN_IDS) > `moderator` > `viewer` (`panel_admins` table); every handler calls `need(req, role)`. Mutating requests need `X-CSRF` + same Origin. Every action goes to `admin_log`. Frontend is vanilla JS with a `h()` DOM builder — never use `innerHTML` (user names are untrusted). Economy values live on `config` and are overridden from the `settings` table (`db.load_settings`) — read them as `config.X`, never `from .config import X`. New columns on existing tables go in `db.COLUMNS` (`_migrate`). Tests: `tests/test_panel.py`.
+
 ## Working notes
 
 - When patching files from the shell, write the Python patch script to a file and run it; `\\n` inside Bash heredocs has repeatedly turned into real newlines and broken string literals.

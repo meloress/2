@@ -2,7 +2,7 @@
 from html import escape
 from random import choice
 
-from .config import DIAMOND_RATE, REF_BONUS, SHOP
+from . import config
 from .engine.game import DRAW, Event, Game
 from .engine.roles import MAFIA, NEUTRAL, ROLES, TOWN
 
@@ -458,15 +458,15 @@ def start_pm() -> str:
 def profile(u, inv, ref_link: str = "") -> str:
     return (profile_card(u, inv)
             + "\n\n<i>Tugmalar: ✅ yoqilgan buyum o'yinda avtomatik ishlatiladi</i>"
-            + (f"\n\n🤝 Do'stlaringizni taklif qiling — har biri uchun +{REF_BONUS} 💵:\n{ref_link}" if ref_link else ""))
+            + (f"\n\n🤝 Do'stlaringizni taklif qiling — har biri uchun +{config.REF_BONUS} 💵:\n{ref_link}" if ref_link else ""))
 
 
 def ref_bonus(name: str) -> str:
-    return f"🤝 Sizning havolangiz orqali <b>{escape(name)}</b> qo'shildi! +{REF_BONUS} 💵"
+    return f"🤝 Sizning havolangiz orqali <b>{escape(name)}</b> qo'shildi! +{config.REF_BONUS} 💵"
 
 
 def shop(dollars: int) -> str:
-    rows = "\n".join(f"{ITEMS[i]} — {p} 💵: {ITEM_ABOUT[i]}" for i, p in SHOP.items())
+    rows = "\n".join(f"{ITEMS[i]} — {p} 💵: {ITEM_ABOUT[i]}" for i, p in config.SHOP.items() if i not in config.SHOP_OFF)
     return f"🛒 <b>Do'kon</b>\n\nBalans: {dollars} 💵\n\n{rows}"
 
 
@@ -474,7 +474,8 @@ BOUGHT = "✅ Sotib olindi!"
 NO_MONEY = "😔 Pul yetarli emas."
 BONUS_OK = "🎁 Kunlik bonus olindi!"
 BONUS_WAIT = "⏳ Bonusni 24 soatda bir marta olish mumkin."
-EXCHANGE_BTN = f"💎 1 → {DIAMOND_RATE} 💵"
+def exchange_btn() -> str:
+    return f"💎 1 → {config.DIAMOND_RATE} 💵"
 
 
 def top(rows, title: str) -> str:

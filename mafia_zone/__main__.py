@@ -6,7 +6,7 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.types import BotCommand, BotCommandScopeAllGroupChats, BotCommandScopeAllPrivateChats
 
-from . import config, db, runner
+from . import config, db, panel, runner
 from .handlers import router
 
 
@@ -43,6 +43,7 @@ async def main() -> None:
     ], scope=BotCommandScopeAllPrivateChats())
     dp = Dispatcher()
     dp.include_router(router)
+    await panel.start(bot)
     await runner.restore(bot)
     await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
 

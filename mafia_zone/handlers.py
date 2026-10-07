@@ -357,6 +357,8 @@ async def cmd_start(msg: Message, bot: Bot, command: CommandObject):
         if await db.get_user(inviter):
             await db.add_balance(inviter, config.REF_BONUS)
             await send(bot, inviter, texts.ref_bonus(msg.from_user.full_name))
+    if arg == "panel":
+        return await send_panel_link(msg)
     if arg.startswith("join"):
         r = RUNNERS.get(int(arg[4:])) if arg[4:].lstrip("-").isdigit() else None
         return await msg.answer(r.join(msg.from_user.id, msg.from_user.full_name) if r else texts.NO_LOBBY)
@@ -395,7 +397,7 @@ async def cb_menu(cq: CallbackQuery):
 
 def shop_kb() -> Kb:
     return Kb(inline_keyboard=[[Btn(text=f"{texts.ITEMS[i]} — {p} 💵", callback_data=f"b:{i}", style="success")]
-                               for i, p in config.SHOP.items()])
+                               for i, p in config.SHOP.items() if i not in config.SHOP_OFF])
 
 
 @router.message(Command("profile"), PRIVATE)
@@ -458,7 +460,7 @@ async def cb_shop(cq: CallbackQuery):
         return await cq.answer(texts.BANNED, show_alert=True)
     if cq.data != "shop":
         item = cq.data[2:]
-        if item not in config.SHOP:
+        if item not in config.SHOP or item in config.SHOP_OFF:
             return await cq.answer()
         ok = await db.buy(cq.from_user.id, item)
         await cq.answer(texts.BOUGHT if ok else texts.NO_MONEY, show_alert=not ok)
@@ -494,6 +496,25 @@ async def cb_action(cq: CallbackQuery):
 
 # ---------- bot egasi ----------
 OWNER = F.from_user.id.in_(config.ADMIN_IDS)
+
+
+@router.message(Command("panel"), PRIVATE)
+async def send_panel_link(msg: Message):
+    """Web admin panelga bir martalik kirish havolasi (faqat adminlarga)."""
+    from . import panel
+    if not await db.panel_role(msg.from_user.id):
+        return await msg.answer("⛔ Sizda admin panelga kirish huquqi yo'q.")
+    if not config.PANEL_URL:
+        return await msg.answer("⚙️ Panel manzili sozlanmagan: Railway'da servis → Settings → Networking → "
+                                "<b>Generate Domain</b> bosing (yoki PANEL_URL o'zgaruvchisini qo'ying).")
+    link = panel.login_link(msg.from_user.id)
+    note = ("🔐 <b>Admin panelga kirish</b>\n\nHavola <b>5 daqiqa</b> amal qiladi va faqat <b>bir marta</b> ishlaydi. "
+            "Uni hech kimga bermang.")
+    if link.startswith("https://"):
+        await msg.answer(note, reply_markup=Kb(inline_keyboard=[[Btn(text="🔐 Panelga kirish", url=link,
+                                                                      style="success")]]))
+    else:  # lokal sinov (http): Telegram tugmaga faqat https qabul qiladi
+        await msg.answer(f"{note}\n\n<code>{link}</code>")
 
 
 @router.message(Command("stats"), PRIVATE, OWNER)

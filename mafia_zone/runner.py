@@ -51,15 +51,20 @@ async def _group_slot(chat_id: int) -> None:
         await asyncio.sleep(60.1 - (t - q[0]))
 
 
-async def _call(fn, *a, **kw):
+async def pace() -> None:
+    """Global navbatda o'z vaqtini kutadi (o'yin xabarlari va e'lonlar bitta limitda)."""
     global _last_send
+    async with _send_lock:
+        wait = _last_send + GLOBAL_INTERVAL - time.monotonic()
+        if wait > 0:
+            await asyncio.sleep(wait)
+        _last_send = time.monotonic()
+
+
+async def _call(fn, *a, **kw):
     for _ in range(3):
         try:
-            async with _send_lock:
-                wait = _last_send + GLOBAL_INTERVAL - time.monotonic()
-                if wait > 0:
-                    await asyncio.sleep(wait)
-                _last_send = time.monotonic()
+            await pace()
             return await fn(*a, **kw)
         except TelegramRetryAfter as e:
             await asyncio.sleep(e.retry_after + 0.5)
@@ -143,7 +148,7 @@ def profile_kb(inv) -> Kb:
                    callback_data=f"t:{i.item}", style="success" if i.enabled else "danger")
                for i in inv if i.item in texts.ITEMS and i.qty > 0]
     rows = grid(toggles, 3) if toggles else []
-    rows.append([Btn(text=texts.EXCHANGE_BTN, callback_data="x", style="primary"),
+    rows.append([Btn(text=texts.exchange_btn(), callback_data="x", style="primary"),
                  Btn(text="🛒 Do'kon", callback_data="shop", style="primary")])
     return Kb(inline_keyboard=rows)
 

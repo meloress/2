@@ -24,3 +24,11 @@ REWARD_PLAY, REWARD_WIN, DAILY_BONUS, REF_BONUS = 0, 40, 20, 50  # yutsa 40$, yu
 DIAMOND_RATE = 50
 NEWS_URL = os.environ.get("NEWS_URL", "").strip()  # yangiliklar kanali, bo'sh bo'lsa tugma chiqmaydi
 SHOP = {"shield": 100, "verbena": 80, "doc": 120, "ticket": 150}
+SHOP_OFF: set[str] = set()  # paneldan sotuvdan olingan buyumlar
+# Bular paneldan o'zgaradi (db.load_settings): kodda doim config.X deb o'qing, "from config import X" emas.
+
+# Admin panel: Railway "Generate Domain" qilinganda RAILWAY_PUBLIC_DOMAIN o'zi beriladi
+_domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "").strip()
+PANEL_URL = (os.environ.get("PANEL_URL", "").strip() or (f"https://{_domain}" if _domain else "")).rstrip("/")
+PANEL_SECRET = os.environ.get("PANEL_SECRET", "").strip()  # bo'sh bo'lsa BOT_TOKEN dan hosil qilinadi
+PORT = int(os.environ.get("PORT", "8080") or 8080)

@@ -1,8 +1,8 @@
 """PostgreSQL (lokalda SQLite) modellari va so'rovlar. Balans o'zgarishlari atomar UPDATE bilan."""
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import (JSON, BigInteger, Boolean, DateTime, Index, Integer, String, delete, func, select, text,
-                        update)
+from sqlalchemy import (JSON, BigInteger, Boolean, DateTime, Index, Integer, String, Text, case, delete, func,
+                        select, text, update)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -17,6 +17,14 @@ Session = async_sessionmaker(engine, expire_on_commit=False)
 
 def now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _aware(t: datetime | None) -> datetime | None:
+    """SQLite vaqt zonasisiz qaytaradi: UTC deb hisoblaymiz."""
+    return t.replace(tzinfo=timezone.utc) if t is not None and t.tzinfo is None else t
+
+
+SEEN_EVERY = timedelta(minutes=5)  # last_seen shundan tez-tez yozilmaydi
 
 
 class Base(DeclarativeBase):
@@ -35,6 +43,7 @@ class User(Base):
     last_bonus_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     banned: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    last_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # migratsiya: _migrate()
 
 
 class Inventory(Base):
@@ -210,10 +219,24 @@ async def claim(gid: int, uid: int) -> Giveaway | None:
         return None
 
 
+# Mavjud jadvalga qo'shilgan ustunlar: create_all ularni qo'sha olmaydi.
+# ponytail: qo'lda ADD COLUMN; murakkab o'zgarishlar boshlanganda Alembic'ga o'tiladi
+COLUMNS = [("users", "last_seen", "TIMESTAMP WITH TIME ZONE")]
+
+
+def _migrate(conn) -> None:
+    from sqlalchemy import inspect
+    insp = inspect(conn)
+    for table, col, ddl in COLUMNS:
+        if col not in {c["name"] for c in insp.get_columns(table)}:
+            conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}"))
+
+
 async def init() -> None:
-    # ponytail: create_all; sxema birinchi marta o'zgarganda Alembic qo'shiladi
     async with engine.begin() as c:
         await c.run_sync(Base.metadata.create_all)
+        await c.run_sync(_migrate)
+    await load_settings()
 
 
 # ---------- foydalanuvchilar ----------
@@ -230,6 +253,9 @@ async def upsert_user(uid: int, full_name: str, username: str | None) -> User:
                     s.add(u)
                 elif (u.full_name, u.username) != (full_name, username):
                     u.full_name, u.username = full_name, username
+                t = now()
+                if u.last_seen is None or _aware(u.last_seen) < t - SEEN_EVERY:  # har xabarda yozmaslik uchun
+                    u.last_seen = t
                 return u
         except IntegrityError:
             continue
@@ -327,6 +353,8 @@ async def _add_item(s, uid: int, item: str, n: int) -> None:
 
 
 async def buy(uid: int, item: str) -> bool:
+    if item not in config.SHOP or item in config.SHOP_OFF:
+        return False
     price = config.SHOP[item]
     async with Session.begin() as s:
         r = await s.execute(update(User).where(User.telegram_id == uid, User.dollars >= price)
@@ -420,3 +448,307 @@ async def finish_game(game_id: int, chat_id: int, status: str, winner: str | Non
             await s.execute(update(User).where(User.telegram_id == uid).values(
                 games=User.games + 1, wins=User.wins + int(won),
                 dollars=User.dollars + config.REWARD_PLAY + (config.REWARD_WIN if won else 0)))
+
+
+# ============ ADMIN PANEL ============
+class PanelAdmin(Base):
+    """Paneldagi qo'shimcha adminlar. Bosh adminlar (ADMIN_IDS) bu yerda saqlanmaydi."""
+    __tablename__ = "panel_admins"
+    user_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    role: Mapped[str] = mapped_column(String(16))  # moderator / viewer
+    added_by: Mapped[int] = mapped_column(BigInteger)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class AdminLog(Base):
+    __tablename__ = "admin_log"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
+    admin_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    action: Mapped[str] = mapped_column(String(32))
+    target: Mapped[str] = mapped_column(String(64), default="")
+    details: Mapped[str] = mapped_column(String(512), default="")
+
+
+class Setting(Base):
+    __tablename__ = "settings"
+    key: Mapped[str] = mapped_column(String(32), primary_key=True)
+    value: Mapped[dict] = mapped_column(Json)
+
+
+class Broadcast(Base):
+    __tablename__ = "broadcasts"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    admin_id: Mapped[int] = mapped_column(BigInteger)
+    audience: Mapped[str] = mapped_column(String(16))
+    text: Mapped[str] = mapped_column(Text)
+    buttons: Mapped[list] = mapped_column(Json, default=list)
+    photo: Mapped[bool] = mapped_column(Boolean, default=False)
+    total: Mapped[int] = mapped_column(Integer, default=0)
+    sent: Mapped[int] = mapped_column(Integer, default=0)
+    blocked: Mapped[int] = mapped_column(Integer, default=0)
+    failed: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(16), default="running")  # running/done/cancelled/interrupted
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+# ---------- sozlamalar (paneldan o'zgaradi, config'ga qo'llanadi) ----------
+ECONOMY = {"reward_win": "REWARD_WIN", "reward_play": "REWARD_PLAY", "daily_bonus": "DAILY_BONUS",
+           "ref_bonus": "REF_BONUS", "diamond_rate": "DIAMOND_RATE"}
+
+
+def economy() -> dict:
+    return {**{k: getattr(config, attr) for k, attr in ECONOMY.items()},
+            "shop": dict(config.SHOP), "shop_off": sorted(config.SHOP_OFF)}
+
+
+def _apply(key: str, value) -> None:
+    if key in ECONOMY:
+        setattr(config, ECONOMY[key], int(value))
+    elif key == "shop":
+        config.SHOP.update({k: int(v) for k, v in value.items() if k in config.SHOP})  # joyida: importlar ko'radi
+    elif key == "shop_off":
+        config.SHOP_OFF.clear()
+        config.SHOP_OFF.update(k for k in value if k in config.SHOP)
+
+
+async def load_settings() -> None:
+    async with Session() as s:
+        for row in await s.scalars(select(Setting)):
+            try:
+                _apply(row.key, row.value["v"])
+            except (KeyError, TypeError, ValueError, AttributeError):
+                pass  # buzilgan qiymat: standart qoladi
+
+
+async def save_settings(values: dict) -> None:
+    async with Session.begin() as s:
+        for key, v in values.items():
+            row = await s.get(Setting, key)
+            if row:
+                row.value = {"v": v}
+            else:
+                s.add(Setting(key=key, value={"v": v}))
+    for key, v in values.items():
+        _apply(key, v)
+
+
+# ---------- adminlar va jurnal ----------
+ROLES_PANEL = ("moderator", "viewer")
+
+
+async def panel_role(uid: int) -> str | None:
+    if uid in config.ADMIN_IDS:
+        return "owner"
+    async with Session() as s:
+        a = await s.get(PanelAdmin, uid)
+        return a.role if a and a.role in ROLES_PANEL else None
+
+
+async def list_admins() -> list[dict]:
+    async with Session() as s:
+        rows = (await s.execute(select(PanelAdmin, User.full_name, User.username)
+                                .outerjoin(User, User.telegram_id == PanelAdmin.user_id)
+                                .order_by(PanelAdmin.created_at))).all()
+        owners = {u.telegram_id: u for u in await s.scalars(
+            select(User).where(User.telegram_id.in_(list(config.ADMIN_IDS))))}
+    out = [{"id": uid, "name": owners[uid].full_name if uid in owners else "",
+            "username": owners[uid].username if uid in owners else None, "role": "owner"}
+           for uid in sorted(config.ADMIN_IDS)]
+    out += [{"id": a.user_id, "name": name or "", "username": un, "role": a.role}
+            for a, name, un in rows if a.user_id not in config.ADMIN_IDS]
+    return out
+
+
+async def set_admin(uid: int, role: str, by: int) -> None:
+    async with Session.begin() as s:
+        a = await s.get(PanelAdmin, uid)
+        if a:
+            a.role = role
+        else:
+            s.add(PanelAdmin(user_id=uid, role=role, added_by=by))
+
+
+async def remove_admin(uid: int) -> bool:
+    async with Session.begin() as s:
+        return (await s.execute(delete(PanelAdmin).where(PanelAdmin.user_id == uid))).rowcount == 1
+
+
+async def log_action(admin_id: int, action: str, target="", details: str = "") -> None:
+    async with Session.begin() as s:
+        s.add(AdminLog(admin_id=admin_id, action=action[:32], target=str(target)[:64], details=str(details)[:512]))
+
+
+async def get_log(page: int, size: int = 30) -> tuple[list[dict], int]:
+    async with Session() as s:
+        total = await s.scalar(select(func.count()).select_from(AdminLog))
+        rows = (await s.execute(select(AdminLog, User.full_name)
+                                .outerjoin(User, User.telegram_id == AdminLog.admin_id)
+                                .order_by(AdminLog.id.desc()).offset(page * size).limit(size))).all()
+    return [{"id": r.id, "at": _aware(r.at).isoformat(), "admin_id": r.admin_id, "admin": name or str(r.admin_id),
+             "action": r.action, "target": r.target, "details": r.details} for r, name in rows], total
+
+
+# ---------- statistika ----------
+async def dashboard(since: datetime | None, chart_from: datetime) -> dict:
+    """since: davr boshi (None = hammasi). chart_from: grafik boshi."""
+    async with Session() as s:
+        async def cnt(model, *w):
+            return int(await s.scalar(select(func.count()).select_from(model).where(*w)) or 0)
+
+        users, groups = await cnt(User), await cnt(Group)
+        fin = [GameRow.status == "finished"] + ([GameRow.started_at >= since] if since else [])
+        res = {
+            "users": users,
+            "users_new": await cnt(User, User.created_at >= since) if since else users,
+            "active": await cnt(User, User.last_seen >= (since or now() - timedelta(days=30))),
+            "groups": groups,
+            "groups_new": await cnt(Group, Group.created_at >= since) if since else groups,
+            "games": await cnt(GameRow, *fin),
+            "money": int(await s.scalar(select(func.coalesce(func.sum(User.dollars), 0))) or 0),
+            "diamonds": int(await s.scalar(select(func.coalesce(func.sum(User.diamonds), 0))) or 0),
+            "banned": await cnt(User, User.banned.is_(True)),
+        }
+        res["winners"] = {k or "": int(v) for k, v in (await s.execute(
+            select(GameRow.winner, func.count()).where(*fin).group_by(GameRow.winner))).all()}
+        dur_from = max(since or chart_from, now() - timedelta(days=30))
+        dur = (await s.execute(select(GameRow.started_at, GameRow.finished_at).where(
+            GameRow.status == "finished", GameRow.finished_at.is_not(None), GameRow.started_at >= dur_from)
+            .limit(5000))).all()
+        secs = [(_aware(b) - _aware(a)).total_seconds() for a, b in dur]
+        res["avg_minutes"] = round(sum(secs) / len(secs) / 60) if secs else 0
+        res["chart_games"] = [_aware(t) for t in await s.scalars(
+            select(GameRow.started_at).where(GameRow.status == "finished", GameRow.started_at >= chart_from))]
+        res["chart_users"] = [_aware(t) for t in await s.scalars(
+            select(User.created_at).where(User.created_at >= chart_from))]
+    return res
+
+
+# ---------- foydalanuvchilar ----------
+def _search(q: str, cols, id_col, signed: bool = False):
+    """Matn qidiruvi (LIKE belgilari ekranlanadi) yoki aniq ID."""
+    q = q.strip()
+    esc = q.lstrip("@").lower().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    cond = None
+    for c in cols:
+        part = func.lower(func.coalesce(c, "")).like(f"%{esc}%", escape="\\")
+        cond = part if cond is None else cond | part
+    digits = q.lstrip("-") if signed else q
+    if digits.isdigit() and len(digits) < 19:
+        cond = (id_col == int(q)) | cond
+    return cond
+
+
+async def users_page(q: str, filt: str, page: int, size: int = 20) -> tuple[list[User], int]:
+    w = [_search(q, (User.full_name, User.username), User.telegram_id)] if q.strip() else []
+    if filt == "active":
+        w.append(User.last_seen >= now() - timedelta(days=7))
+    elif filt == "banned":
+        w.append(User.banned.is_(True))
+    order = {"rich": User.dollars.desc(), "games": User.games.desc()}.get(filt, User.created_at.desc())
+    async with Session() as s:
+        total = int(await s.scalar(select(func.count()).select_from(User).where(*w)) or 0)
+        rows = list((await s.scalars(select(User).where(*w).order_by(order, User.telegram_id)
+                                     .offset(page * size).limit(size))).all())
+    return rows, total
+
+
+async def user_games(uid: int, limit: int = 10) -> list[dict]:
+    async with Session() as s:
+        rows = (await s.execute(select(GamePlayer, GameRow.finished_at, Group.title)
+                                .join(GameRow, GameRow.id == GamePlayer.game_id)
+                                .outerjoin(Group, Group.chat_id == GamePlayer.chat_id)
+                                .where(GamePlayer.user_id == uid).order_by(GamePlayer.game_id.desc())
+                                .limit(limit))).all()
+    return [{"game_id": p.game_id, "chat_id": p.chat_id, "group": title or str(p.chat_id), "role": p.role,
+             "won": p.won, "alive": p.alive, "at": _aware(at).isoformat() if at else None} for p, at, title in rows]
+
+
+async def change_balance(uid: int, currency: str, delta: int) -> int | None:
+    """Atomar. Balans manfiyga tushadigan ayirish rad etiladi. Yangi qiymat yoki None."""
+    col = {"dollars": User.dollars, "diamonds": User.diamonds}[currency]
+    async with Session.begin() as s:
+        r = await s.execute(update(User).where(User.telegram_id == uid, col + delta >= 0)
+                            .values({currency: col + delta}))
+        if r.rowcount != 1:
+            return None
+        return int(await s.scalar(select(col).where(User.telegram_id == uid)))
+
+
+async def item_qty(uid: int, item: str, delta: int) -> int:
+    async with Session.begin() as s:
+        await _add_item(s, uid, item, delta)
+        return int(await s.scalar(select(Inventory.qty).where(Inventory.user_id == uid, Inventory.item == item))
+                   or 0)
+
+
+# ---------- guruhlar ----------
+async def groups_page(q: str, sort: str, page: int, size: int = 20) -> tuple[list[dict], int]:
+    week = now() - timedelta(days=7)
+    wk = func.sum(case((GameRow.started_at >= week, 1), else_=0))
+    stats_q = (select(GameRow.chat_id, func.count().label("total"), wk.label("week"))
+               .where(GameRow.status == "finished").group_by(GameRow.chat_id).subquery())
+    w = [_search(q, (Group.title,), Group.chat_id, signed=True)] if q.strip() else []
+    total_c, week_c = func.coalesce(stats_q.c.total, 0), func.coalesce(stats_q.c.week, 0)
+    order = {"total": total_c.desc(), "new": Group.created_at.desc()}.get(sort, week_c.desc())
+    async with Session() as s:
+        total = int(await s.scalar(select(func.count()).select_from(Group).where(*w)) or 0)
+        rows = (await s.execute(select(Group, total_c, week_c).outerjoin(stats_q, stats_q.c.chat_id == Group.chat_id)
+                                .where(*w).order_by(order, Group.chat_id).offset(page * size).limit(size))).all()
+    return [{"chat_id": g.chat_id, "title": g.title, "total": int(t or 0), "week": int(wv or 0),
+             "created_at": _aware(g.created_at).isoformat(),
+             "settings": {**config.DEFAULT_SETTINGS, **(g.settings or {})}} for g, t, wv in rows], total
+
+
+async def group_ids() -> list[int]:
+    async with Session() as s:
+        return list((await s.scalars(select(Group.chat_id))).all())
+
+
+async def active_user_ids(days: int = 7) -> list[int]:
+    async with Session() as s:
+        return list((await s.scalars(select(User.telegram_id).where(
+            User.banned.is_(False), User.last_seen >= now() - timedelta(days=days)))).all())
+
+
+async def count_active(days: int = 7) -> int:
+    async with Session() as s:
+        return int(await s.scalar(select(func.count()).select_from(User).where(
+            User.banned.is_(False), User.last_seen >= now() - timedelta(days=days))) or 0)
+
+
+async def count_users() -> int:
+    async with Session() as s:
+        return int(await s.scalar(select(func.count()).select_from(User).where(User.banned.is_(False))) or 0)
+
+
+async def group_exists(chat_id: int) -> bool:
+    async with Session() as s:
+        return await s.get(Group, chat_id) is not None
+
+
+# ---------- e'lonlar ----------
+async def create_broadcast(admin_id: int, audience: str, text_: str, buttons: list, photo: bool, total: int) -> int:
+    async with Session.begin() as s:
+        b = Broadcast(admin_id=admin_id, audience=audience, text=text_, buttons=buttons, photo=photo, total=total)
+        s.add(b)
+        await s.flush()
+        return b.id
+
+
+async def update_broadcast(bid: int, **values) -> None:
+    async with Session.begin() as s:
+        await s.execute(update(Broadcast).where(Broadcast.id == bid).values(**values))
+
+
+async def broadcasts(limit: int = 20) -> list[Broadcast]:
+    async with Session() as s:
+        return list((await s.scalars(select(Broadcast).order_by(Broadcast.id.desc()).limit(limit))).all())
+
+
+async def interrupt_broadcasts() -> None:
+    """Bot qayta ishga tushganda yarim qolgan e'lonlar."""
+    async with Session.begin() as s:
+        await s.execute(update(Broadcast).where(Broadcast.status == "running")
+                        .values(status="interrupted", finished_at=now()))
