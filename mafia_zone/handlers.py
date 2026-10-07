@@ -489,7 +489,7 @@ async def cb_action(cq: CallbackQuery):
     if not await r.on_action(cq.from_user.id, int(day), kind, int(target)):
         return await cq.answer("❌ Bu harakat mumkin emas yoki vaqt tugadi")
     t = r.game.get(int(target)) if int(target) else None
-    await cq.message.edit_text(texts.chosen(t.name if t else None))
+    await cq.message.edit_text(texts.SKIPPED_NIGHT if kind == "skip" else texts.chosen(t.name if t else None))
     await cq.answer()
 
 

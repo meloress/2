@@ -12,7 +12,7 @@ from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, Teleg
 from aiogram.types import FSInputFile, InlineKeyboardButton as Btn, InlineKeyboardMarkup as Kb
 
 from . import config, db, texts
-from .engine.game import AFK_LIMIT, CONFIRM, DAY, FINISHED, NIGHT, VOTING, Game
+from .engine.game import AFK_LIMIT, CONFIRM, DAY, FINISHED, NIGHT, SKIP, VOTING, Game
 from .engine.roles import ACTION_LABELS, MAFIA, NO_TARGET
 from .engine.setup import MAX_PLAYERS, MIN_PLAYERS
 
@@ -473,16 +473,17 @@ class Runner:
         if not acts:
             return None
         pre = f"{self.game_id}:{g.day}"
+        skip = [Btn(text=texts.SKIP_NIGHT_BTN, callback_data=f"a:{pre}:{SKIP}:0")]  # har menyuda pastda
         if kind is None and len(acts) > 1:
             return Kb(inline_keyboard=[[Btn(text=ACTION_LABELS[k], callback_data=f"k:{pre}:{k}", style=kind_style(k))]
-                                       for k in acts])
+                                       for k in acts] + [skip])
         kind = kind or acts[0]
         if kind in NO_TARGET:
             return Kb(inline_keyboard=[[Btn(text=ACTION_LABELS[kind], callback_data=f"a:{pre}:{kind}:0",
-                                            style=kind_style(kind))]])
+                                            style=kind_style(kind))], skip])
         rows = grid([Btn(text=g.get(t).name, callback_data=f"a:{pre}:{kind}:{t}", style=kind_style(kind))
                      for t in g.targets(uid, kind)])
-        return Kb(inline_keyboard=rows) if rows else None
+        return Kb(inline_keyboard=rows + [skip])
 
     async def on_action(self, uid: int, day: int, kind: str, target: int) -> bool:
         async with self.lock:
@@ -490,7 +491,12 @@ class Runner:
             if not g or g.phase != NIGHT or g.day != day or not g.submit(uid, kind, target or None):
                 return False
             await self.save()
-            self.live_lines.append(texts.act_feed(g.get(uid).role, kind))
+            if kind != SKIP:  # hech narsa qilmagani guruhga yozilmaydi
+                self.live_lines.append(texts.act_feed(g.get(uid).role, kind))
+        if kind == SKIP and g.get(uid).role == "don":
+            for m in g.teammates(uid):
+                if m.alive:
+                    await send(self.bot, m.uid, texts.DON_SKIPPED)
         if kind == "mafia_kill":
             me = g.get(uid)
             for m in g.teammates(uid):

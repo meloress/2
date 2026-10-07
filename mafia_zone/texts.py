@@ -170,6 +170,11 @@ def night_prompt(g: Game, uid: int) -> str:
     return f"🌙 <b>{g.day}-tun</b>\n\n" + ROLE_PROMPT.get(r, f"{role(r)}, harakatingizni tanlang:")
 
 
+SKIP_NIGHT_BTN = "🚫 Hech narsa qilmayman"
+SKIPPED_NIGHT = "😶 Siz bu tun hech narsa qilmaslikka qaror qildingiz"
+DON_SKIPPED = "🤵🏻 Don bu tun hech kimga tegmaslikka qaror qildi."
+
+
 def chosen(name: str | None) -> str:
     return f"Siz <b>{escape(name)}</b>ni tanladingiz" if name else "✅ Tanlovingiz qabul qilindi"
 
@@ -223,13 +228,15 @@ def morning(g: Game, ev: list[Event]) -> tuple[list[str], list[tuple[int, str]]]
     for e in ev:
         k = e.kind
         if k == "killed":
+            # rollar tun boshidagi holatda (masalan, jarimadan oldingi Ovchi)
+            victim = f"{role(e.data.get('role') or g.get(e.target).role)} - {n(e.target)}"
             if e.data["by"] == ["curse"]:
-                pub.append(f"🔮 {w(e.target)} la'natlangan insonga duch keldi va shafqatsiz o'lim topdi.\n"
+                pub.append(f"🔮 {victim} la'natlangan insonga duch keldi va shafqatsiz o'lim topdi.\n"
                            f"Aytishlaricha, bu ishni {role('sehrgar')} qilgan")
             else:
-                killers = ", ".join(dict.fromkeys(role(g.get(u).role) for u in e.data.get("killers", [])))
-                killers = killers or "noma'lum kimdir"
-                pub.append(f"Tunda {w(e.target)}...\n{choice(VERBS)}\nAytishlaricha unikiga {killers} kelgan")
+                codes = e.data.get("killer_roles") or [g.get(u).role for u in e.data.get("killers", [])]
+                killers = ", ".join(role(c) for c in dict.fromkeys(codes)) or "noma'lum kimdir"
+                pub.append(f"Tunda {victim}...\n{choice(VERBS)}\nAytishlaricha unikiga {killers} kelgan")
         elif k == "saved":
             pub.append(choice(SAVED))
         elif k == "mafia_idle":

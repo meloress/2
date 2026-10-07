@@ -14,6 +14,7 @@ MAX_DAYS = 20
 GAZAB_KILLS = 3
 AFK_LIMIT = 3  # ketma-ket o'tkazib yuborilgan navbatlar (0 = o'chiq)
 ATTACKS = {"mafia_kill", "hit", "kill", "bite", "shoot", "curse", "rage"}
+SKIP = "skip"  # tunda "hech narsa qilmayman"
 DRAW = "draw"
 
 
@@ -146,7 +147,14 @@ class Game:
         return [x.uid for x in alive if x.uid != uid]
 
     def submit(self, uid: int, kind: str, target: int | None = None) -> bool:
-        if kind not in self.available_actions(uid):
+        acts = self.available_actions(uid)
+        if kind == SKIP and acts:  # "Hech narsa qilmayman": harakat qilgan hisoblanadi (AFK emas)
+            if "mafia_kill" in acts:
+                self.mafia_votes[uid] = None
+            else:
+                self.actions[uid] = [SKIP, None]
+            return True
+        if kind not in acts:
             return False
         if kind in NO_TARGET:
             target = None
@@ -172,9 +180,10 @@ class Game:
         don = self.by_role("don")
         if not don:
             return None
-        if don.uid in self.mafia_votes:
-            return don.uid, self.mafia_votes[don.uid]
-        votes = [t for u, t in self.mafia_votes.items() if self.get(u).alive]
+        if don.uid in self.mafia_votes:  # Donning so'zi yakuniy: "hech kim" desa, o'ldirilmaydi
+            t = self.mafia_votes[don.uid]
+            return (don.uid, t) if t is not None else None
+        votes = [t for u, t in self.mafia_votes.items() if t is not None and self.get(u).alive]
         if not votes:
             return None
         top = max(votes.count(t) for t in votes)
@@ -199,8 +208,11 @@ class Game:
         ev: list[Event] = []
         self._track_idle([p for p in self.alive() if self.available_actions(p.uid)],
                          self.actions.keys() | self.mafia_votes.keys())
+        # Tun boshidagi rollar: matnlarda shu ko'rsatiladi (Ovchi jarimasi, Voris o'zgarishidan oldingi holat)
+        roles0 = {p.uid: p.role for p in self.players}
         # acts: actor -> (kind, target, harakat egasining roli)
-        acts = {u: (k, t, self.get(u).role) for u, (k, t) in self.actions.items() if self.get(u).alive}
+        acts = {u: (k, t, self.get(u).role) for u, (k, t) in self.actions.items()
+                if self.get(u).alive and k != SKIP}
         m = self._mafia_target(rng)
         if m:
             acts[m[0]] = ("mafia_kill", m[1], "don")
@@ -309,14 +321,19 @@ class Game:
                 continue
             deaths[t] = alist
 
+        def killer_roles(alist) -> list[str]:
+            return list(dict.fromkeys(roles0[u] for u in sorted({a[0] for a in alist})))
+
         for u, (k, t, _) in acts.items():
             if k == "visit" and t in deaths:
-                ev.append(Event("witness", u, t, {"killers": sorted({a[0] for a in deaths[t]})}))
+                ev.append(Event("witness", u, t, {"killers": sorted({a[0] for a in deaths[t]}),
+                                                  "killer_roles": killer_roles(deaths[t])}))
 
         for t, alist in deaths.items():
             self.get(t).alive = False
             ev.append(Event("killed", target=t, data={"by": sorted({a[1] for a in alist}),
-                                                      "killers": sorted({a[0] for a in alist})}))
+                                                      "killers": sorted({a[0] for a in alist}),
+                                                      "killer_roles": killer_roles(alist), "role": roles0[t]}))
             for a in alist:
                 if a[1] == "rage":
                     self.get(a[0]).kills += 1

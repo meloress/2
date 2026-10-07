@@ -171,6 +171,36 @@ def test_ovchi_penalty():
     assert not g.get(3).alive and g.get(2).role == "tinch" and "penalty" in kinds(ev)
 
 
+def test_ovchi_shooting_komissar_shows_ovchi_not_tinch():
+    """Xato: jarimadan keyin "unikiga Tinch aholi kelgan" deb chiqardi."""
+    from mafia_zone import texts
+    g = mk("don", "ovchi", "komissar", "daydi", "tinch", "tinch", "tinch")
+    ev = night(g, (2, "shoot", 3), (4, "visit", 3))
+    killed = next(e for e in ev if e.kind == "killed")
+    assert killed.data["killer_roles"] == ["ovchi"] and killed.data["role"] == "komissar"
+    assert next(e for e in ev if e.kind == "witness").data["killer_roles"] == ["ovchi"]
+    pub, _ = texts.morning(g, ev)
+    text = next(t for t in pub if "kelgan" in t)
+    assert texts.role("ovchi") in text and texts.role("tinch") not in text and texts.role("komissar") in text
+
+
+def test_skip_night_action():
+    g = Game(1, 42, [Player(i + 1, f"p{i + 1}", r) for i, r in enumerate(
+        ["don", "mafiya", "doktor", "komissar", "tinch", "tinch", "tinch", "tinch"])], afk_limit=1)
+    for uid, kind in [(1, "skip"), (2, "mafia_kill"), (3, "skip"), (4, "skip")]:
+        assert g.submit(uid, kind, 5 if kind == "mafia_kill" else None)
+    assert not g.submit(5, "skip", None)  # Tinchda tungi harakat yo'q
+    assert g.all_acted()
+    ev = g.resolve_night()
+    assert all(p.alive for p in g.players)  # Don "hech kim" dedi: mafiya ovozi hisobga olinmaydi
+    assert "mafia_idle" in kinds(ev) and "afk" not in kinds(ev)  # skip AFK emas
+    g.afk_limit = 0  # quyidagi ovozsiz kun AFK sanalmasin
+    g.start_voting(); g.resolve_vote()
+    assert g.submit(2, "skip", None) and g.submit(1, "mafia_kill", 6)  # mafiyachi skip, Don tanladi
+    g.resolve_night()
+    assert not g.get(6).alive
+
+
 def test_gazabkor_sacrifice():
     g = mk("don", "gazabkor", *["tinch"] * 10)
     for t in (3, 4, 5):
