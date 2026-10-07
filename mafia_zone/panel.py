@@ -21,7 +21,7 @@ from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, TelegramRetryAfter
 from aiogram.types import BufferedInputFile, InlineKeyboardButton as Btn, InlineKeyboardMarkup as Kb
 
-from . import config, db, runner, texts
+from . import config, db, pro, runner, texts
 from .engine.game import CONFIRM, DAY, NIGHT, VOTING
 from .engine.roles import MAFIA, NEUTRAL, ROLES, TOWN
 
@@ -371,7 +371,8 @@ async def api_user(req: web.Request) -> web.Response:
                "partner": {"id": p, "name": pu.full_name if pu else str(p)} if p else None,
                "items": [{"code": c, "name": n, "qty": inv[c].qty if c in inv else 0,
                           "enabled": inv[c].enabled if c in inv else True} for c, n in texts.ITEMS.items()],
-               "history": await db.user_games(uid)})
+               "history": await db.user_games(uid),
+               "pro_until": iso(pro.until(uid)), "nickname": u.nickname})
 
 
 async def _notify(uid: int, text: str) -> None:
@@ -416,6 +417,32 @@ async def api_item(req: web.Request) -> web.Response:
     qty = await db.item_qty(uid, item, delta)
     await audit(req, "item", uid, f"{item} {delta:+d} -> {qty}")
     return ok({"qty": qty})
+
+
+async def api_pro(req: web.Request) -> web.Response:
+    """PRO berish (days > 0, muddat ustiga qo'shiladi) yoki olib tashlash (days = 0)."""
+    need(req, "owner")
+    uid = path_int(req, "uid")
+    d = await body(req)
+    days = as_int(d.get("days"), 0, 3650, "Kun")
+    if not await db.get_user(uid):
+        raise NotFound("Foydalanuvchi topilmadi")
+    end = await db.set_pro(uid, days)
+    await audit(req, "pro", uid, f"+{days} kun" if days else "olib tashlandi")
+    if d.get("notify") is True and end:
+        await _notify(uid, texts.pro_done(end))
+    return ok({"pro_until": iso(end)})
+
+
+async def api_nickname(req: web.Request) -> web.Response:
+    """Nickname'ni o'chirish (haqoratli/aldovchi laqab)."""
+    need(req, "moderator")
+    uid = path_int(req, "uid")
+    if not await db.get_user(uid):
+        raise NotFound("Foydalanuvchi topilmadi")
+    await db.set_nickname(uid, None)
+    await audit(req, "nickname", uid, "o'chirildi")
+    return ok({"nickname": None})
 
 
 async def api_ban(req: web.Request) -> web.Response:
@@ -867,6 +894,8 @@ def make_app() -> web.Application:
     r.add_post("/api/users/{uid}/balance", api_balance)
     r.add_post("/api/users/{uid}/item", api_item)
     r.add_post("/api/users/{uid}/ban", api_ban)
+    r.add_post("/api/users/{uid}/pro", api_pro)
+    r.add_post("/api/users/{uid}/nickname", api_nickname)
     r.add_get("/api/games", api_games)
     r.add_get("/api/games/{chat}/players", api_game_players)
     r.add_post("/api/games/{chat}/stop", api_game_stop)

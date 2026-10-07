@@ -356,7 +356,7 @@
   const PERIODS = [["today", "Bugun"], ["7", "7 kun"], ["30", "30 kun"], ["all", "Hammasi"]];
   const PERIOD_WORD = { today: "bugun", 7: "7 kunda", 30: "30 kunda", all: "jami" };
   const ACTIONS = {
-    login: ["Panelga kirdi", "K", "c-gray"], balance: ["Balans o'zgardi", "$", "c-green"], item: ["Buyum berildi", "B", "c-green"],
+    login: ["Panelga kirdi", "K", "c-gray"], pro: ["PRO o'zgardi", "P", "c-green"], nickname: ["Nickname o'chirildi", "N", "c-gray"], balance: ["Balans o'zgardi", "$", "c-green"], item: ["Buyum berildi", "B", "c-green"],
     ban: ["Ban qilindi", "B", "c-red"], unban: ["Bandan chiqarildi", "U", "c-green"], stop_game: ["O'yin to'xtatildi", "O", "c-red"],
     view_roles: ["Rollarni ko'rdi", "R", "c-violet"], group_settings: ["Guruh sozlamalari", "G", "c-gold"],
     leave_group: ["Guruhdan chiqdi", "G", "c-red"], economy: ["Iqtisod sozlamalari", "S", "c-gold"],
@@ -644,6 +644,54 @@
         h("div", { class: "inline" }, minus, qty, plus));
     });
     parts.push(h("div", { class: "divider" }), h("h3", { text: "Buyumlar" }), h("div", null, itemRows));
+
+    // ---- PRO ----
+    const reload = () => { if (alive(view)) loadDetail(box, uid, view, refreshList, listHref); };
+    const proParts = [h("div", { class: "divider" }), h("h3", { text: "PRO" }),
+      h("p", { class: "small", text: u.pro_until ? `PRO: ${fmtDate(u.pro_until)} gacha` : "PRO yo'q" })];
+    if (u.nickname) proParts.push(h("p", { class: "small muted", text: `Nickname: ${u.nickname}` }));
+    if (can("owner")) {
+      const days = h("input", { class: "input num", id: "p-days", type: "number", inputmode: "numeric", min: "1", max: "3650", step: "1", value: "30" });
+      const proErr = h("div", { class: "err", role: "alert" });
+      const give = h("button", { type: "button", class: "btn success", style: { flex: "1 1 0" }, text: u.pro_until ? "PRO uzaytirish" : "PRO berish" });
+      const take = h("button", { type: "button", class: "btn danger", style: { flex: "1 1 0" }, text: "PRO olib tashlash", disabled: !u.pro_until });
+      const setPro = async (n, btn) => {
+        proErr.textContent = "";
+        await busy(btn, async () => {
+          try {
+            const r = await api(`/api/users/${u.id}/pro`, { method: "POST", json: { days: n, notify: n > 0 } });
+            toast(r.pro_until ? `PRO: ${fmtDate(r.pro_until)} gacha` : "PRO olib tashlandi");
+            refreshList();
+          } catch (e) { proErr.textContent = e.message; }
+        });
+        reload();
+      };
+      give.addEventListener("click", () => {
+        const n = Number(days.value);
+        if (!Number.isInteger(n) || n < 1 || n > 3650) { proErr.textContent = "Kun 1 dan 3650 gacha butun son bo'lsin"; days.setAttribute("aria-invalid", "true"); days.focus(); return; }
+        days.removeAttribute("aria-invalid");
+        setPro(n, give);
+      });
+      take.addEventListener("click", async () => {
+        const c = await confirmBox({ title: "PRO olib tashlash", text: `${u.name} PRO imkoniyatlaridan darhol mahrum bo'ladi.`, ok: "Olib tashlash", danger: true });
+        if (c.ok) setPro(0, take);
+      });
+      proParts.push(h("div", { class: "field" }, h("label", { for: "p-days", text: "Necha kun (foydalanuvchiga botda xabar boradi)" }), days),
+        proErr, h("div", { class: "inline" }, give, take));
+    }
+    if (u.nickname && can("moderator")) {
+      const clr = h("button", { type: "button", class: "btn block", text: "Nickname'ni o'chirish" });
+      clr.addEventListener("click", async () => {
+        const c = await confirmBox({ title: "Nickname'ni o'chirish", text: `«${u.nickname}» o'chiriladi, o'yinlarda Telegram ismi ko'rinadi.`, ok: "O'chirish", danger: true });
+        if (!c.ok) return;
+        await busy(clr, async () => {
+          try { await api(`/api/users/${u.id}/nickname`, { method: "POST", json: {} }); toast("Nickname o'chirildi"); } catch (e) { fail(e); }
+        });
+        reload();
+      });
+      proParts.push(clr);
+    }
+    parts.push(...proParts);
 
     if (can("moderator")) {
       const banBtn = h("button", { type: "button", class: `btn block ${u.banned ? "success" : "danger"}`, disabled: !!u.admin_role,

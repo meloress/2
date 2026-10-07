@@ -315,3 +315,29 @@ def test_last_seen_and_migration():
         u = await db.get_user(USER)
         assert u.last_seen is not None  # upsert_user yozadi
     run(s)
+
+
+def test_pro_grant_remove_and_nickname():
+    from mafia_zone import pro
+
+    async def s(c):
+        csrf = await login(c, MOD)
+        hdr = {"X-CSRF": csrf}
+        assert (await c.post(f"/api/users/{USER}/pro", json={"days": 7}, headers=hdr)).status == 403  # faqat owner
+        csrf = await login(c, OWNER)
+        hdr = {"X-CSRF": csrf}
+        r = await c.post(f"/api/users/{USER}/pro", json={"days": 7, "notify": True}, headers=hdr)
+        assert r.status == 200 and (await r.json())["pro_until"] and pro.is_pro(USER)
+        assert any(chat == USER and "PRO" in t for chat, t, _ in panel.BOT.sent)
+        for bad in ({"days": -1}, {"days": "x"}, {"days": 99999}):
+            assert (await c.post(f"/api/users/{USER}/pro", json=bad, headers=hdr)).status == 400, bad
+        await db.set_nickname(USER, "Shoh")
+        detail = await (await c.get(f"/api/users/{USER}")).json()
+        assert detail["pro_until"] and detail["nickname"] == "Shoh"
+        assert (await c.post(f"/api/users/{USER}/nickname", json={}, headers=hdr)).status == 200
+        assert (await db.get_user(USER)).nickname is None
+        r = await c.post(f"/api/users/{USER}/pro", json={"days": 0}, headers=hdr)
+        assert r.status == 200 and (await r.json())["pro_until"] is None and not pro.is_pro(USER)
+        actions = [e["action"] for e in (await (await c.get("/api/log")).json())["items"]]
+        assert "pro" in actions and "nickname" in actions
+    run(s)
