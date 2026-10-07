@@ -1,4 +1,4 @@
-# 🎮 Mafia Zone
+# 🎮 Admiral Mafia
 
 Telegram uchun o'zbekcha mafiya boti: 29 rol, o'yin ichidagi iqtisod (💵 dollar, 💎 olmos, do'kon), reyting.
 Stek: aiogram 3, PostgreSQL (lokalda SQLite).

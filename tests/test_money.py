@@ -212,3 +212,24 @@ def test_concurrent_buys_and_new_users():
         assert await db.get_user(BASE + 900)
         await asyncio.gather(*(db.group_settings(-424242, "g") for _ in range(10)))
     run(t())
+
+
+def test_begin_allowed_for_admins_and_opener():
+    async def t():
+        started, said = [], []
+        r = SimpleNamespace(game=None, opener=BASE + 900, force_start=lambda: started.append(1))
+        bot = SimpleNamespace(get_chat_member=lambda c, u: asyncio.sleep(0, SimpleNamespace(
+            status="administrator" if u == BASE + 901 else "member")))
+        handlers.RUNNERS[-77] = r
+        try:
+            for uid, ok in ((BASE + 900, True), (BASE + 901, True), (BASE + 902, False)):
+                async def answer(text):
+                    said.append(text)
+                m = SimpleNamespace(chat=SimpleNamespace(id=-77), from_user=SimpleNamespace(id=uid), answer=answer)
+                n = len(started)
+                await handlers.cmd_begin(m, bot)
+                assert (len(started) > n) == ok, uid
+            assert said == [texts.ONLY_STARTER]
+        finally:
+            handlers.RUNNERS.pop(-77, None)
+    run(t())

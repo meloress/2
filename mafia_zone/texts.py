@@ -42,7 +42,7 @@ def role(code: str) -> str:
 # ---------- lobby ----------
 def lobby(members: list[tuple[int, str]], left: int) -> str:
     body = "\n".join(f"{i}. {mention(u, n)}" for i, (u, n) in enumerate(members, 1)) or "— hali hech kim yo'q —"
-    return (f"🎮 <b>MAFIA ZONE</b> — ro'yxatdan o'tish boshlandi!\n\n"
+    return (f"🎮 <b>ADMIRAL MAFIA</b> — ro'yxatdan o'tish boshlandi!\n\n"
             f"👥 O'yinchilar ({len(members)}):\n{body}\n\n⏳ Qoldi: {left} soniya")
 
 
@@ -61,6 +61,7 @@ LOBBY_FULL = ("⚠️ O'yin to'lgan (60 kishi). Sizni keyingi o'yin navbatiga yo
 BANNED = "⛔️ Siz botdan foydalanishdan chetlatilgansiz."
 STOPPED = "🛑 O'yin to'xtatildi."
 ONLY_ADMIN = "⚠️ Bu buyruq faqat guruh adminlari uchun."
+ONLY_STARTER = "⚠️ O'yinni faqat guruh adminlari yoki /game bosgan odam boshlay oladi."
 GROUP_ONLY = "Bu buyruq guruhda ishlaydi."
 
 
@@ -87,7 +88,7 @@ def _game_started(g: Game) -> str:
         "Ulardan ba'zilari tinch fuqaro emas... 🤫 Rolingizni botdan bilib oling.",
         f"🎬 <b>Parda ochildi!</b> {len(g.players)} nafar o'yinchi, bitta shahar va ko'plab sirlar.\n"
         "Kim do'st, kim dushman — tez orada bilinadi. 🤫 Rolingiz botda.",
-        f"🎬 <b>Mafia Zone</b> shahriga xush kelibsiz! {len(g.players)} kishining taqdiri hal bo'ladi.\n"
+        f"🎬 <b>Admiral Mafia</b> shahriga xush kelibsiz! {len(g.players)} kishining taqdiri hal bo'ladi.\n"
         "Hech kimga ishonmang... 🤫 Rolingizni botning shaxsiy chatida ko'ring.",
     ])
 
@@ -448,14 +449,14 @@ def next_game(title: str) -> str:
 # ---------- PM: profil, do'kon ----------
 def welcome() -> str:
     return ("👋 <b>Salom! Mafiya olamiga xush kelibsan!</b>\n"
-            "<b>Men 🤵 Mafia Zone o'yinining rasmiy botiman.</b>\n\n"
+            "<b>Men 🤵 Admiral Mafia o'yinining rasmiy botiman.</b>\n\n"
             "<b>Bu shunchaki o'yin emas — sirlar, hiyla va ishonch dunyosi.</b>\n"
             "<b>Guruhga qo'sh, rolingni ol, o'zingni ko'rsat!</b> 🎯\n"
             "🎭 <b>Seni roling kutmoqda...</b>")
 
 
 def start_pm() -> str:
-    return ("🎮 <b>MAFIA ZONE</b> ga xush kelibsiz!\n\n"
+    return ("🎮 <b>ADMIRAL MAFIA</b> ga xush kelibsiz!\n\n"
             "<b>Qanday boshlash kerak:</b>\n"
             "1️⃣ Meni guruhingizga qo'shing\n"
             "2️⃣ Admin qiling (xabarlarni o'chirish huquqi bilan)\n"
@@ -469,7 +470,7 @@ def start_pm() -> str:
 
 
 INVITE_BTN = "🤝 Do'stni taklif qilish"
-INVITE_TEXT = "🎭 Mafia Zone — Telegramdagi mafiya o'yini! Men bilan o'yna 👇"
+INVITE_TEXT = "🎭 Admiral Mafia — Telegramdagi mafiya o'yini! Men bilan o'yna 👇"
 
 
 def profile(u, inv) -> str:
@@ -505,7 +506,7 @@ def top(rows, title: str) -> str:
 
 
 def rules() -> str:
-    out = ["📜 <b>MAFIA ZONE rollari</b>"]
+    out = ["📜 <b>ADMIRAL MAFIA rollari</b>"]
     for team in (TOWN, MAFIA, NEUTRAL):
         out.append(f"\n<b>{TEAM[team]}</b>")
         out += [f"{r.name} — {r.about}" for r in ROLES.values() if r.team == team]
@@ -571,7 +572,7 @@ def profile_card(u, inv) -> str:
     have = {i.item: i.qty for i in inv}
     items = "\n".join(f"{label.split(' ', 1)[0]} {bold(label.split(' ', 1)[1])}: {have.get(code, 0)} ta"
                       for code, label in ITEMS.items())
-    return (f"<b>{bold('Mafia Zone')}</b>\n\n"
+    return (f"<b>{bold('Admiral Mafia')}</b>\n\n"
             f"{bold('ID')}: <code>{u.telegram_id}</code>\n👤 {bold('Ism')}: {escape(u.full_name)}\n"
             f"🎖 {bold('Unvon')}: {rank(u.wins)}\n\n"
             f"💵 {bold('Dollar')}: {u.dollars}\n💎 {bold('Olmos')}: {u.diamonds}\n\n{items}\n\n"

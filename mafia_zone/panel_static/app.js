@@ -1,4 +1,4 @@
-/* Mafia Zone admin panel.
+/* Admiral Mafia admin panel.
    Xavfsizlik: hech qayerda innerHTML ishlatilmaydi — barcha ma'lumot textContent orqali chiqadi (XSS yo'q).
    O'zgartiruvchi so'rovlar X-CSRF sarlavhasi bilan ketadi. */
 "use strict";
@@ -263,7 +263,7 @@
     const toggleMenu = (open) => { side.classList.toggle("open", open); scrim.classList.toggle("open", open); };
     side.append(
       h("div", { class: "brand" }, h("div", { class: "logo", text: "MZ" }),
-        h("div", null, h("div", { class: "brand-name", text: "Mafia Zone" }), h("div", { class: "small muted", text: "Admin panel" }))),
+        h("div", null, h("div", { class: "brand-name", text: "Admiral Mafia" }), h("div", { class: "small muted", text: "Admin panel" }))),
       h("nav", { class: "nav", "aria-label": "Asosiy menyu" }, NAV.map((n) =>
         h("a", { href: `#${n.path}`, "aria-current": n.key === active ? "page" : null, onClick: () => toggleMenu(false) },
           icon(n.icon), h("span", { text: n.label })))),
@@ -336,7 +336,7 @@
     const err = params.get("err");
     clear($app).append(h("div", { class: "login" }, h("div", { class: "login-card" },
       h("div", { class: "logo", text: "MZ" }),
-      h("div", { class: "stack gap-8" }, h("h1", { text: "Mafia Zone admin" }),
+      h("div", { class: "stack gap-8" }, h("h1", { text: "Admiral Mafia admin" }),
         h("p", { class: "muted", text: "Telegram orqali kiring. Parol kerak emas — faqat admin ro'yxatidagilar kira oladi." })),
       err === "link" ? h("div", { class: "alert", text: "Kirish havolasi eskirgan yoki allaqachon ishlatilgan. Botdan yangisini oling." }) : null,
       bot ? h("a", { class: "btn tg-login block", href: `https://t.me/${bot}?start=panel`, target: "_blank", rel: "noopener noreferrer" }, icon("tg", 20), "Telegram orqali kirish")

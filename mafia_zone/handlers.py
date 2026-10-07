@@ -51,7 +51,9 @@ async def cmd_game(msg: Message, bot: Bot):
     settings = await db.group_settings(msg.chat.id, msg.chat.title or "")
     if msg.chat.id in RUNNERS:  # await paytida boshqasi ochgan bo'lishi mumkin
         return
-    await Runner(bot, msg.chat.id, settings, msg.chat.title or "").open_lobby()
+    r = Runner(bot, msg.chat.id, settings, msg.chat.title or "")
+    r.opener = msg.from_user.id if msg.from_user else None
+    await r.open_lobby()
 
 
 @router.message(Command("testgame"), GROUPS, F.from_user.id.in_(config.ADMIN_IDS))
@@ -87,8 +89,9 @@ async def cmd_extend(msg: Message):
 async def cmd_begin(msg: Message, bot: Bot):
     r = RUNNERS.get(msg.chat.id)
     if r and not r.game:
-        if not await is_admin(bot, msg.chat.id, msg.from_user.id):
-            return await msg.answer(texts.ONLY_ADMIN)
+        uid = msg.from_user.id
+        if uid != r.opener and not await is_admin(bot, msg.chat.id, uid):
+            return await msg.answer(texts.ONLY_STARTER)
         r.force_start()
 
 

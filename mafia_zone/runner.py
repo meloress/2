@@ -175,6 +175,7 @@ class Runner:
     def __init__(self, bot: Bot, chat_id: int, settings: dict, title: str = ""):
         self.bot, self.chat_id, self.s, self.title = bot, chat_id, settings, title
         self.members: list[tuple[int, str]] = []
+        self.opener: int | None = None  # /game bosgan: adminlardan tashqari u ham /begin qila oladi
         self.lobby_msg: int | None = None
         self.lobby_deadline = 0.0
         self.lobby_dirty = False
@@ -238,9 +239,10 @@ class Runner:
     async def _start_game(self) -> None:
         if self.lobby_msg:
             await _call(self.bot.unpin_chat_message, self.chat_id, message_id=self.lobby_msg)
-        if len(self.members) < MIN_PLAYERS:
+        if len(self.members) < MIN_PLAYERS:  # ro'yxat xabari o'chadi, bekor qilingani alohida yoziladi
             if self.lobby_msg:
-                await edit(self.bot, self.chat_id, self.lobby_msg, texts.NEED_PLAYERS)
+                await _call(self.bot.delete_message, self.chat_id, self.lobby_msg)
+            await send(self.bot, self.chat_id, texts.NEED_PLAYERS)
             self.close()
             return
         uids = [u for u, _ in self.members]
