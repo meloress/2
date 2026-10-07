@@ -401,3 +401,90 @@ def test_last_words_timeout_notifies_and_vote_kb_marks_mates():
         assert bot.sent[-1] == (4, texts.LAST_WORDS_TIMEOUT) and 4 not in r.last_words
         r.close()
     asyncio.run(go())
+
+
+class CleanBot(FakeBot):
+    """FakeBot + pin/unpin/delete jurnali."""
+    def __init__(self):
+        super().__init__()
+        self.log = []
+
+    async def pin_chat_message(self, chat_id, message_id, **kw):
+        self.log.append(("pin", chat_id, message_id))
+
+    async def unpin_chat_message(self, chat_id, message_id=None):
+        self.log.append(("unpin", chat_id, message_id))
+
+    async def delete_message(self, chat_id, message_id):
+        self.log.append(("del", chat_id, message_id))
+
+
+def test_giveaway_expires_and_refunds():
+    from mafia_zone import handlers
+
+    async def t():
+        await db.init()
+        a, b = 8_100_001, 8_100_002
+        for u in (a, b):
+            await db.upsert_user(u, f"u{u}", None)
+        await db.add_balance(a, 100)
+        gid = await db.create_giveaway(-994, a, 10, 10)
+        await db.set_giveaway_msg(gid, 55)
+        assert await db.claim(gid, b)
+        bot = CleanBot()
+        await handlers.expire_giveaway(bot, gid, 0)
+        assert (await db.get_user(a)).dollars == 90  # 9 ulush qaytdi
+        assert ("unpin", -994, 55) in bot.log and "Vaqt tugadi" in bot.sent[0][1] and bot.sent[-1][0] == a
+        n = len(bot.sent)
+        await handlers.expire_giveaway(bot, gid, 0)  # ikkinchi marta: hech narsa
+        assert len(bot.sent) == n and (await db.get_user(a)).dollars == 90
+    asyncio.run(t())
+
+
+def test_leave_frees_player_and_repeat_action_is_quiet():
+    from mafia_zone.engine.game import Game, Player
+
+    async def t():
+        await db.init()
+        bot = FakeBot()
+        r = runner.Runner(bot, -995, dict(runner.config.DEFAULT_SETTINGS))
+        r.game = Game(-995, 1, [Player(1, "a", "komissar"), Player(2, "b", "tinch"), Player(3, "c", "don"),
+                                Player(4, "d", "tinch")])
+        r.game_id = 9
+        for p in r.game.players:
+            runner.PLAYING[p.uid] = r
+        await r.on_action(1, 1, "check", 2)
+        await r.on_action(1, 1, "check", 3)  # tanlovni almashtirdi
+        assert len(r.live_lines) == 1
+        await r.leave(2)
+        assert 2 not in runner.PLAYING and not r.game.get(2).alive
+        r.close()
+    asyncio.run(t())
+
+
+def test_restart_cleans_lost_lobbies_and_move_chat():
+    async def t():
+        await db.init()
+        await db.save_lobby(-996, 77)
+        bot = CleanBot()
+        await runner.restore(bot)
+        assert ("unpin", -996, 77) in bot.log and ("del", -996, 77) in bot.log
+        assert bot.sent[-1] == (-996, texts.LOBBY_LOST) and not await db.lobbies()
+        r = runner.Runner(bot, -997, dict(runner.config.DEFAULT_SETTINGS))
+        await r.move(-1000997)
+        assert runner.RUNNERS.get(-1000997) is r and -997 not in runner.RUNNERS and r.chat_id == -1000997
+        r.close()
+    asyncio.run(t())
+
+
+def test_bot_removed_aborts_game():
+    from mafia_zone import handlers
+
+    async def t():
+        await db.init()
+        bot = CleanBot()
+        r = runner.Runner(bot, -998, dict(runner.config.DEFAULT_SETTINGS))
+        upd = SimpleNamespace(chat=SimpleNamespace(id=-998), new_chat_member=SimpleNamespace(status="kicked"))
+        await handlers.on_bot_removed(upd)
+        assert -998 not in runner.RUNNERS
+    asyncio.run(t())

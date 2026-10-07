@@ -7,7 +7,7 @@ from aiogram.enums import ParseMode
 from aiogram.types import BotCommand, BotCommandScopeAllGroupChats, BotCommandScopeAllPrivateChats
 
 from . import config, db, emoji, panel, runner
-from .handlers import router
+from .handlers import restore_giveaways, router
 
 
 async def main() -> None:
@@ -46,6 +46,7 @@ async def main() -> None:
     dp.include_router(router)
     await panel.start(bot)
     await runner.restore(bot)
+    await restore_giveaways(bot)
     await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
 
 

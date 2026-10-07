@@ -6,13 +6,13 @@ import time
 from aiogram import Bot, F, Router
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command, CommandObject, CommandStart
-from aiogram.types import CallbackQuery, ErrorEvent, InlineKeyboardButton as Btn, InlineKeyboardMarkup as Kb, Message
+from aiogram.types import CallbackQuery, ChatMemberUpdated, ErrorEvent, InlineKeyboardButton as Btn, InlineKeyboardMarkup as Kb, Message
 
 from . import config, db, texts
 from .engine.game import CONFIRM, DAY, FINISHED, NIGHT, VOTING
 from .engine.roles import ROLES
 from .engine.setup import CORE
-from .runner import NEXT, PLAYING, RUNNERS, Runner, _call, back_btn, bot_link, edit, invite_url, profile_kb, send
+from .runner import NEXT, PLAYING, RUNNERS, Runner, _call, spawn, back_btn, bot_link, edit, invite_url, profile_kb, send
 
 log = logging.getLogger(__name__)
 router = Router()
@@ -34,8 +34,10 @@ async def drop_commands(handler, msg: Message, data):
                 await _call(msg.delete)
 
 
-async def is_admin(bot: Bot, chat_id: int, uid: int) -> bool:
+async def is_admin(bot: Bot, chat_id: int, uid: int, msg: Message | None = None) -> bool:
     if uid in config.ADMIN_IDS:
+        return True
+    if (sc := getattr(msg, "sender_chat", None)) and sc.id == chat_id:  # yashirin admin guruh nomidan yozadi
         return True
     m = await bot.get_chat_member(chat_id, uid)
     return m.status in ("administrator", "creator")
@@ -81,12 +83,17 @@ async def cmd_next(msg: Message):
 
 
 @router.message(Command("extend"), GROUPS)
-async def cmd_extend(msg: Message, command: CommandObject):
-    """/extend - 30 soniya, /extend 60 - 60 soniya (1..600)."""
+async def cmd_extend(msg: Message, bot: Bot, command: CommandObject):
+    """/extend - 30 soniya, /extend 60 - 60 soniya. Faqat adminlar va /game bosgan; qolgan vaqt <= 10 daqiqa."""
     r = RUNNERS.get(msg.chat.id)
     if r and not r.game:
+        if msg.from_user.id != r.opener and not await is_admin(bot, msg.chat.id, msg.from_user.id, msg):
+            return await msg.answer(texts.ONLY_STARTER_EXTEND)
         arg = (command.args or "").strip()
         secs = min(600, max(1, int(arg))) if arg.isdigit() else 30
+        secs = max(0, min(secs, int(time.time() + 600 - r.lobby_deadline)))  # ro'yxat cheksiz cho'zilmasin
+        if not secs:
+            return await msg.answer(texts.EXTEND_MAX)
         r.extend(secs)
         await msg.answer(f"⏳ Ro'yxatdan o'tish {secs} soniyaga uzaytirildi.")
 
@@ -96,7 +103,7 @@ async def cmd_begin(msg: Message, bot: Bot):
     r = RUNNERS.get(msg.chat.id)
     if r and not r.game:
         uid = msg.from_user.id
-        if uid != r.opener and not await is_admin(bot, msg.chat.id, uid):
+        if uid != r.opener and not await is_admin(bot, msg.chat.id, uid, msg):
             return await msg.answer(texts.ONLY_STARTER)
         r.force_start()
 
@@ -105,7 +112,7 @@ async def cmd_begin(msg: Message, bot: Bot):
 async def cmd_stop(msg: Message, bot: Bot):
     r = RUNNERS.get(msg.chat.id)
     if r:
-        if not await is_admin(bot, msg.chat.id, msg.from_user.id):
+        if not await is_admin(bot, msg.chat.id, msg.from_user.id, msg):
             return await msg.answer(texts.ONLY_ADMIN)
         await r.abort()
 
@@ -195,7 +202,7 @@ def roles_kb(s: dict) -> Kb:
 
 @router.message(Command("settings"), GROUPS)
 async def cmd_settings(msg: Message, bot: Bot):
-    if not await is_admin(bot, msg.chat.id, msg.from_user.id):
+    if not await is_admin(bot, msg.chat.id, msg.from_user.id, msg):
         return await msg.answer(texts.ONLY_ADMIN)
     s = await db.group_settings(msg.chat.id, msg.chat.title or "")
     await msg.answer("⚙️ <b>Guruh sozlamalari</b> (keyingi o'yindan kuchga kiradi)", reply_markup=settings_kb(s))
@@ -271,7 +278,11 @@ async def cmd_send(msg: Message, bot: Bot, command: CommandObject):
             gid = await db.create_giveaway(msg.chat.id, u.id, per, parts)
             if gid:
                 kb = Kb(inline_keyboard=[[Btn(text=texts.GIVEAWAY_BTN, callback_data=f"g:{gid}", style="success")]])
-                await send(bot, msg.chat.id, texts.giveaway(u.full_name, u.id, per, parts), kb)
+                m = await send(bot, msg.chat.id, texts.giveaway(u.full_name, u.id, per, parts), kb)
+                if m:  # tarqatma tepada qadalib turadi, tugagach pindan olinadi (_refresh_giveaway)
+                    await _call(bot.pin_chat_message, msg.chat.id, m.message_id, disable_notification=True)
+                    await db.set_giveaway_msg(gid, m.message_id)
+                    spawn(expire_giveaway(bot, gid, texts.GIVEAWAY_TTL_MIN * 60))
 
 
 @router.callback_query(F.data.startswith("g:"))
@@ -297,8 +308,37 @@ async def _refresh_giveaway(bot: Bot, chat_id: int, msg_id: int, gid: int) -> No
                                                                callback_data=f"g:{gid}", style="success")]])
         await edit(bot, chat_id, msg_id, texts.giveaway(sender.full_name if sender else "?", g.sender_id,
                                                         g.per, g.parts, await db.giveaway_takers(gid)), kb)
+        if g.left <= 0:
+            await _call(bot.unpin_chat_message, chat_id, message_id=msg_id)
     finally:
         _refresh.pop(gid, None)
+
+
+async def expire_giveaway(bot: Bot, gid: int, delay: float) -> None:
+    """Muddat tugadi: olinmagan ulushlar egasiga qaytadi, xabar tugmasiz qoladi va pindan olinadi."""
+    await asyncio.sleep(max(0.0, delay))
+    for _ in range(5):  # shu payt kimdir olayotgan bo'lsa, qayta urinish
+        g, refund = await db.close_giveaway(gid)
+        if refund >= 0:
+            break
+        await asyncio.sleep(1)
+    if not g or refund <= 0:
+        return
+    if g.msg_id:
+        sender = await db.get_user(g.sender_id)
+        text = texts.giveaway(sender.full_name if sender else "?", g.sender_id, g.per, g.parts,
+                              await db.giveaway_takers(gid))
+        await edit(bot, g.chat_id, g.msg_id, texts.giveaway_closed(text), None)
+        await _call(bot.unpin_chat_message, g.chat_id, message_id=g.msg_id)
+    await send(bot, g.sender_id, texts.giveaway_refund(refund))
+
+
+async def restore_giveaways(bot: Bot) -> None:
+    """Qayta ishga tushishda ochiq tarqatmalarning muddat taymerlari tiklanadi."""
+    ttl = texts.GIVEAWAY_TTL_MIN * 60
+    for g in await db.open_giveaways():
+        left = ttl - (db.now() - db._aware(g.created_at)).total_seconds()
+        spawn(expire_giveaway(bot, g.id, left))
 
 
 # ---------- para ----------
@@ -623,7 +663,7 @@ async def cmd_broadcast(msg: Message, bot: Bot, command: CommandObject):
             ok += res is not None
         await send(bot, msg.chat.id, f"✅ Yuborildi: {ok}/{len(ids)}")
 
-    asyncio.create_task(run())
+    spawn(run())
 
 
 @router.message(Command("ban", "unban"), PRIVATE, OWNER)
@@ -651,6 +691,20 @@ async def on_private_text(msg: Message):
         return
     if not r:
         await msg.answer(texts.start_pm())
+
+
+@router.my_chat_member()
+async def on_bot_removed(upd: ChatMemberUpdated):
+    """Bot guruhdan chiqarildi: o'yin to'xtaydi, o'yinchilar boshqa o'yinga kira oladi."""
+    if upd.new_chat_member.status in ("left", "kicked") and (r := RUNNERS.get(upd.chat.id)):
+        await r.abort()
+
+
+@router.message(F.migrate_to_chat_id)
+async def on_migrate(msg: Message):
+    """Guruh supergroup'ga aylandi: o'yin yangi chat ID ga ko'chadi."""
+    if r := RUNNERS.get(msg.chat.id):
+        await r.move(msg.migrate_to_chat_id)
 
 
 # ---------- umumiy guruh xabarlari (eng oxirida bo'lishi shart) ----------

@@ -99,6 +99,14 @@ class Giveaway(Base):
     parts: Mapped[int] = mapped_column(Integer)  # jami ulush
     left: Mapped[int] = mapped_column(Integer)  # qolgan ulush
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    msg_id: Mapped[int | None] = mapped_column(BigInteger)  # guruhdagi xabar (muddati tugaganda tahrir/pin)
+
+
+class LobbyRow(Base):
+    """Ochiq ro'yxatlar: bot qayta ishga tushsa, qadalgan eski ro'yxat xabarini tozalash uchun."""
+    __tablename__ = "lobbies"
+    chat_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    msg_id: Mapped[int] = mapped_column(BigInteger)
 
 
 class Claim(Base):
@@ -190,6 +198,55 @@ async def user_by_username(username: str) -> User | None:
                                 .limit(1))).first()
 
 
+async def set_giveaway_msg(gid: int, msg_id: int) -> None:
+    async with Session.begin() as s:
+        await s.execute(update(Giveaway).where(Giveaway.id == gid).values(msg_id=msg_id))
+
+
+async def open_giveaways() -> list[Giveaway]:
+    async with Session() as s:
+        return list((await s.scalars(select(Giveaway).where(Giveaway.left > 0))).all())
+
+
+async def close_giveaway(gid: int) -> tuple[Giveaway | None, int]:
+    """Muddati tugagan tarqatmani yopadi: olinmagan ulushlar egasiga qaytadi. (giveaway, qaytarilgan $).
+    Atomar: shu payt kimdir olsa ham ulush ikki marta hisoblanmaydi."""
+    async with Session.begin() as s:
+        g = await s.get(Giveaway, gid)
+        if not g or g.left <= 0:
+            return g, 0
+        left = g.left
+        r = await s.execute(update(Giveaway).where(Giveaway.id == gid, Giveaway.left == left).values(left=0))
+        if r.rowcount != 1:  # shu orada kimdir oldi - keyingi chaqiruvda qayta urinamiz
+            return g, -1
+        await s.execute(update(User).where(User.telegram_id == g.sender_id)
+                        .values(dollars=User.dollars + left * g.per))
+        g.left = 0
+        return g, left * g.per
+
+
+async def save_lobby(chat_id: int, msg_id: int) -> None:
+    async with Session.begin() as s:
+        await s.merge(LobbyRow(chat_id=chat_id, msg_id=msg_id))
+
+
+async def drop_lobby(chat_id: int) -> None:
+    async with Session.begin() as s:
+        await s.execute(delete(LobbyRow).where(LobbyRow.chat_id == chat_id))
+
+
+async def lobbies() -> list[LobbyRow]:
+    async with Session() as s:
+        return list((await s.scalars(select(LobbyRow))).all())
+
+
+async def move_chat(old: int, new: int) -> None:
+    """Guruh supergroup'ga aylanganda ketayotgan o'yin yangi ID ga o'tadi."""
+    async with Session.begin() as s:
+        await s.execute(update(GameRow).where(GameRow.chat_id == old, GameRow.status == "running")
+                        .values(chat_id=new))
+
+
 async def giveaway_takers(gid: int) -> list[tuple[int, str]]:
     """[(uid, ism)] olish tartibida."""
     async with Session() as s:
@@ -227,7 +284,7 @@ async def claim(gid: int, uid: int) -> Giveaway | None:
 # ponytail: qo'lda ADD COLUMN; murakkab o'zgarishlar boshlanganda Alembic'ga o'tiladi
 COLUMNS = [("users", "last_seen", "TIMESTAMP WITH TIME ZONE"), ("users", "leave_date", "VARCHAR(10)"),
            ("users", "leave_count", "INTEGER NOT NULL DEFAULT 0"), ("users", "referred_by", "BIGINT"),
-           ("users", "ref_paid", "BOOLEAN NOT NULL DEFAULT FALSE")]
+           ("users", "ref_paid", "BOOLEAN NOT NULL DEFAULT FALSE"), ("giveaways", "msg_id", "BIGINT")]
 
 
 def _migrate(conn) -> None:

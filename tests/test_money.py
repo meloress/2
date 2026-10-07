@@ -96,6 +96,12 @@ class FakeBot:
         self.sent.append(text)
         return SimpleNamespace(message_id=1)
 
+    async def pin_chat_message(self, chat_id, message_id, **kw):
+        self.pinned = getattr(self, "pinned", []) + [message_id]
+
+    async def unpin_chat_message(self, chat_id, message_id=None):
+        self.unpinned = getattr(self, "unpinned", []) + [message_id]
+
 
 def fake_msg(uid, reply_uid=None):
     deleted = []
@@ -129,6 +135,7 @@ def test_send_command():
         m, deleted = fake_msg(a)  # reply'siz bitta son: bitta kishi hammasini oladi
         await handlers.cmd_send(m, bot, cmd("10"))
         assert not deleted and await bal(a) == 60 and "10</b> 💵 ulashmoqda" in bot.sent[-1]
+        assert bot.pinned  # tarqatma qadaldi
 
         n = len(bot.sent)
         m, deleted = fake_msg(a)  # /send 60 6 -> 10 ulush
@@ -260,22 +267,53 @@ def test_menu_sections_have_back_button():
     run(t())
 
 
-def test_extend_default_and_custom():
+def test_extend_default_custom_cap_and_rights():
+    import time as _t
+
     async def t():
         said = []
+
         async def answer(text):
             said.append(text)
-        r = SimpleNamespace(game=None, lobby_deadline=100.0, lobby_dirty=False)
+        base = _t.time()
+        r = SimpleNamespace(game=None, lobby_deadline=base, lobby_dirty=False, opener=BASE + 1200)
         r.extend = lambda secs=30: setattr(r, "lobby_deadline", r.lobby_deadline + secs)
+        bot = SimpleNamespace(get_chat_member=lambda c, u: asyncio.sleep(0, SimpleNamespace(status="member")))
         handlers.RUNNERS[-78] = r
+        msg = lambda uid: SimpleNamespace(chat=SimpleNamespace(id=-78), from_user=SimpleNamespace(id=uid),
+                                          sender_chat=None, answer=answer)
         try:
-            for args, total in ((None, 130), ("60", 190), ("abc", 220), ("99999", 820)):
-                await handlers.cmd_extend(SimpleNamespace(chat=SimpleNamespace(id=-78), answer=answer),
-                                          SimpleNamespace(args=args))
-                assert r.lobby_deadline == total, args
+            await handlers.cmd_extend(msg(BASE + 1201), bot, SimpleNamespace(args="60"))  # begona: ruxsat yo'q
+            assert r.lobby_deadline == base and said[-1] == texts.ONLY_STARTER_EXTEND
+            for args, added in ((None, 30), ("60", 90), ("abc", 120)):
+                await handlers.cmd_extend(msg(BASE + 1200), bot, SimpleNamespace(args=args))
+                assert abs(r.lobby_deadline - base - added) < 2, args
+            await handlers.cmd_extend(msg(BASE + 1200), bot, SimpleNamespace(args="99999"))
+            assert r.lobby_deadline - _t.time() <= 601  # ko'pi bilan 10 daqiqa oldinga
+            await handlers.cmd_extend(msg(BASE + 1200), bot, SimpleNamespace(args="30"))
+            assert said[-1] == texts.EXTEND_MAX
         finally:
             handlers.RUNNERS.pop(-78, None)
-        assert "60 soniya" in said[1] and "600 soniya" in said[3]
+        assert "60 soniya" in said[2]
+    run(t())
+
+
+def test_call_survives_network_errors():
+    from aiogram.exceptions import TelegramNetworkError
+    calls = []
+
+    async def flaky():
+        calls.append(1)
+        if len(calls) < 2:
+            raise TelegramNetworkError(method=None, message="timeout")
+        return "ok"
+
+    async def always():
+        raise TelegramNetworkError(method=None, message="down")
+
+    async def t():
+        assert await runner._call(flaky) == "ok" and len(calls) == 2
+        assert await runner._call(always) is None  # o'yinni yiqitmaydi
     run(t())
 
 

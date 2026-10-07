@@ -60,6 +60,18 @@ NO_LOBBY = "⚠️ Bu guruhda ro'yxatdan o'tish ketmayapti."
 LOBBY_FULL = ("⚠️ O'yin to'lgan (60 kishi). Sizni keyingi o'yin navbatiga yozdim — "
               "ro'yxat ochilishi bilan xabar beraman 🔔")
 BANNED = "⛔️ Siz botdan foydalanishdan chetlatilgansiz."
+LOBBY_LOST = "♻️ Bot yangilandi va ro'yxatdan o'tish bekor bo'ldi.\nYangi o'yin uchun /game ni qayta bosing."
+GIVEAWAY_TTL_MIN = 60  # tarqatma shuncha daqiqadan keyin yopiladi
+
+
+def giveaway_closed(text: str) -> str:
+    return text + "\n\n⌛️ <b>Vaqt tugadi.</b> Olinmagan pul egasiga qaytarildi."
+
+
+def giveaway_refund(amount: int) -> str:
+    return f"↩️ Tarqatmangizdan olinmagan <b>{amount} 💵</b> hisobingizga qaytarildi."
+
+
 STOPPED = "🛑 <b>O'yin to'xtatildi.</b>"
 ONLY_ADMIN = "⚠️ Bu buyruq faqat guruh adminlari uchun."
 def left_free(uid: int, name: str, n: int) -> str:
@@ -94,6 +106,8 @@ LEAVE_NO_BTN = "🎮 O'yinni davom ettirish"
 LEAVE_STAY = "🎮 O'yinda qoldingiz. Omad!"
 NOT_YOUR_BTN = "❌ Bu tugma siz uchun emas"
 ONLY_STARTER = "⚠️ O'yinni faqat guruh adminlari yoki /game bosgan odam boshlay oladi."
+ONLY_STARTER_EXTEND = "⚠️ Ro'yxatni faqat guruh adminlari yoki /game bosgan odam uzaytira oladi."
+EXTEND_MAX = "⏳ Ro'yxat allaqachon 10 daqiqaga uzaytirilgan — bundan ko'p bo'lmaydi."
 GROUP_ONLY = "Bu buyruq guruhda ishlaydi."
 
 

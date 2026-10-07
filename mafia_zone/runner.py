@@ -9,7 +9,8 @@ from pathlib import Path
 from urllib.parse import quote
 
 from aiogram import Bot
-from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, TelegramRetryAfter
+from aiogram.exceptions import (TelegramBadRequest, TelegramForbiddenError, TelegramNetworkError,
+                                TelegramRetryAfter, TelegramServerError)
 from aiogram.types import FSInputFile, InlineKeyboardButton as Btn, InlineKeyboardMarkup as Kb
 
 from . import config, db, texts
@@ -63,7 +64,8 @@ async def pace() -> None:
 
 
 async def _call(fn, *a, **kw):
-    for _ in range(3):
+    """Telegram so'rovi. Xato o'yinni yiqitmaydi: tarmoq/server xatosida qayta urinadi, oxirida None."""
+    for attempt in range(3):
         try:
             await pace()
             return await fn(*a, **kw)
@@ -72,7 +74,21 @@ async def _call(fn, *a, **kw):
         except (TelegramForbiddenError, TelegramBadRequest) as e:
             log.info("telegram: %s", e)
             return None
+        except (TelegramNetworkError, TelegramServerError) as e:  # vaqtinchalik uzilish / 5xx
+            log.warning("telegram tarmoq xatosi (%d-urinish): %s", attempt + 1, e)
+            await asyncio.sleep(1 + attempt * 2)
     return None
+
+
+_BG: set[asyncio.Task] = set()
+
+
+def spawn(coro) -> asyncio.Task:
+    """Fon vazifasi. Havola saqlanadi: aks holda Python uni tugamasdan yig'ishtirib yuborishi mumkin."""
+    t = asyncio.create_task(coro)
+    _BG.add(t)
+    t.add_done_callback(_BG.discard)
+    return t
 
 
 FAKE_BASE = 9_000_000_000_000  # /testgame bot-o'yinchilari: ularga xabar yuborilmaydi
@@ -203,6 +219,7 @@ class Runner:
         self.task = asyncio.create_task(self._lobby_loop())
         if self.lobby_msg:
             await _call(self.bot.pin_chat_message, self.chat_id, self.lobby_msg, disable_notification=True)
+            await db.save_lobby(self.chat_id, self.lobby_msg)
         for uid in NEXT.pop(self.chat_id, set()):
             await send(self.bot, uid, texts.next_game(self.title), self._lobby_kb())
 
@@ -216,6 +233,7 @@ class Runner:
             await _call(self.bot.delete_message, self.chat_id, m.message_id)
             return
         self.lobby_msg = m.message_id
+        await db.save_lobby(self.chat_id, self.lobby_msg)
         if old:
             await _call(self.bot.delete_message, self.chat_id, old)
         await _call(self.bot.pin_chat_message, self.chat_id, self.lobby_msg, disable_notification=True)
@@ -264,6 +282,7 @@ class Runner:
         self.lobby_deadline = 0
 
     async def _start_game(self) -> None:
+        await db.drop_lobby(self.chat_id)  # ro'yxat bosqichi tugadi (boshlandi yoki bekor)
         if len(self.members) < MIN_PLAYERS:  # ro'yxat xabari o'chadi, bekor qilingani alohida yoziladi
             await self._drop_lobby_msg()
             await send(self.bot, self.chat_id, texts.NEED_PLAYERS)
@@ -477,7 +496,7 @@ class Runner:
             for uid in texts.victims(ev):
                 self.last_words[uid] = time.time() + LAST_WORDS_SECS
                 await send(self.bot, uid, texts.death_pm(uid in hanged))
-                asyncio.create_task(self._last_words_timeout(uid, self.last_words[uid]))
+                spawn(self._last_words_timeout(uid, self.last_words[uid]))
 
     async def _finish(self) -> None:
         g = self.game
@@ -502,6 +521,7 @@ class Runner:
             await db.finish_game(self.game_id, self.chat_id, "aborted", None, [])
         else:  # ro'yxat bosqichida /stop
             await self._drop_lobby_msg()
+            await db.drop_lobby(self.chat_id)
         await send(self.bot, self.chat_id, text)
         self.close()
         if self.task and self.task is not asyncio.current_task():
@@ -536,10 +556,11 @@ class Runner:
     async def on_action(self, uid: int, day: int, kind: str, target: int) -> bool:
         async with self.lock:
             g = self.game
+            again = g is not None and (uid in g.actions or uid in g.mafia_votes)  # tanlovni almashtirdi
             if not g or g.phase != NIGHT or g.day != day or not g.submit(uid, kind, target or None):
                 return False
             await self.save()
-            if kind != SKIP:  # hech narsa qilmagani guruhga yozilmaydi
+            if kind != SKIP and not again:  # hech narsa qilmagani va qayta tanlov guruhga yozilmaydi
                 self.live_lines.append(texts.act_feed(g.get(uid).role, kind))
         if kind == SKIP and g.get(uid).role == "don":
             for m in g.teammates(uid):
@@ -595,12 +616,27 @@ class Runner:
             await send(self.bot, dn.uid, texts.overheard(text[:500]))
         return True
 
+    async def move(self, new_id: int) -> None:
+        """Guruh supergroup'ga aylandi: Telegram yangi chat ID beradi, eski xabar ID'lari yaroqsiz."""
+        RUNNERS.pop(self.chat_id, None)
+        old, self.chat_id = self.chat_id, new_id
+        RUNNERS[new_id] = self
+        self.lobby_msg = None
+        if self.game:
+            self.game.chat_id = new_id
+            await db.move_chat(old, new_id)
+            await self.save()
+        else:
+            await db.drop_lobby(old)
+
     async def leave(self, uid: int) -> None:
         if not self.game:
             self.members = [(u, n) for u, n in self.members if u != uid]
             PLAYING.pop(uid, None)
             self.lobby_dirty = True
             return
+        if PLAYING.get(uid) is self:  # boshqa guruhdagi o'yinga kira olsin
+            del PLAYING[uid]
         async with self.lock:
             ev = self.game.kill_player(uid)
             if not ev:
@@ -610,6 +646,11 @@ class Runner:
 
 
 async def restore(bot: Bot) -> None:
+    for row in await db.lobbies():  # ro'yxatlar xotirada edi - qayta ishga tushishda yo'qoldi
+        await _call(bot.unpin_chat_message, row.chat_id, message_id=row.msg_id)
+        await _call(bot.delete_message, row.chat_id, row.msg_id)
+        await send(bot, row.chat_id, texts.LOBBY_LOST)
+        await db.drop_lobby(row.chat_id)
     for row in await db.running_games():
         r = Runner(bot, row.chat_id, await db.group_settings(row.chat_id))
         r.game, r.meta, r.game_id = Game.from_dict(row.state["game"]), row.state.get("meta", {}), row.id

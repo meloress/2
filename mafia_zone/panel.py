@@ -820,7 +820,7 @@ async def api_broadcast_send(req: web.Request) -> web.Response:
         raise Bad("Bu auditoriyada hech kim yo'q")
     bid = await db.create_broadcast(req["uid"], audience, text, buttons, photo is not None, len(ids))
     BROADCAST.update(id=bid, cancel=False)
-    asyncio.create_task(_run_broadcast(bid, ids, text, kb, photo))
+    runner.spawn(_run_broadcast(bid, ids, text, kb, photo))
     await audit(req, "broadcast", bid, f"{audience}: {len(ids)} ta")
     return ok({"id": bid, "total": len(ids)})
 
