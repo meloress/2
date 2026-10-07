@@ -14,7 +14,7 @@ from aiogram.types import FSInputFile, InlineKeyboardButton as Btn, InlineKeyboa
 
 from . import config, db, texts
 from .engine.game import AFK_LIMIT, CONFIRM, DAY, FINISHED, NIGHT, SKIP, VOTING, Game
-from .engine.roles import ACTION_LABELS, MAFIA, NO_TARGET
+from .engine.roles import ACTION_LABELS, MAFIA, NO_TARGET, ROLES
 from .engine.setup import MAX_PLAYERS, MIN_PLAYERS
 
 log = logging.getLogger(__name__)
@@ -284,9 +284,10 @@ class Runner:
             await send(self.bot, self.chat_id, texts.GAME_EXISTS)
             self.close()
             return
+        role_kb = Kb(inline_keyboard=[[Btn(text=texts.ROLE_BTN, callback_data=f"r:{self.game_id}", style="primary")]])
         if self.lobby_msg:
-            await edit(self.bot, self.chat_id, self.lobby_msg, texts.game_started(self.game),
-                       Kb(inline_keyboard=[[Btn(text="🎭 Rolimni ko'rish", url=bot_link(), style="primary")]]))
+            await edit(self.bot, self.chat_id, self.lobby_msg, texts.game_started(self.game), role_kb)
+        await send(self.bot, self.chat_id, texts.GAME_STARTED, role_kb)  # pastda: botga o'tmasdan rolni ko'rish
         for p in self.game.players:
             await send(self.bot, p.uid, texts.role_card(self.game, p.uid))
         await self._loop()
@@ -427,8 +428,11 @@ class Runner:
 
     def vote_kb(self, uid: int) -> Kb:
         g = self.game
-        rows = grid([Btn(text=p.name, callback_data=f"v:{self.game_id}:{g.day}:{p.uid}", style="danger")
-                     for p in g.alive() if p.uid != uid])
+        # bir ustunda; sheriklar (mafiya, Komissar+Serjant) oldida rolining emojisi
+        mates = {m.uid: ROLES[m.role].name.split(" ", 1)[0] for m in g.teammates(uid)}
+        rows = [[Btn(text=f"{mates[p.uid]} {p.name}" if p.uid in mates else p.name,
+                     callback_data=f"v:{self.game_id}:{g.day}:{p.uid}", style="danger")]
+                for p in g.alive() if p.uid != uid]
         rows.append([Btn(text=texts.SKIP_BTN, callback_data=f"v:{self.game_id}:{g.day}:0")])
         return Kb(inline_keyboard=rows)
 
@@ -469,6 +473,7 @@ class Runner:
             for uid in texts.victims(ev):
                 self.last_words[uid] = time.time() + LAST_WORDS_SECS
                 await send(self.bot, uid, texts.death_pm(uid in hanged))
+                asyncio.create_task(self._last_words_timeout(uid, self.last_words[uid]))
 
     async def _finish(self) -> None:
         g = self.game
@@ -549,6 +554,13 @@ class Runner:
             self.live_lines.append(texts.vote_feed(g, uid, target or None))
         return True
 
+    async def _last_words_timeout(self, uid: int, deadline: float) -> None:
+        """So'nggi so'z yozilmay vaqt tugasa - o'ziga xabar."""
+        await asyncio.sleep(max(0.0, deadline - time.time()))
+        if self.last_words.get(uid) == deadline:
+            del self.last_words[uid]
+            await send(self.bot, uid, texts.LAST_WORDS_TIMEOUT)
+
     async def on_private_text(self, uid: int, text: str) -> bool:
         g = self.game
         if not g:
@@ -556,6 +568,7 @@ class Runner:
         if (deadline := self.last_words.pop(uid, None)) is not None:
             if deadline > time.time():
                 await send(self.bot, self.chat_id, texts.last_words(g, uid, text[:500]))
+                await send(self.bot, uid, texts.LAST_WORDS_SENT)
             else:  # kechikdi: hech qayerga yuborilmaydi
                 await send(self.bot, uid, texts.LAST_WORDS_LATE)
             return True

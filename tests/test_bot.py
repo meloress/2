@@ -301,7 +301,8 @@ def test_last_words_late_goes_nowhere():
                                  Player(3, "c", "don")], phase="day")
         r.last_words = {1: _t.time() + 60, 2: _t.time() - 1}
         assert await r.on_private_text(1, "vaqtida")
-        assert bot.sent[-1][0] == -4242 and "vaqtida" in bot.sent[-1][1]  # guruhga
+        assert bot.sent[-2][0] == -4242 and "vaqtida" in bot.sent[-2][1]  # guruhga
+        assert bot.sent[-1] == (1, texts.LAST_WORDS_SENT)  # o'ziga: yetkazildi
         n = len(bot.sent)
         assert await r.on_private_text(2, "kech")
         assert bot.sent[n:] == [(2, texts.LAST_WORDS_LATE)]  # faqat o'ziga ogohlantirish
@@ -358,3 +359,45 @@ def test_cancelled_lobby_is_unpinned_and_deleted():
             assert log == [("unpin", lobby), ("del", lobby)], how
             assert -992 not in runner.RUNNERS
     asyncio.run(t())
+
+
+def test_role_button_shows_own_role_only():
+    from mafia_zone import handlers
+    from mafia_zone.engine.game import Game, Player
+    async def t():
+        g = Game(-993, 1, [Player(1, "A" * 60, "don"), Player(2, "B" * 60, "mafiya"), Player(3, "C" * 60, "yollanma"),
+                           Player(4, "Vali", "tinch")])
+        r = SimpleNamespace(game=g, game_id=77)
+        said = []
+        async def answer(text=None, show_alert=False):
+            said.append((text, show_alert))
+        handlers.PLAYING.update({1: r, 4: r})
+        try:
+            for uid, data in ((1, "r:77"), (4, "r:77"), (5, "r:77"), (4, "r:76")):
+                await handlers.cb_role(SimpleNamespace(data=data, from_user=SimpleNamespace(id=uid), answer=answer))
+        finally:
+            handlers.PLAYING.pop(1, None); handlers.PLAYING.pop(4, None)
+        assert "Don" in said[0][0] and "Sheriklar" in said[0][0] and len(said[0][0]) <= 200
+        assert "Tinch aholi" in said[1][0]
+        assert said[2][0] == said[3][0] == texts.NOT_IN_GAME and all(a for _, a in said)
+    asyncio.run(t())
+
+
+def test_last_words_timeout_notifies_and_vote_kb_marks_mates():
+    from mafia_zone.engine.game import Game, Player
+    import time as _t
+
+    async def go():
+        bot = FakeBot()
+        r = runner.Runner(bot, -4243, {})
+        r.game_id = 5
+        r.game = Game(-4243, 1, [Player(1, "a", "don"), Player(2, "b", "mafiya"), Player(3, "c", "tinch"),
+                                 Player(4, "d", "tinch", alive=False)], phase="voting")
+        rows = r.vote_kb(1).inline_keyboard
+        assert all(len(row) == 1 for row in rows)  # bir ustun
+        assert rows[0][0].text == "🤵🏼 b" and rows[1][0].text == "c"
+        r.last_words = {4: _t.time() + 0.05}
+        await r._last_words_timeout(4, r.last_words[4])
+        assert bot.sent[-1] == (4, texts.LAST_WORDS_TIMEOUT) and 4 not in r.last_words
+        r.close()
+    asyncio.run(go())

@@ -519,14 +519,18 @@ class Game:
         self._finish(w, ev)
 
     def _finish(self, w: str, ev: list, podshoh: bool = False) -> None:
+        """G'olib jamoadan faqat tiriklar yutadi. O'lib yutganlar (Suitsid, Tulki, G'azabkor) won=True ni
+        o'limi paytida oladi va u saqlanadi."""
         self.winner, self.phase = w, FINISHED
         for p in self.players:
+            if not p.alive:
+                continue
             if w == TOWN and p.team == TOWN:
                 p.won = True
-            elif w == MAFIA and (p.team == MAFIA or (p.alive and (p.role == "sotqin" or (podshoh and p.team == NEUTRAL)))):
+            elif w == MAFIA and (p.team == MAFIA or p.role == "sotqin" or (podshoh and p.team == NEUTRAL)):
                 p.won = True
-            elif p.role == w and p.alive:
+            elif p.role == w:
                 p.won = True
-            if p.alive and p.role in ("konchi", "sehrgar", "aferist"):
+            if p.role in ("konchi", "sehrgar", "aferist"):
                 p.won = True
         ev.append(Event("game_over", data={"winner": w, "winners": [p.uid for p in self.players if p.won]}))

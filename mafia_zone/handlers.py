@@ -497,6 +497,15 @@ async def cb_shop(cq: CallbackQuery):
     await cq.message.edit_text(texts.shop(u.dollars), reply_markup=shop_kb())
 
 
+@router.callback_query(F.data.startswith("r:"))
+async def cb_role(cq: CallbackQuery):
+    """Guruhdagi "🎭 Sizning rolingiz": rol shaxsiy oynada ko'rinadi, faqat bosgan odamga."""
+    r = PLAYING.get(cq.from_user.id)
+    if not r or not r.game or str(r.game_id) != cq.data[2:] or not r.game.get(cq.from_user.id):
+        return await cq.answer(texts.NOT_IN_GAME, show_alert=True)
+    await cq.answer(texts.role_alert(r.game, cq.from_user.id), show_alert=True)
+
+
 # ---------- tungi harakatlar ----------
 @router.callback_query(F.data.startswith("k:"))
 async def cb_kind(cq: CallbackQuery):

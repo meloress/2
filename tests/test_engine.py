@@ -286,6 +286,19 @@ def test_town_wins():
     assert g.winner == TOWN and g.get(2).won and not g.get(1).won
 
 
+def test_only_alive_teammates_win():
+    # 1-tun: Don Komissarni o'ldiradi; kunduzi Donni osishadi -> Tinchlar yutadi, lekin o'lgan Komissar emas
+    g = mk("don", "komissar", "suitsid", "tinch", "tinch", "tinch")
+    night(g, (1, "mafia_kill", 2))
+    vote(g, (3, 1), (4, 1), (5, 1))
+    assert g.winner == TOWN and not g.get(2).won and g.get(3).won and g.get(4).won and not g.get(1).won
+    # Suitsid o'lib yutadi - o'yin oxirida ham g'olib qoladi
+    g = mk("don", "mafiya", "suitsid", "tinch", "tinch", "tinch", "tinch")
+    night(g, (1, "mafia_kill", 3))
+    vote(g, (4, 2), (5, 2), (6, 2))
+    assert g.winner == TOWN and g.get(3).won and not g.get(3).alive
+
+
 def test_mafia_wins_parity_and_sotqin():
     g = mk("don", "sotqin", "tinch", "tinch")
     night(g, (1, "mafia_kill", 3))
@@ -343,6 +356,10 @@ def test_simulate_many():
         g = play_random(seed)
         assert g.winner is not None
         assert g.day <= g.max_days + 1
+        # o'lgan o'yinchi faqat o'limi bilan yutadigan rollarda g'olib bo'ladi
+        assert all(p.alive or p.role in ("suitsid", "tulki", "gazabkor") for p in g.players if p.won), seed
+        if g.winner in (TOWN, MAFIA):
+            assert all(p.won for p in g.alive() if p.team == g.winner), seed
 
 
 def test_afk_kicked():

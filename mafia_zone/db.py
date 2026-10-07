@@ -314,13 +314,14 @@ async def all_user_ids() -> list[int]:
         return list((await s.scalars(select(User.telegram_id).where(User.banned.is_(False)))).all())
 
 
-async def top(chat_id: int | None = None, limit: int = 10) -> list[tuple[str, int, int]]:
+async def top(chat_id: int | None = None, limit: int = 10) -> list[tuple[int, str, int, int]]:
+    """[(telegram_id, ism, g'alabalar, o'yinlar)]"""
     async with Session() as s:
         if chat_id is None:
-            q = select(User.full_name, User.wins, User.games).order_by(User.wins.desc(), User.games).limit(limit)
+            q = select(User.telegram_id, User.full_name, User.wins, User.games).order_by(User.wins.desc(), User.games).limit(limit)
         else:
             wins = func.sum(func.cast(GamePlayer.won, Integer))
-            q = (select(User.full_name, wins, func.count()).join(User, User.telegram_id == GamePlayer.user_id)
+            q = (select(User.telegram_id, User.full_name, wins, func.count()).join(User, User.telegram_id == GamePlayer.user_id)
                  .where(GamePlayer.chat_id == chat_id).group_by(User.full_name, User.telegram_id)
                  .order_by(wins.desc()).limit(limit))
         return [tuple(r) for r in (await s.execute(q)).all()]

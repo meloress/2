@@ -79,6 +79,20 @@ def role_card(g: Game, uid: int) -> str:
     return text
 
 
+ROLE_BTN = "🎭 Sizning rolingiz"
+GAME_STARTED = "🎮 <b>O'YIN BOSHLANDI!</b>"
+NOT_IN_GAME = "Siz bu o'yinda ishtirok etmayapsiz."
+
+
+def role_alert(g: Game, uid: int) -> str:
+    """Guruhdagi tugma uchun qalqib chiquvchi oyna: oddiy matn, Telegram limiti 200 belgi."""
+    p = g.get(uid)
+    text = f"Siz - {ROLES[p.role].name} siz!\n{ROLES[p.role].about}"
+    if mates := g.teammates(uid):
+        text += "\n\n🤝 Sheriklar: " + ", ".join(f"{m.name} - {ROLES[m.role].name}" for m in mates)
+    return text if len(text) <= 200 else text[:199] + "…"
+
+
 def game_started(g: Game) -> str:
     return _game_started(g) + "\n\n" + composition(g)
 
@@ -197,6 +211,8 @@ LAST_WORDS_SECS = 60
 
 
 LAST_WORDS_LATE = f"⌛️ Kechikdingiz — so'nggi so'z uchun {LAST_WORDS_SECS} soniya tugadi. Xabaringiz hech kimga yuborilmadi."
+LAST_WORDS_SENT = "✅ So'nggi so'zingiz guruhga yetkazildi."
+LAST_WORDS_TIMEOUT = "⌛️ So'nggi so'z vaqti tugadi — siz hech narsa yozmadingiz."
 
 
 def victims(ev: list[Event]) -> list[int]:
@@ -225,7 +241,7 @@ QUIET = ["🌤 Mo'jiza! Bu tun hech kim halok bo'lmadi. Lekin bu uzoq davom etma
 def morning(g: Game, ev: list[Event]) -> tuple[list[str], list[tuple[int, str]]]:
     """([guruhga alohida xabarlar], [(uid, shaxsiy matn)])"""
     pub, priv = [], []
-    n = lambda uid: nm(g, uid)
+    n = lambda uid: pm(g, uid)  # ismlar bosilsa Telegram profili ochiladi
     w = lambda uid: who(g, uid)
     for e in ev:
         k = e.kind
@@ -502,8 +518,8 @@ def top(rows, title: str) -> str:
     if not rows:
         return f"🏆 {title}\n\n— hali o'yinlar yo'q —"
     medals = ["🥇", "🥈", "🥉"]
-    body = "\n".join(f"{medals[i] if i < 3 else f'{i + 1}.'} {escape(name or '?')} — {w} 🏆 / {gm} 🎮 · {rank(w or 0)}"
-                     for i, (name, w, gm) in enumerate(rows))
+    body = "\n".join(f"{medals[i] if i < 3 else f'{i + 1}.'} {mention(uid, name or '?')} — {w} 🏆 / {gm} 🎮 · {rank(w or 0)}"
+                     for i, (uid, name, w, gm) in enumerate(rows))
     return f"🏆 <b>{title}</b>\n\n{body}"
 
 
@@ -529,7 +545,7 @@ def nm(g: Game, uid: int) -> str:
 
 
 def who(g: Game, uid: int) -> str:
-    return f"{role(g.get(uid).role)} - {nm(g, uid)}"
+    return f"{role(g.get(uid).role)} - {pm(g, uid)}"
 
 
 VERBS = ["vahshiylarcha o'ldirildi.", "shafqatsizlarcha o'ldirildi.", "tongni ko'ra olmadi."]
