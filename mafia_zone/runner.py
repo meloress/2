@@ -274,7 +274,7 @@ class Runner:
             NEXT[self.chat_id].add(uid)
             return texts.LOBBY_FULL
         if all(u != uid for u, _ in self.members):
-            self.members.append((uid, pro.name(uid, name)))  # PRO: nickname
+            self.members.append((uid, name))  # nickname ko'rsatishda qo'yiladi (PRO tugasa - darhol yo'qoladi)
             PLAYING[uid] = self
             self.lobby_dirty = True
         return texts.JOINED
@@ -581,7 +581,7 @@ class Runner:
             me = g.get(uid)
             for m in g.teammates(uid):
                 if m.alive:
-                    await send(self.bot, m.uid, texts.mafia_voted(me.name, g.get(target).name))
+                    await send(self.bot, m.uid, texts.mafia_voted(texts.dn(me), texts.dn(g.get(target))))
         return True
 
     async def on_vote(self, uid: int, day: int, target: int) -> bool:
@@ -615,13 +615,13 @@ class Runner:
         if p and not p.alive:  # 👻 o'liklar chati
             for d in g.players:
                 if not d.alive and d.uid != uid:
-                    await send(self.bot, d.uid, texts.ghost(p.name, text[:500]))
+                    await send(self.bot, d.uid, texts.ghost(texts.dn(p), text[:500]))
             return True
         if g.phase != NIGHT or not p or not (p.team == MAFIA or p.role in ("komissar", "serjant")):
             return False
         for m in g.teammates(uid):
             if m.alive:
-                await send(self.bot, m.uid, texts.relay(p.name, text[:500]))
+                await send(self.bot, m.uid, texts.relay(texts.dn(p), text[:500]))
         dn = g.by_role("donishmand")
         if dn and dn.uid != uid:
             await send(self.bot, dn.uid, texts.overheard(text[:500]))

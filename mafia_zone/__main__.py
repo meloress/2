@@ -41,6 +41,7 @@ async def main() -> None:
         BotCommand(command="shop", description="🛒 Do'kon"),
         BotCommand(command="pro", description="✅ PRO akkaunt"),
         BotCommand(command="nickname", description="🏷 Nickname (PRO)"),
+        BotCommand(command="paysupport", description="💳 To'lov bo'yicha yordam"),
         BotCommand(command="top", description="🏆 Reyting"),
         BotCommand(command="rules", description="📜 Rollar"),
     ], scope=BotCommandScopeAllPrivateChats())

@@ -121,7 +121,7 @@ def role_card(g: Game, uid: int) -> str:
     mates = g.teammates(uid)
     if mates:
         text += "\n\n🤝 <b>Sheriklaringizni eslab qoling!</b>\n" + "\n".join(
-            f"<b>{escape(m.name)}</b> - {role(m.role)}" + ("" if m.alive else " 💀") for m in mates)
+            f"<b>{escape(dn(m))}</b> - {role(m.role)}" + ("" if m.alive else " 💀") for m in mates)
     own = [f"{ITEMS[i]} ×{q}" for i, q in p.items.items() if q > 0 and i in ITEMS]
     if own:
         text += "\n\n🎒 <b>Buyumlaringiz:</b> " + ", ".join(own)
@@ -138,7 +138,7 @@ def role_alert(g: Game, uid: int) -> str:
     p = g.get(uid)
     text = f"Siz - {ROLES[p.role].name} siz!\n{ROLES[p.role].about}"
     if mates := g.teammates(uid):
-        text += "\n\n🤝 Sheriklar: " + ", ".join(f"{m.name} - {ROLES[m.role].name}" for m in mates)
+        text += "\n\n🤝 Sheriklar: " + ", ".join(f"{dn(m)} - {ROLES[m.role].name}" for m in mates)
     return text if len(text) <= 200 else text[:199] + "…"
 
 
@@ -538,6 +538,18 @@ def start_pm() -> str:
 
 
 # ---------- PRO ----------
+def pay_support() -> str:
+    admins = ", ".join(mention(a, "admin") for a in sorted(config.ADMIN_IDS)) or "bot adminiga"
+    return ("💳 <b>To'lov bo'yicha yordam</b>\n\n"
+            "PRO to'lovi bilan muammo bo'lsa (pul yechildi, lekin PRO yoqilmadi va hokazo), "
+            f"to'lov chekining skrinshoti bilan yozing: {admins}.\n"
+            "Hal qilinmasa, ⭐ Stars to'liq qaytariladi.")
+
+
+PAY_REFUNDED = ("⚠️ Texnik xato tufayli PRO yoqilmadi — <b>⭐ Stars to'liq qaytarildi</b>.\n"
+                "Birozdan keyin /pro orqali qaytadan urinib ko'ring.")
+PAY_FAILED = "⚠️ To'lovda texnik xato bo'ldi. /paysupport orqali adminga yozing — muammo hal qilinadi."
+
 PRO_BTN = "PRO akkaunt"  # tugmada PRO belgisi ikonka bo'lib turadi
 PRO_NO_DIAMONDS = "😔 Olmos yetarli emas. Olmos Konchi qazishidan chiqadi — yoki ⭐ Stars bilan oling."
 NICK_ONLY_PRO = "🏷 Nickname faqat PRO foydalanuvchilar uchun. /pro"
@@ -652,7 +664,12 @@ def bold(s: str) -> str:
 
 def nm(g: Game, uid: int) -> str:
     p = g.get(uid) if uid is not None else None
-    return escape(p.name) if p else "?"  # o'yinchi chiqib ketgan bo'lsa ham xabar yiqilmasin
+    return escape(dn(p)) if p else "?"  # o'yinchi chiqib ketgan bo'lsa ham xabar yiqilmasin
+
+
+def dn(p) -> str:
+    """O'yinchining ko'rsatiladigan ismi (oddiy matn): PRO nickname shu paytdagi holat bo'yicha."""
+    return pro.name(p.uid, p.name)
 
 
 def who(g: Game, uid: int) -> str:

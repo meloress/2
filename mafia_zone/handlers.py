@@ -438,7 +438,7 @@ async def cb_vote(cq: CallbackQuery):
     if not await r.on_vote(cq.from_user.id, int(day), int(target)):
         return await cq.answer("❌ Ovoz bera olmaysiz yoki vaqt tugadi")
     t = r.game.get(int(target)) if int(target) else None
-    await cq.message.edit_text(texts.vote_chosen(t.name if t else None))
+    await cq.message.edit_text(texts.vote_chosen(texts.dn(t) if t else None))
     await cq.answer()
 
 
@@ -580,10 +580,27 @@ async def on_paid(msg: Message):
     days = _pro_payload(pay.invoice_payload)
     if not days:
         return
-    await db.upsert_user(msg.from_user.id, msg.from_user.full_name, msg.from_user.username)
-    end = await db.add_pro(msg.from_user.id, days, "stars", pay.total_amount, pay.telegram_payment_charge_id)
+    uid, charge = msg.from_user.id, pay.telegram_payment_charge_id
+    try:
+        await db.upsert_user(uid, msg.from_user.full_name, msg.from_user.username)
+        end = await db.add_pro(uid, days, "stars", pay.total_amount, charge)
+    except Exception:  # pul yechilgan, PRO yozilmadi: Telegram qayta yubormaydi - Stars qaytariladi
+        log.exception("PRO to'lovi yozilmadi: uid=%s charge=%s days=%s amount=%s", uid, charge, days, pay.total_amount)
+        try:
+            await msg.bot.refund_star_payment(user_id=uid, telegram_payment_charge_id=charge)
+            await msg.answer(texts.PAY_REFUNDED)
+        except Exception:
+            log.exception("Stars qaytarilmadi: uid=%s charge=%s", uid, charge)
+            await msg.answer(texts.PAY_FAILED)
+        return
     if end:  # None - shu to'lov avval hisoblangan (takror xabar)
         await msg.answer(texts.pro_done(end))
+
+
+@router.message(Command("paysupport"), PRIVATE)
+async def cmd_paysupport(msg: Message):
+    """Telegram Stars qoidasi: raqamli mahsulot sotadigan bot to'lov yordamini ko'rsatishi shart."""
+    await msg.answer(texts.pay_support())
 
 
 @router.message(Command("nickname"), PRIVATE)
@@ -703,7 +720,7 @@ async def cb_action(cq: CallbackQuery):
     if not await r.on_action(cq.from_user.id, int(day), kind, int(target)):
         return await cq.answer("❌ Bu harakat mumkin emas yoki vaqt tugadi")
     t = r.game.get(int(target)) if int(target) else None
-    await cq.message.edit_text(texts.SKIPPED_NIGHT if kind == "skip" else texts.chosen(t.name if t else None))
+    await cq.message.edit_text(texts.SKIPPED_NIGHT if kind == "skip" else texts.chosen(texts.dn(t) if t else None))
     await cq.answer()
 
 

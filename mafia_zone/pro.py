@@ -1,5 +1,6 @@
 """PRO obuna: xotiradagi kesh (bitta replika; db.load_pro ishga tushishda to'ldiradi) va ko'rinish yordamchilari."""
 import re
+import unicodedata
 from datetime import datetime
 
 from . import config
@@ -8,7 +9,8 @@ BADGE_ID = "5197557379083804570"  # ✅ "Verified" custom emoji
 BADGE_FALLBACK = "✅"
 PACKS = {7: (30, 100), 15: (55, 150), 30: (99, 249)}  # kun -> (olmos, stars)
 CACHE: dict[int, tuple[datetime, str | None]] = {}  # uid -> (tugash vaqti, nickname)
-_BAD_NICK = re.compile(r"@|https?:|t\.me|www\.|admin|bot", re.I)
+_BAD_NICK = re.compile(r"@|https?:|t\.me|www\.|\badmin\b|\bbot\b", re.I)  # "Botir", "Admiral" - mumkin
+_FAKE = re.compile(r"^[\s✅☑✔\ufe0f]*PRO\b[\s:|·•-]*", re.I)  # oddiy ismdagi "✅ PRO" soxta belgi
 
 
 def _now() -> datetime:
@@ -40,8 +42,10 @@ def is_pro(uid: int) -> bool:
 
 
 def name(uid: int, fallback: str) -> str:
-    """Ko'rsatiladigan ism: PRO va nickname bo'lsa - nickname."""
-    return (CACHE[uid][1] or fallback) if is_pro(uid) else fallback
+    """Ko'rsatiladigan ism: PRO va nickname bo'lsa - nickname. Oddiy foydalanuvchi ismidagi "✅ PRO" olib tashlanadi."""
+    if is_pro(uid):
+        return CACHE[uid][1] or fallback
+    return _FAKE.sub("", fallback) or fallback
 
 
 def badge() -> str:
@@ -50,7 +54,7 @@ def badge() -> str:
 
 def label(uid: int, text: str) -> tuple[str, str | None]:
     """Tugma uchun: (matn, icon_custom_emoji_id)."""
-    return (f"PRO {name(uid, text)}", BADGE_ID) if is_pro(uid) else (text, None)
+    return (f"PRO {name(uid, text)}", BADGE_ID) if is_pro(uid) else (name(uid, text), None)
 
 
 def price(uid: int, base: int) -> int:
@@ -70,6 +74,8 @@ def check_nick(s: str) -> str | None:
     s = s.strip()
     if not 2 <= len(s) <= 20:
         return "❌ Nickname 2 dan 20 tagacha belgi bo'lsin."
+    if any(unicodedata.category(c) in ("Cc", "Cf") for c in s):  # ko'rinmas/yo'nalish belgilari matnni buzadi
+        return "❌ Nickname'da ko'rinmas belgilar bo'lmasin."
     if _BAD_NICK.search(s):
         return "❌ Nickname'da @, havola, «admin» yoki «bot» so'zi bo'lmasin."
     return None

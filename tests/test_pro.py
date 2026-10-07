@@ -34,7 +34,7 @@ def test_perks_numbers():
 
 def test_check_nick():
     assert pro.check_nick("Shoh") is None
-    for bad in ("a", "x" * 21, "@ali", "t.me/x", "http://a", "www.a", "ADMIN", "mybot"):
+    for bad in ("a", "x" * 21, "@ali", "t.me/x", "http://a", "www.a", "ADMIN", "my bot"):
         assert pro.check_nick(bad), bad
 
 
@@ -125,8 +125,8 @@ def test_pro_buttons_profile_and_lobby_name():
     pro.set_user(5, db.now() + timedelta(days=2), "Shoh")
     bot = SimpleNamespace()
     r = runner.Runner(bot, -1991, dict(config.DEFAULT_SETTINGS))
-    assert r.join(5, "Ali") == texts.JOINED and r.members[-1] == (5, "Shoh")
-    r.game = Game(-1991, 1, [Player(4, "Vali", "don"), Player(5, "Shoh", "mafiya"), Player(6, "Hasan", "tinch")],
+    assert r.join(5, "Ali") == texts.JOINED and r.members[-1] == (5, "Ali")  # nickname ko'rsatishda
+    r.game = Game(-1991, 1, [Player(4, "Vali", "don"), Player(5, "Ali", "mafiya"), Player(6, "Hasan", "tinch")],
                   phase="voting")
     r.game_id = 3
     rows = r.vote_kb(4).inline_keyboard
@@ -211,4 +211,65 @@ def test_pro_menu_diamonds_and_nickname():
         await db.set_pro(u, 0)
         await nick("Shoh")
         assert said[-1] == texts.NICK_ONLY_PRO
+    asyncio.run(t())
+
+
+def test_fix_nickname_not_frozen_into_game():
+    from mafia_zone import runner
+    from mafia_zone.engine.game import Game, Player
+    pro.set_user(9, db.now() + timedelta(days=1), "Shoh")
+    r = runner.Runner(SimpleNamespace(), -1992, dict(config.DEFAULT_SETTINGS))
+    r.join(9, "Ali")
+    assert r.members[-1] == (9, "Ali")  # haqiqiy ism saqlanadi, nickname ko'rsatishda qo'yiladi
+    r.close()
+    g = Game(-1, 1, [Player(9, "Ali", "don"), Player(10, "Vali", "mafiya")])
+    assert texts.nm(g, 9) == "Shoh" and "Shoh" in texts.role_card(g, 10)
+    pro.set_user(9, db.now() - timedelta(seconds=1), "Shoh")  # PRO tugadi
+    assert texts.nm(g, 9) == "Ali" and "Shoh" not in texts.role_card(g, 10)
+    assert "Shoh" not in texts.role_alert(g, 10)
+
+
+def test_fix_non_pro_cannot_fake_badge():
+    assert texts.mention(11, "✅ PRO Ali") == '<a href="tg://user?id=11">Ali</a>'
+    assert pro.label(11, "PRO Ali") == ("Ali", None)
+    assert texts.mention(11, "PRO") == '<a href="tg://user?id=11">PRO</a>'  # faqat "PRO" bo'lsa - qoladi
+    assert texts.mention(11, "Prohor") == '<a href="tg://user?id=11">Prohor</a>'
+
+
+def test_fix_nick_filter_words_and_control_chars():
+    for ok in ("Botir", "Badminton", "Admiral"):
+        assert pro.check_nick(ok) is None, ok
+    for bad in ("bot", "Admin Ali", "Ali‮ilA", "A​dmin"):
+        assert pro.check_nick(bad), bad
+
+
+def test_fix_paid_db_failure_refunds_and_paysupport():
+    from mafia_zone import handlers
+
+    async def t():
+        await db.init()
+        u = 8_200_040
+        await db.upsert_user(u, "Ali", None)
+        said, refunds = [], []
+
+        async def answer(text=None, **kw):
+            said.append(text)
+
+        async def refund(user_id, telegram_payment_charge_id):
+            refunds.append((user_id, telegram_payment_charge_id))
+        orig = db.add_pro
+
+        async def boom(*a, **k):
+            raise RuntimeError("db down")
+        db.add_pro = boom
+        try:
+            pay = SimpleNamespace(invoice_payload="pro:7", total_amount=100, currency="XTR", telegram_payment_charge_id="c77")
+            m = SimpleNamespace(from_user=SimpleNamespace(id=u, full_name="Ali", username=None), successful_payment=pay,
+                                answer=answer, bot=SimpleNamespace(refund_star_payment=refund))
+            await handlers.on_paid(m)
+        finally:
+            db.add_pro = orig
+        assert refunds == [(u, "c77")] and "qaytarildi" in said[-1] and not pro.is_pro(u)
+        await handlers.cmd_paysupport(SimpleNamespace(answer=answer))
+        assert "/paysupport" not in said[-1] and "To'lov" in said[-1]
     asyncio.run(t())
