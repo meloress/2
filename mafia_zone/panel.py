@@ -549,7 +549,7 @@ async def api_group_leave(req: web.Request) -> web.Response:
 
 
 # ---------- iqtisod ----------
-ECON_RANGES = {"reward_win": (0, 100_000), "reward_play": (0, 100_000), "daily_bonus": (0, 100_000),
+ECON_RANGES = {"reward_win": (0, 100_000), "reward_play": (0, 100_000),
                "ref_bonus": (0, 100_000), "diamond_rate": (1, 1_000_000)}
 
 

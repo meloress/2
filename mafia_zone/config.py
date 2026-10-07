@@ -20,7 +20,9 @@ DATABASE_URL = _url.replace("postgres://", "postgresql://", 1).replace("postgres
 DEFAULT_SETTINGS = {"lobby": 120, "night": 60, "day": 60, "vote": 45, "items": True, "afk": True, "confirm": True, "disabled": []}
 
 # Iqtisod (spec, 7-bo'lim)
-REWARD_PLAY, REWARD_WIN, DAILY_BONUS, REF_BONUS = 0, 40, 20, 50  # yutsa 40$, yutqazsa 0
+REWARD_PLAY, REWARD_WIN, REF_BONUS = 0, 40, 50  # yutsa 40$, yutqazsa 0
+# Ko'p profil bilan pul yig'ishga qarshi: shuncha tugagan o'yin kerak
+REF_GAMES, CLAIM_GAMES, SEND_GAMES = 3, 3, 5  # taklif bonusi / tarqatmadan olish / /send
 LEAVE_FREE, LEAVE_FINE, DEBT_LIMIT = 3, 200, -1000  # kuniga 3 ta bepul chiqish; -1000 da o'yinga kirolmaydi
 DIAMOND_RATE = 50
 NEWS_URL = os.environ.get("NEWS_URL", "").strip()  # yangiliklar kanali, bo'sh bo'lsa tugma chiqmaydi

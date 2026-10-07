@@ -46,6 +46,8 @@ class User(Base):
     last_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # migratsiya: _migrate()
     leave_date: Mapped[str | None] = mapped_column(String(10))  # o'yindan chiqishlar: kun (Toshkent)
     leave_count: Mapped[int] = mapped_column(Integer, default=0)  # ... va shu kundagi soni
+    referred_by: Mapped[int | None] = mapped_column(BigInteger)  # kim taklif qilgan
+    ref_paid: Mapped[bool] = mapped_column(Boolean, default=False)  # taklif bonusi to'langanmi
 
 
 class Inventory(Base):
@@ -224,7 +226,8 @@ async def claim(gid: int, uid: int) -> Giveaway | None:
 # Mavjud jadvalga qo'shilgan ustunlar: create_all ularni qo'sha olmaydi.
 # ponytail: qo'lda ADD COLUMN; murakkab o'zgarishlar boshlanganda Alembic'ga o'tiladi
 COLUMNS = [("users", "last_seen", "TIMESTAMP WITH TIME ZONE"), ("users", "leave_date", "VARCHAR(10)"),
-           ("users", "leave_count", "INTEGER NOT NULL DEFAULT 0")]
+           ("users", "leave_count", "INTEGER NOT NULL DEFAULT 0"), ("users", "referred_by", "BIGINT"),
+           ("users", "ref_paid", "BOOLEAN NOT NULL DEFAULT FALSE")]
 
 
 def _migrate(conn) -> None:
@@ -295,14 +298,28 @@ async def count_leave(uid: int, fine: int = 0) -> None:
             leave_date=t, dollars=User.dollars - fine))
 
 
-async def claim_bonus(uid: int) -> bool:
-    t = now()
+async def set_referrer(uid: int, inviter: int) -> None:
     async with Session.begin() as s:
-        r = await s.execute(update(User).where(
-            User.telegram_id == uid,
-            (User.last_bonus_at.is_(None)) | (User.last_bonus_at < t - timedelta(hours=24)),
-        ).values(dollars=User.dollars + config.DAILY_BONUS, last_bonus_at=t))
-        return r.rowcount == 1
+        await s.execute(update(User).where(User.telegram_id == uid, User.referred_by.is_(None))
+                        .values(referred_by=inviter))
+
+
+async def pay_referrals(uids: list[int]) -> list[tuple[int, str]]:
+    """config.REF_GAMES ta o'yin o'ynagan taklif qilinganlar uchun taklif qilganga bonus (bir marta, atomar).
+    [(inviter, taklif qilingan ism)]"""
+    out = []
+    async with Session.begin() as s:
+        rows = (await s.execute(select(User.telegram_id, User.full_name, User.referred_by).where(
+            User.telegram_id.in_(uids), User.referred_by.is_not(None), User.ref_paid.is_(False),
+            User.games >= config.REF_GAMES))).all()
+        for uid, name, inviter in rows:
+            r = await s.execute(update(User).where(User.telegram_id == uid, User.ref_paid.is_(False))
+                                .values(ref_paid=True))
+            if r.rowcount == 1:
+                await s.execute(update(User).where(User.telegram_id == inviter)
+                                .values(dollars=User.dollars + config.REF_BONUS))
+                out.append((inviter, name))
+    return out
 
 
 async def exchange_diamond(uid: int) -> bool:
@@ -517,7 +534,7 @@ class Broadcast(Base):
 
 
 # ---------- sozlamalar (paneldan o'zgaradi, config'ga qo'llanadi) ----------
-ECONOMY = {"reward_win": "REWARD_WIN", "reward_play": "REWARD_PLAY", "daily_bonus": "DAILY_BONUS",
+ECONOMY = {"reward_win": "REWARD_WIN", "reward_play": "REWARD_PLAY",
            "ref_bonus": "REF_BONUS", "diamond_rate": "DIAMOND_RATE"}
 
 

@@ -2,7 +2,7 @@
 import asyncio
 from types import SimpleNamespace
 
-from mafia_zone import db, handlers, runner, texts
+from mafia_zone import config, db, handlers, runner, texts
 
 runner.GLOBAL_INTERVAL = 0
 runner.GROUP_PER_MIN = 10 ** 9
@@ -13,6 +13,12 @@ async def mkuser(uid: int, dollars: int) -> None:
     await db.upsert_user(uid, f"u{uid}", None)
     u = await db.get_user(uid)
     await db.add_balance(uid, dollars - u.dollars)
+
+
+async def set_games(uid: int, games: int) -> None:
+    from sqlalchemy import update
+    async with db.Session.begin() as s:
+        await s.execute(update(db.User).where(db.User.telegram_id == uid).values(games=games))
 
 
 async def bal(uid: int) -> int:
@@ -107,6 +113,7 @@ def test_send_command():
     async def t():
         a, b = BASE + 500, BASE + 501
         await mkuser(a, 100)
+        await set_games(a, config.SEND_GAMES)
         bot = FakeBot()
         cmd = lambda args: SimpleNamespace(args=args)
 
@@ -345,4 +352,36 @@ def test_rob_negative_balance_steals_nothing():
         await mkuser(v, -300)
         await mkuser(th, 0)
         assert await db.rob_dollars(v, th) == 0 and await bal(v) == -300 and await bal(th) == 0
+    run(t())
+
+
+def test_new_accounts_cannot_send_or_claim_and_ref_paid_after_games():
+    async def t():
+        a, b, inviter, friend = BASE + 1100, BASE + 1101, BASE + 1102, BASE + 1103
+        await mkuser(a, 100)
+        await mkuser(inviter, 0)
+        await set_games(a, config.SEND_GAMES - 1)
+        bot = FakeBot()
+        m, _ = fake_msg(a)
+        await handlers.cmd_send(m, bot, SimpleNamespace(args="10"))
+        assert await bal(a) == 100 and "🔒" in bot.sent[-1]  # yopiq: pul yechilmadi
+        await set_games(a, config.SEND_GAMES)
+        await handlers.cmd_send(m, bot, SimpleNamespace(args="10"))
+        gid = max(g.id for g in [await db.get_giveaway(i) for i in range(1, 500)] if g)
+        await mkuser(b, 0)  # 0 ta o'yin - tarqatmadan ololmaydi
+        said = []
+
+        async def answer(text=None, show_alert=False):
+            said.append(text)
+        cq = SimpleNamespace(data=f"g:{gid}", from_user=SimpleNamespace(id=b, full_name="b", username=None),
+                             answer=answer, message=SimpleNamespace(chat=SimpleNamespace(id=-5), message_id=1))
+        await handlers.cb_giveaway(cq, bot)
+        assert "🔒" in said[-1] and await bal(b) == 0
+        # taklif: bonus darhol emas, REF_GAMES ta o'yindan keyin, bir marta
+        await mkuser(friend, 0)
+        await db.set_referrer(friend, inviter)
+        assert await db.pay_referrals([friend]) == [] and await bal(inviter) == 0
+        await set_games(friend, config.REF_GAMES)
+        assert await db.pay_referrals([friend]) == [(inviter, f"u{friend}")]
+        assert await db.pay_referrals([friend]) == [] and await bal(inviter) == config.REF_BONUS
     run(t())

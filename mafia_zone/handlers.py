@@ -255,7 +255,10 @@ async def cmd_send(msg: Message, bot: Bot, command: CommandObject):
     Buyruq har doim o'chiriladi (drop_commands)."""
     args = (command.args or "").split()
     nums = [int(a) for a in args] if args and all(a.isdigit() for a in args) else []
-    if nums and len(nums) <= 2 and all(0 < x <= MAX_AMOUNT for x in nums) and await _user(msg):
+    me = await _user(msg) if nums and len(nums) <= 2 and all(0 < x <= MAX_AMOUNT for x in nums) else None
+    if me and me.games < config.SEND_GAMES:  # yangi (ko'pincha soxta) profillardan pul to'plashga qarshi
+        return await send(bot, msg.chat.id, texts.send_locked(me.games))
+    if me:
         u, reply = msg.from_user, msg.reply_to_message
         target = reply.from_user if reply else None
         if len(nums) == 1 and target and not target.is_bot and target.id != u.id:
@@ -274,7 +277,10 @@ async def cmd_send(msg: Message, bot: Bot, command: CommandObject):
 @router.callback_query(F.data.startswith("g:"))
 async def cb_giveaway(cq: CallbackQuery, bot: Bot):
     gid = int(cq.data[2:])
-    g = await db.claim(gid, cq.from_user.id) if await _user(cq) else None
+    me = await _user(cq)
+    if me and me.games < config.CLAIM_GAMES:
+        return await cq.answer(texts.claim_locked(), show_alert=True)
+    g = await db.claim(gid, cq.from_user.id) if me else None
     if not g:
         return await cq.answer(texts.GIVEAWAY_NO)
     await cq.answer(texts.GIVEAWAY_GOT.format(g.per), show_alert=True)
@@ -411,9 +417,9 @@ async def cmd_start(msg: Message, bot: Bot, command: CommandObject):
         return await msg.answer(texts.BANNED)
     if is_new and arg.startswith("ref") and arg[3:].isdigit() and int(arg[3:]) != msg.from_user.id:
         inviter = int(arg[3:])
-        if await db.get_user(inviter):
-            await db.add_balance(inviter, config.REF_BONUS)
-            await send(bot, inviter, texts.ref_bonus(msg.from_user.full_name))
+        if await db.get_user(inviter):  # bonus darhol emas: do'st REF_GAMES ta o'yin o'ynagach (pay_referrals)
+            await db.set_referrer(msg.from_user.id, inviter)
+            await send(bot, inviter, texts.ref_joined(msg.from_user.full_name))
     if arg == "panel":
         return await send_panel_link(msg)
     if arg.startswith("join"):
@@ -496,14 +502,6 @@ async def cmd_shop(msg: Message):
     if not (u := await _user(msg)):
         return await msg.answer(texts.BANNED)
     await msg.answer(texts.shop(u.dollars), reply_markup=shop_kb())
-
-
-@router.message(Command("bonus"), PRIVATE)
-async def cmd_bonus(msg: Message):
-    if not await _user(msg):
-        return await msg.answer(texts.BANNED)
-    ok = await db.claim_bonus(msg.from_user.id)
-    await msg.answer(f"{texts.BONUS_OK} <b>+{config.DAILY_BONUS} 💵</b>" if ok else texts.BONUS_WAIT)
 
 
 @router.message(Command("top"), PRIVATE)

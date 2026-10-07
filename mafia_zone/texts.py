@@ -83,7 +83,7 @@ def left_fined(uid: int, name: str) -> str:
 def debt_block(dollars: int) -> str:
     return (f"⛔️ Hisobingiz: <b>{dollars} 💵</b>\n"
             f"Hisobi <b>{config.DEBT_LIMIT} 💵</b> yoki undan kam bo'lgan o'yinchilar o'yinga qo'shila olmaydi.\n\n"
-            "Balansni to'ldirish uchun 🎁 /bonus oling yoki 🤝 do'stlaringizni taklif qiling.")
+            "Balansni to'ldirish uchun 🤝 do'stlaringizni taklif qiling.")
 
 
 def leave_yes_btn() -> str:
@@ -515,7 +515,6 @@ def start_pm() -> str:
             "<b>Buyruqlar:</b>\n"
             "👤 /profile — profil va buyumlar\n"
             "🛒 /shop — do'kon\n"
-            "🎁 /bonus — kunlik bonus\n"
             "🏆 /top — reyting\n"
             "🎭 /rules — rollar")
 
@@ -528,11 +527,27 @@ INVITE_TEXT = "🎭 Admiral Mafia — Telegramdagi mafiya o'yini! Men bilan o'yn
 def profile(u, inv) -> str:
     return (profile_card(u, inv)
             + "\n\n<i>🟢 ON bo'lgan buyumlar o'yinda o'zi ishlatiladi</i>"
-            + f"\n\n🤝 Har bir taklif qilingan do'st uchun <b>+{config.REF_BONUS} 💵</b>")
+            + f"\n\n🤝 Har bir taklif qilingan do'st uchun <b>+{config.REF_BONUS} 💵</b>"
+              f"\n<i>(do'stingiz {config.REF_GAMES} ta o'yin o'ynagach beriladi)</i>")
+
+
+def ref_joined(name: str) -> str:
+    return (f"🤝 <b>{escape(name)}</b> sizning taklifingiz bilan qo'shildi!\n"
+            f"U <b>{config.REF_GAMES} ta</b> o'yin o'ynagach, sizga <b>+{config.REF_BONUS} 💵</b> beriladi.")
 
 
 def ref_bonus(name: str) -> str:
-    return f"🎉 <b>{escape(name)}</b> sizning taklifingiz bilan qo'shildi!\nHisobingizga <b>+{config.REF_BONUS} 💵</b> tushdi."
+    return (f"🎉 <b>{escape(name)}</b> {config.REF_GAMES} ta o'yin o'ynadi!\n"
+            f"Taklif uchun hisobingizga <b>+{config.REF_BONUS} 💵</b> tushdi.")
+
+
+def send_locked(games: int) -> str:
+    return (f"🔒 Pul o'tkazish va tarqatish <b>{config.SEND_GAMES} ta</b> o'yindan keyin ochiladi.\n"
+            f"Siz hozircha <b>{games} ta</b> o'yin o'ynagansiz.")
+
+
+def claim_locked() -> str:
+    return f"🔒 Tarqatmadan olish uchun kamida {config.CLAIM_GAMES} ta o'yin o'ynagan bo'lishingiz kerak"
 
 
 def shop(dollars: int) -> str:
@@ -543,8 +558,6 @@ def shop(dollars: int) -> str:
 
 BOUGHT = "✅ Sotib olindi!"
 NO_MONEY = "😔 Pul yetarli emas."
-BONUS_OK = "🎁 Kunlik bonus olindi!"
-BONUS_WAIT = "⏳ Bonusni 24 soatda bir marta olish mumkin."
 def exchange_btn() -> str:
     return f"💎 1 → {config.DIAMOND_RATE} 💵"
 

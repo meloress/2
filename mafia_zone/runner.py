@@ -483,6 +483,8 @@ class Runner:
         g = self.game
         await db.finish_game(self.game_id, self.chat_id, "finished", g.winner,
                              [(p.uid, p.role, p.team, p.alive, p.won) for p in g.players])
+        for inviter, name in await db.pay_referrals([p.uid for p in g.players if p.uid < FAKE_BASE]):
+            await send(self.bot, inviter, texts.ref_bonus(name))
         self.close()
         minutes = max(1, round((time.time() - self.meta["started"]) / 60)) if "started" in self.meta else None
         await send(self.bot, self.chat_id, texts.game_over(g, minutes))

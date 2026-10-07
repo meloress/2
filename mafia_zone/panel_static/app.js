@@ -1036,8 +1036,7 @@
   // ================= iqtisod, adminlar, jurnal =================
   const ECON = [["reward_win", "G'alaba mukofoti", "O'yinda yutgan har bir o'yinchiga", 0, 100000, "$"],
     ["reward_play", "Ishtirok mukofoti", "Yutqazganga ham beriladi (0 — faqat yutganlar oladi)", 0, 100000, "$"],
-    ["daily_bonus", "Kunlik bonus", "/bonus, 24 soatda bir marta", 0, 100000, "$"],
-    ["ref_bonus", "Taklif bonusi", "Do'st havola orqali botga birinchi marta kirganda", 0, 100000, "$"],
+    ["ref_bonus", "Taklif bonusi", "Taklif qilingan do'st 3 ta o'yin o'ynagach", 0, 100000, "$"],
     ["diamond_rate", "Olmos kursi", "1 olmos necha dollarga almashadi", 1, 1000000, "$"]];
 
   function pageEconomy(root, { view }) {

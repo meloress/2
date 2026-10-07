@@ -34,7 +34,7 @@ python -m mafia_zone           # DATABASE_URL bo'sh bo'lsa mafia.db (SQLite) yar
 | Joy | Buyruqlar |
 |---|---|
 | Guruh | `/game` `/extend` `/begin` `/stop` `/leave` `/next` `/players` `/settings` `/top` `/rules` |
-| Shaxsiy chat | `/start` `/profile` `/role` `/shop` `/bonus` `/top` `/rules` |
+| Shaxsiy chat | `/start` `/profile` `/role` `/shop` `/top` `/rules` |
 | Bot egasi (shaxsiy chat) | `/stats` `/broadcast` `/ban` `/unban` `/give` |
 | Bot egasi (guruh) | `/testgame [soni]` — bot-o'yinchilar bilan test o'yin |
 
