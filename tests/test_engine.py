@@ -41,10 +41,15 @@ def test_deal(n):
         r = deal(n, random.Random(seed))
         assert len(r) == n
         assert r.count("don") == 1 and r.count("komissar") == 1
-        assert sum(ROLES[x].team == MAFIA for x in r) == max(1, n // 4)
+        assert sum(ROLES[x].team == MAFIA for x in r) == (2 if n == 7 else max(1, n // 4))
         assert ("podshoh" not in r) or "qorovul" in r
         assert ("aka" in r) == ("uka" in r)
         assert all(x in ROLES for x in r)
+        # balans: kichik o'yin bir zarbada tugamasin, katta o'yinda bo'sh Tinch kam bo'lsin
+        assert n > 7 or not {"afsungar", "suitsid", "podshoh"} & set(r)
+        assert n >= 12 or not {"qotil", "gazabkor", "sehrgar", "vampir"} & set(r)
+        assert not 30 <= n <= 40 or r.count("tinch") <= 6  # 40+ da takrorlanadiganlar tugaydi
+        assert all(r.count(x) == 1 for x in set(r) - {"tinch", "mafiya", "daydi", "kezuvchi", "ovchi", "janob"})
 
 
 def test_deal_disabled():

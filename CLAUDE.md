@@ -14,7 +14,7 @@ python -m pytest -q tests/test_engine.py::test_voris_transforms   # single test
 node --check mafia_zone/panel_static/app.js   # syntax check for the panel frontend (no build step)
 ```
 
-- Env (`.env` locally, Railway Variables in prod): `BOT_TOKEN`, `ADMIN_IDS` (comma-separated owner ids), `DATABASE_URL`, plus optional `PANEL_URL` (else `https://$RAILWAY_PUBLIC_DOMAIN`, which Railway only injects on the deploy *after* a domain is generated), `PANEL_SECRET` (else derived from `BOT_TOKEN`), `PORT` (default 8080), `NEWS_URL`.
+- Env (`.env` locally, Railway Variables in prod): `BOT_TOKEN`, `ADMIN_IDS` (comma-separated owner ids), `DATABASE_URL`, plus optional `PANEL_URL` (else `https://$RAILWAY_PUBLIC_DOMAIN`, which Railway only injects on the deploy *after* a domain is generated), `PANEL_SECRET` (else derived from `BOT_TOKEN`), `PORT` (default 8080), `NEWS_URL`, `EMOJI_PACK` (empty = plain emoji).
 - No `DATABASE_URL` (or empty) → local SQLite `mafia.db`. Railway gives `postgresql://…`; `config.py` rewrites it to `postgresql+asyncpg://`.
 - Tests never touch `mafia.db`: `tests/conftest.py` points `DATABASE_URL` at a temp file before `mafia_zone.db` is imported.
 - Schema: `db.init()` runs `Base.metadata.create_all` (new tables) then `_migrate` (adds columns listed in `db.COLUMNS` to existing tables). No Alembic — add every new column on an existing table to `COLUMNS`. SQLite returns naive datetimes; compare via `db._aware()`.
@@ -47,4 +47,4 @@ node --check mafia_zone/panel_static/app.js   # syntax check for the panel front
 ## Working notes
 
 - When patching files from the shell, write the Python patch script to a file and run it; `\\n` inside Bash heredocs has repeatedly turned into real newlines and broken string literals.
-- Plain Unicode emoji only — premium/custom emoji was removed on request. Each role's emoji (first token of `Role.name`) must be unique.
+- Write plain Unicode emoji in texts. `emoji.py` (session middleware) swaps the ones present in the `EMOJI_PACK` sticker set (default `RestrictedEmoji`, loaded at startup) for animated custom emoji, skipping `<a>`/`<code>`/`<pre>`; if Telegram rejects once, it resends plain and turns itself off until restart. Each role's emoji (first token of `Role.name`) must be unique.

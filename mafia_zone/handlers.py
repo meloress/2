@@ -11,7 +11,7 @@ from . import config, db, texts
 from .engine.game import CONFIRM, DAY, FINISHED, NIGHT, VOTING
 from .engine.roles import ROLES
 from .engine.setup import CORE
-from .runner import NEXT, PLAYING, RUNNERS, Runner, _call, bot_link, edit, profile_kb, send
+from .runner import NEXT, PLAYING, RUNNERS, Runner, _call, bot_link, edit, invite_url, profile_kb, send
 
 log = logging.getLogger(__name__)
 router = Router()
@@ -370,10 +370,10 @@ async def cmd_start(msg: Message, bot: Bot, command: CommandObject):
     if arg.startswith("join"):
         r = RUNNERS.get(int(arg[4:])) if arg[4:].lstrip("-").isdigit() else None
         return await msg.answer(r.join(msg.from_user.id, msg.from_user.full_name) if r else texts.NO_LOBBY)
-    await msg.answer(texts.welcome(), reply_markup=start_kb())
+    await msg.answer(texts.welcome(), reply_markup=start_kb(msg.from_user.id))
 
 
-def start_kb() -> Kb:
+def start_kb(uid: int | None = None) -> Kb:
     # admin=...: guruhga qo'shishda kerakli huquqlar so'raladi (xabar o'chirish, cheklash, pin)
     add = bot_link() + "?startgroup=true&admin=delete_messages+restrict_members+pin_messages"
     rows = [[Btn(text="🎮 O'yinni guruhingizga qo'shing", url=add)],
@@ -382,6 +382,8 @@ def start_kb() -> Kb:
         rows.append([Btn(text="📰 Yangiliklar", url=config.NEWS_URL)])
     rows += [[Btn(text="🎭 Rollar", callback_data="m:rules"), Btn(text="🛒 Do'kon", callback_data="m:shop")],
              [Btn(text="👤 Mening profilim", callback_data="m:profile")]]
+    if uid is not None:
+        rows.append([Btn(text=texts.INVITE_BTN, url=invite_url(uid), style="success")])
     return Kb(inline_keyboard=rows)
 
 
@@ -399,7 +401,7 @@ async def cb_menu(cq: CallbackQuery):
             await cq.message.answer(texts.shop(u.dollars), reply_markup=shop_kb())
             return await cq.answer()
         inv = await db.inventory(u.telegram_id)
-        await cq.message.answer(texts.profile(u, inv, bot_link(f"ref{u.telegram_id}")), reply_markup=profile_kb(inv))
+        await cq.message.answer(texts.profile(u, inv), reply_markup=profile_kb(inv, u.telegram_id))
     await cq.answer()
 
 
@@ -413,7 +415,7 @@ async def cmd_profile(msg: Message):
     if not (u := await _user(msg)):
         return await msg.answer(texts.BANNED)
     inv = await db.inventory(u.telegram_id)
-    await msg.answer(texts.profile(u, inv, bot_link(f"ref{u.telegram_id}")), reply_markup=profile_kb(inv))
+    await msg.answer(texts.profile(u, inv), reply_markup=profile_kb(inv, u.telegram_id))
 
 
 @router.message(Command("role"), PRIVATE)
@@ -458,7 +460,7 @@ async def cb_profile(cq: CallbackQuery):
         await db.toggle_item(cq.from_user.id, cq.data[2:])
     u = await db.get_user(cq.from_user.id)
     inv = await db.inventory(u.telegram_id)
-    await cq.message.edit_text(texts.profile(u, inv, bot_link(f"ref{u.telegram_id}")), reply_markup=profile_kb(inv))
+    await cq.message.edit_text(texts.profile(u, inv), reply_markup=profile_kb(inv, u.telegram_id))
     await cq.answer()
 
 

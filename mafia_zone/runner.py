@@ -6,6 +6,7 @@ from random import choice
 import time
 from collections import defaultdict, deque
 from pathlib import Path
+from urllib.parse import quote
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, TelegramRetryAfter
@@ -142,14 +143,21 @@ async def send_gif(bot: Bot, chat_id: int, name: str, caption: str, kb: Kb | Non
     return m
 
 
-def profile_kb(inv) -> Kb:
-    """Profil tugmalari: har buyum ON/OFF (3 tadan qatorda), almashtirish, do'kon."""
+def invite_url(uid: int) -> str:
+    """Telegramning "ulashish" oynasi: do'st tanlanadi, taklif matni va havola tayyor holda boradi."""
+    return f"https://t.me/share/url?url={quote(bot_link(f'ref{uid}'), safe='')}&text={quote(texts.INVITE_TEXT)}"
+
+
+def profile_kb(inv, uid: int | None = None) -> Kb:
+    """Profil tugmalari: har buyum ON/OFF (3 tadan qatorda), almashtirish, do'kon, do'st taklif qilish."""
     toggles = [Btn(text=f"{texts.ITEMS[i.item].split(' ', 1)[0]} - {'🟢 ON' if i.enabled else '🔴 OFF'}",
                    callback_data=f"t:{i.item}", style="success" if i.enabled else "danger")
                for i in inv if i.item in texts.ITEMS and i.qty > 0]
     rows = grid(toggles, 3) if toggles else []
     rows.append([Btn(text=texts.exchange_btn(), callback_data="x", style="primary"),
                  Btn(text="🛒 Do'kon", callback_data="shop", style="primary")])
+    if uid is not None:
+        rows.append([Btn(text=texts.INVITE_BTN, url=invite_url(uid), style="success")])
     return Kb(inline_keyboard=rows)
 
 
@@ -447,7 +455,7 @@ class Runner:
                 continue
             u = await db.get_user(p.uid)
             inv = await db.inventory(p.uid) if u else []
-            await send(self.bot, p.uid, texts.result_pm(p.won, reward, u, inv), profile_kb(inv) if u else None,
+            await send(self.bot, p.uid, texts.result_pm(p.won, reward, u, inv), profile_kb(inv, p.uid) if u else None,
                        effect=EFFECT_WIN if p.won else None)
 
     async def abort(self, text: str = texts.STOPPED) -> None:

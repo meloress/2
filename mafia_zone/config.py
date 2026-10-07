@@ -32,3 +32,4 @@ _domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "").strip()
 PANEL_URL = (os.environ.get("PANEL_URL", "").strip() or (f"https://{_domain}" if _domain else "")).rstrip("/")
 PANEL_SECRET = os.environ.get("PANEL_SECRET", "").strip()  # bo'sh bo'lsa BOT_TOKEN dan hosil qilinadi
 PORT = int(os.environ.get("PORT", "8080") or 8080)
+EMOJI_PACK = os.getenv("EMOJI_PACK", "RestrictedEmoji").strip()  # animatsion emoji to'plami; bo'sh = o'chiq

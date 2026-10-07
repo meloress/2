@@ -456,18 +456,30 @@ def welcome() -> str:
 
 def start_pm() -> str:
     return ("🎮 <b>MAFIA ZONE</b> ga xush kelibsiz!\n\n"
-            "Meni guruhga qo'shing, admin qiling va /game buyrug'ini yozing.\n\n"
-            "/profile — profil va buyumlar\n/shop — do'kon\n/bonus — kunlik bonus\n/top — reyting\n/rules — rollar")
+            "<b>Qanday boshlash kerak:</b>\n"
+            "1️⃣ Meni guruhingizga qo'shing\n"
+            "2️⃣ Admin qiling (xabarlarni o'chirish huquqi bilan)\n"
+            "3️⃣ Guruhda /game yozing\n\n"
+            "<b>Buyruqlar:</b>\n"
+            "👤 /profile — profil va buyumlar\n"
+            "🛒 /shop — do'kon\n"
+            "🎁 /bonus — kunlik bonus\n"
+            "🏆 /top — reyting\n"
+            "🎭 /rules — rollar")
 
 
-def profile(u, inv, ref_link: str = "") -> str:
+INVITE_BTN = "🤝 Do'stni taklif qilish"
+INVITE_TEXT = "🎭 Mafia Zone — Telegramdagi mafiya o'yini! Men bilan o'yna 👇"
+
+
+def profile(u, inv) -> str:
     return (profile_card(u, inv)
-            + "\n\n<i>Tugmalar: ✅ yoqilgan buyum o'yinda avtomatik ishlatiladi</i>"
-            + (f"\n\n🤝 Do'stlaringizni taklif qiling — har biri uchun +{config.REF_BONUS} 💵:\n{ref_link}" if ref_link else ""))
+            + "\n\n<i>🟢 ON bo'lgan buyumlar o'yinda o'zi ishlatiladi</i>"
+            + f"\n\n🤝 Har bir taklif qilingan do'st uchun <b>+{config.REF_BONUS} 💵</b>")
 
 
 def ref_bonus(name: str) -> str:
-    return f"🤝 Sizning havolangiz orqali <b>{escape(name)}</b> qo'shildi! +{config.REF_BONUS} 💵"
+    return f"🎉 <b>{escape(name)}</b> sizning taklifingiz bilan qo'shildi!\nHisobingizga <b>+{config.REF_BONUS} 💵</b> tushdi."
 
 
 def shop(dollars: int) -> str:
