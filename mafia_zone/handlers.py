@@ -47,8 +47,7 @@ async def cmd_testgame(msg: Message, bot: Bot, command: CommandObject):
         return await msg.answer(texts.GAME_EXISTS)
     n = int(command.args) if (command.args or "").strip().isdigit() else 8
     n = max(4, min(30, n))
-    settings = await db.group_settings(msg.chat.id, msg.chat.title or "")
-    settings |= {"lobby": 60, "night": 20, "day": 15, "vote": 15}  # test uchun tez
+    settings = await db.group_settings(msg.chat.id, msg.chat.title or "")  # haqiqiy o'yindagi vaqtlar
     r = Runner(bot, msg.chat.id, settings, msg.chat.title or "")
     r.add_bots(n - 1)
     await r.open_lobby()
