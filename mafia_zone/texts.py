@@ -504,7 +504,8 @@ def bold(s: str) -> str:
 
 
 def nm(g: Game, uid: int) -> str:
-    return escape(g.get(uid).name)
+    p = g.get(uid) if uid is not None else None
+    return escape(p.name) if p else "?"  # o'yinchi chiqib ketgan bo'lsa ham xabar yiqilmasin
 
 
 def who(g: Game, uid: int) -> str:

@@ -269,6 +269,27 @@ def test_last_words_for_every_death_kind():
     assert "60 sekund" in texts.death_pm(False) and "osib" in texts.death_pm(True)
 
 
+def test_late_confirm_click_does_not_crash_next_phase():
+    """Tasdiq tugashidan oldin bosilgan 👍 belgisi keyingi tunda eski xabarni tahrirlab o'yinni yiqitmasin."""
+    from mafia_zone.engine.game import Game
+
+    async def go():
+        bot = FakeBot()
+        r = runner.Runner(bot, -4343, {"vote": 10})
+        r.game = Game.create(-4343, [(i, f"p{i}") for i in range(1, 7)], 3)
+        g = r.game
+        g.phase, g.candidate, r.meta["confirm_msg"] = CONFIRM, 1, 77
+        r.confirm_dirty = True
+        g.resolve_confirm()  # tasdiq tugadi, nomzod yo'q, faza o'zgardi
+        n = len(bot.sent)
+        await r._edit_confirm(final=False)
+        assert not r.confirm_dirty and len(bot.sent) == n
+        assert texts.nm(g, None) == "?" and texts.nm(g, 999) == "?"
+        r.close()
+
+    asyncio.run(go())
+
+
 def test_last_words_late_goes_nowhere():
     from mafia_zone.engine.game import Game, Player
     import time as _t

@@ -372,9 +372,14 @@ class Runner:
                                     Btn(text=f"👎 {no}", callback_data=f"{pre}:0", style="danger")]])
 
     async def _edit_confirm(self, final: bool) -> None:
+        g = self.game
+        if g.phase != CONFIRM or g.candidate is None:  # kech kelgan bosish: tasdiq allaqachon tugagan
+            self.confirm_dirty = False
+            return
         if mid := self.meta.get("confirm_msg"):
-            g = self.game
             if final:
+                self.confirm_dirty = False
+                self.meta.pop("confirm_msg", None)
                 await edit(self.bot, self.chat_id, mid, texts.confirm_result(g))
             else:
                 await edit(self.bot, self.chat_id, mid, texts.confirm_prompt(g, self.s["vote"]), self._confirm_kb())
