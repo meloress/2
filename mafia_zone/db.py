@@ -7,7 +7,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-from . import config
+from . import config, pro
 
 Json = JSON().with_variant(JSONB(), "postgresql")
 engine = create_async_engine(config.DATABASE_URL, pool_pre_ping=True,  # SQLite: qulf bo'lsa 30 s kutadi
@@ -48,6 +48,9 @@ class User(Base):
     leave_count: Mapped[int] = mapped_column(Integer, default=0)  # ... va shu kundagi soni
     referred_by: Mapped[int | None] = mapped_column(BigInteger)  # kim taklif qilgan
     ref_paid: Mapped[bool] = mapped_column(Boolean, default=False)  # taklif bonusi to'langanmi
+    pro_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # PRO tugash vaqti
+    nickname: Mapped[str | None] = mapped_column(String(32))  # PRO laqabi
+    pro_reminded: Mapped[bool] = mapped_column(Boolean, default=False)  # tugash eslatmasi yuborilganmi
 
 
 class Inventory(Base):
@@ -100,6 +103,18 @@ class Giveaway(Base):
     left: Mapped[int] = mapped_column(Integer)  # qolgan ulush
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     msg_id: Mapped[int | None] = mapped_column(BigInteger)  # guruhdagi xabar (muddati tugaganda tahrir/pin)
+
+
+class Payment(Base):
+    """PRO xaridlari: stars / diamonds / admin. charge_id - Telegram to'lov ID (takror hisoblanmasin)."""
+    __tablename__ = "payments"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    method: Mapped[str] = mapped_column(String(16))
+    days: Mapped[int] = mapped_column(Integer)
+    amount: Mapped[int] = mapped_column(Integer, default=0)
+    charge_id: Mapped[str | None] = mapped_column(String(128), unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
 class LobbyRow(Base):
@@ -225,6 +240,80 @@ async def close_giveaway(gid: int) -> tuple[Giveaway | None, int]:
         return g, left * g.per
 
 
+# ---------- PRO ----------
+async def _extend(s, uid: int, days: int) -> datetime | None:
+    """PRO muddatini uzaytiradi (tugagan bo'lsa - hozirdan). Keshni yangilaydi."""
+    u = await s.get(User, uid, with_for_update=True)
+    if not u:
+        return None
+    t = now()
+    u.pro_until = max(t, _aware(u.pro_until) or t) + timedelta(days=days)
+    u.pro_reminded = False
+    pro.set_user(uid, u.pro_until, u.nickname)
+    return u.pro_until
+
+
+async def add_pro(uid: int, days: int, method: str, amount: int, charge_id: str | None = None) -> datetime | None:
+    """To'lov yozib, PRO beradi. Shu charge_id avval hisoblangan bo'lsa (takror xabar) - None."""
+    from sqlalchemy.exc import IntegrityError
+    try:
+        async with Session.begin() as s:
+            s.add(Payment(user_id=uid, method=method, days=days, amount=amount, charge_id=charge_id))
+            await s.flush()
+            return await _extend(s, uid, days)
+    except IntegrityError:
+        return None
+
+
+async def buy_pro_diamonds(uid: int, days: int) -> datetime | None:
+    """Olmos bilan PRO: atomar yechish. Yetmasa yoki paket yo'q bo'lsa - None, hech narsa o'zgarmaydi."""
+    if days not in pro.PACKS:
+        return None
+    cost = pro.PACKS[days][0]
+    async with Session.begin() as s:
+        r = await s.execute(update(User).where(User.telegram_id == uid, User.diamonds >= cost)
+                            .values(diamonds=User.diamonds - cost))
+        if r.rowcount != 1:
+            return None
+        s.add(Payment(user_id=uid, method="diamonds", days=days, amount=cost))
+        return await _extend(s, uid, days)
+
+
+async def set_pro(uid: int, days: int) -> datetime | None:
+    """Panel: days > 0 - PRO berish (uzaytirish), days <= 0 - olib tashlash."""
+    if days > 0:
+        return await add_pro(uid, days, "admin", 0)
+    async with Session.begin() as s:
+        await s.execute(update(User).where(User.telegram_id == uid).values(pro_until=None))
+    pro.set_user(uid, None, None)
+    return None
+
+
+async def set_nickname(uid: int, nick: str | None) -> None:
+    async with Session.begin() as s:
+        await s.execute(update(User).where(User.telegram_id == uid).values(nickname=nick))
+    if uid in pro.CACHE:
+        pro.CACHE[uid] = (pro.CACHE[uid][0], nick)
+
+
+async def load_pro() -> None:
+    async with Session() as s:
+        rows = (await s.execute(select(User.telegram_id, User.pro_until, User.nickname)
+                                .where(User.pro_until > now()))).all()
+    pro.load([(uid, _aware(t), nick) for uid, t, nick in rows])
+
+
+async def pro_expiring(hours: int = 24) -> list[int]:
+    """Shuncha soat ichida tugaydigan va hali eslatilmagan PRO'lar; ularni eslatilgan deb belgilaydi."""
+    t = now()
+    async with Session.begin() as s:
+        ids = list((await s.scalars(select(User.telegram_id).where(
+            User.pro_until > t, User.pro_until <= t + timedelta(hours=hours), User.pro_reminded.is_(False)))).all())
+        if ids:
+            await s.execute(update(User).where(User.telegram_id.in_(ids)).values(pro_reminded=True))
+    return ids
+
+
 async def save_lobby(chat_id: int, msg_id: int) -> None:
     async with Session.begin() as s:
         await s.merge(LobbyRow(chat_id=chat_id, msg_id=msg_id))
@@ -284,7 +373,9 @@ async def claim(gid: int, uid: int) -> Giveaway | None:
 # ponytail: qo'lda ADD COLUMN; murakkab o'zgarishlar boshlanganda Alembic'ga o'tiladi
 COLUMNS = [("users", "last_seen", "TIMESTAMP WITH TIME ZONE"), ("users", "leave_date", "VARCHAR(10)"),
            ("users", "leave_count", "INTEGER NOT NULL DEFAULT 0"), ("users", "referred_by", "BIGINT"),
-           ("users", "ref_paid", "BOOLEAN NOT NULL DEFAULT FALSE"), ("giveaways", "msg_id", "BIGINT")]
+           ("users", "ref_paid", "BOOLEAN NOT NULL DEFAULT FALSE"), ("giveaways", "msg_id", "BIGINT"),
+           ("users", "pro_until", "TIMESTAMP WITH TIME ZONE"), ("users", "nickname", "VARCHAR(32)"),
+           ("users", "pro_reminded", "BOOLEAN NOT NULL DEFAULT FALSE")]
 
 
 def _migrate(conn) -> None:
@@ -300,6 +391,7 @@ async def init() -> None:
         await c.run_sync(Base.metadata.create_all)
         await c.run_sync(_migrate)
     await load_settings()
+    await load_pro()
 
 
 # ---------- foydalanuvchilar ----------

@@ -57,3 +57,28 @@ def test_custom_emoji_rejected_falls_back_to_plain():
     assert calls[-1].reply_markup.inline_keyboard[0][0].icon_custom_emoji_id is None
     n = len(calls)  # bir marta rad etilgach: keyingilari darhol oddiy yuboriladi
     assert asyncio.run(emoji.PremiumEmoji()(make_request, None, m)) == "ok" and len(calls) == n + 1
+
+
+def test_pro_purchase_db():
+    async def t():
+        await db.init()
+        u = 8_200_001
+        await db.upsert_user(u, "Ali", None)
+        await db.add_balance(u, 0, 40)
+        until1 = await db.buy_pro_diamonds(u, 7)
+        assert until1 and pro.is_pro(u) and (await db.get_user(u)).diamonds == 10
+        assert await db.buy_pro_diamonds(u, 7) is None and (await db.get_user(u)).diamonds == 10  # yetmaydi
+        assert await db.buy_pro_diamonds(u, 8) is None  # bunday paket yo'q
+        until2 = await db.add_pro(u, 15, "stars", 150, "ch-1")
+        assert round((until2 - until1).total_seconds() / 86400) == 15  # ustiga qo'shiladi
+        assert await db.add_pro(u, 15, "stars", 150, "ch-1") is None  # takror to'lov
+        await db.set_nickname(u, "Shoh")
+        pro.CACHE.clear()
+        await db.load_pro()
+        assert pro.name(u, "Ali") == "Shoh"
+        assert await db.pro_expiring(24 * 30) == [u] and await db.pro_expiring(24 * 30) == []  # bir marta
+        await db.set_pro(u, 0)
+        assert not pro.is_pro(u) and (await db.get_user(u)).pro_until is None
+        await db.set_pro(u, 3)
+        assert pro.is_pro(u) and pro.name(u, "Ali") == "Shoh"
+    asyncio.run(t())
