@@ -236,18 +236,24 @@ class Game:
                 return False
         return True
 
-    def _mafia_target(self, rng: random.Random) -> tuple[int, int] | None:
+    def _mafia_target(self, rng: random.Random, blocked: frozenset = frozenset()) -> tuple[int, int] | None:
         don = self.by_role("don")
         if not don:
             return None
-        if don.uid in self.mafia_votes:  # Donning so'zi yakuniy: "hech kim" desa, o'ldirilmaydi
+        # Donning so'zi yakuniy: "hech kim" desa, o'ldirilmaydi; tanlagani o'yindan chiqqan bo'lsa - jamoa ovozi
+        if don.uid in self.mafia_votes and (self.mafia_votes[don.uid] is None or self._alive(self.mafia_votes[don.uid])):
             t = self.mafia_votes[don.uid]
             return (don.uid, t) if t is not None else None
-        votes = [t for u, t in self.mafia_votes.items() if t is not None and self.get(u).alive]
+        votes = [t for u, t in self.mafia_votes.items()
+                 if t is not None and u != don.uid and u not in blocked and self.get(u).alive and self._alive(t)]
         if not votes:
             return None
         top = max(votes.count(t) for t in votes)
         return don.uid, rng.choice(sorted({t for t in votes if votes.count(t) == top}))
+
+    def _alive(self, uid: int) -> bool:
+        p = self.get(uid)
+        return bool(p and p.alive)
 
     def _use(self, p: Player, item: str, ev: list) -> bool:
         if p.items.get(item, 0) <= 0:
@@ -260,7 +266,7 @@ class Game:
         if v.role == "sehrgar":
             return kind in ("mafia_kill", "kill") or (kind == "shoot" and src == "komissar")
         if v.role == "qotil":
-            return kind in ("mafia_kill", "hit")
+            return kind in ("mafia_kill", "hit", "pair")
         return False
 
     def resolve_night(self) -> list[Event]:
@@ -275,8 +281,9 @@ class Game:
         roles0 = {p.uid: p.role for p in self.players}
         # acts: actor -> (kind, target, harakat egasining roli)
         acts = {u: (k, t, self.get(u).role) for u, (k, t) in self.actions.items()
-                if self.get(u).alive and k != SKIP}
-        m = self._mafia_target(rng)
+                if self.get(u).alive and k != SKIP and (t is None or self._alive(t))}
+        # uxlatilganlar oldindan: uxlagan mafiyadoshning ovozi ham hisoblanmaydi (Don uxlasa - o'ldirish yo'q, quyida)
+        m = self._mafia_target(rng, frozenset(t for k, t, _ in acts.values() if k == "block"))
         if m:
             acts[m[0]] = ("mafia_kill", m[1], "don")
 
@@ -293,15 +300,16 @@ class Game:
             ev.append(Event("blocked", t))
 
         # 1b. Aferist
+        peeked: list[tuple[int, int]] = []  # o'g'irlaydigan harakat yo'q: rolini ko'radi (3-bosqichda, niqobdan keyin)
         for u in [u for u, a in acts.items() if a[0] == "steal"]:
             _, t, _ = acts.pop(u)
             stolen = acts.get(t)
-            if stolen and stolen[0] not in ("steal", "sacrifice"):
+            if stolen and stolen[0] not in ("steal", "sacrifice", "block"):  # uxlatish 1a da bajarilib bo'lgan
                 del acts[t]
                 acts[u] = stolen
                 ev.append(Event("stolen", u, t, {"kind": stolen[0]}))
             else:
-                ev.append(Event("saw_role", u, t, {"role": self.get(t).role}))
+                peeked.append((u, t))
 
         # 1b. Qaroqchi (himoyadan oldin: o'g'irlangan qalqon shu tun ishlamaydi)
         for u, (k, t, _) in acts.items():
@@ -333,9 +341,10 @@ class Game:
             elif k == "disguise":
                 disguised.add(t)
                 ev.append(Event("result", u, t, {"kind": k, "ok": True}))
-        for p in self.players:
+        for p in self.players:  # uxlatilgan/o'g'irlangan harakat bajarilmadi - ketma-ket cheklovga kirmaydi
             if p.role in ("doktor", "kezuvchi", "qorovul"):
-                p.last_target = self.actions.get(p.uid, [None, None])[1]
+                a = acts.get(p.uid)
+                p.last_target = a[1] if a and a[2] == p.role else None
 
         # 3. Axborot
         visitors: dict[int, list[int]] = {}
@@ -343,6 +352,8 @@ class Game:
             if t is not None:
                 visitors.setdefault(t, []).append(u)
         docced: set[int] = set()  # shu tun Hujjat ko'rsatganlar: boshqa tekshiruvda ham Tinch
+        for u, t in peeked:
+            ev.append(Event("saw_role", u, t, {"role": self._appear(t, disguised, docced, ev)}))
         for u, (k, t, _) in acts.items():
             if k == "check":
                 if self.get(t).team != self.get(u).team:  # haqiqiy jamoa bo'yicha (niqob ballga ta'sir qilmaydi)
@@ -445,10 +456,11 @@ class Game:
                 ev.append(Event("result", u, t, {"kind": k, "ok": t in heal_saved}))
             elif k == "visit" and t not in deaths:
                 ev.append(Event("result", u, t, {"kind": k, "ok": False}))
-        for t, alist in attacks.items():
+        for t, alist in attacks.items():  # ta'sir qilmagan (immunitet) hujum - nishon boshqa sababdan o'lsa ham "omon"
             for u, k, _ in alist:
                 if k != "mafia_kill":
-                    ev.append(Event("result", u, t, {"kind": k, "ok": not self.get(t).alive}))
+                    ok = any(a[0] == u for a in deaths.get(t, ()))
+                    ev.append(Event("result", u, t, {"kind": k, "ok": ok}))
 
         # Mafiya ovozining natijasi (sheriklarga) yoki Don umuman tanlamagani (guruhga)
         if m:
@@ -498,7 +510,8 @@ class Game:
             s.role = "komissar"
             ev.append(Event("promoted", s.uid, data={"role": "komissar"}))
         if not self.by_role("don"):
-            mafia = sorted((p for p in self.alive() if p.team == MAFIA), key=lambda p: p.role != "mafiya")
+            mafia = sorted((p for p in self.alive() if p.team == MAFIA),
+                           key=lambda p: (p.role != "mafiya", p.role in ("aka", "uka")))
             if mafia:
                 mafia[0].role = "don"
                 ev.append(Event("promoted", mafia[0].uid, data={"role": "don"}))
@@ -523,6 +536,8 @@ class Game:
     def resolve_vote(self) -> list[Event]:
         ev: list[Event] = []
         self._track_idle([p for p in self.alive() if self.can_vote(p.uid)], self.votes.keys())
+        # /leave yoki guruhdan chiqish: o'lgan ovoz beruvchi ham, o'lgan nomzod ham hisobga olinmaydi
+        self.votes = {v: t for v, t in self.votes.items() if self._alive(v) and (t is None or self._alive(t))}
         tally: dict = {}
         for v, t in self.votes.items():
             tally[t] = tally.get(t, 0) + (2 if self.get(v).role == "janob" else 1)
@@ -553,13 +568,15 @@ class Game:
     def confirm_tally(self) -> tuple[int, int]:
         """(👍, 👎) - Janob ovozi 2 ta."""
         w = lambda u: 2 if self.get(u).role == "janob" else 1
-        return (sum(w(u) for u, c in self.confirms.items() if c),
-                sum(w(u) for u, c in self.confirms.items() if not c))
+        live = {u: c for u, c in self.confirms.items() if self._alive(u)}  # chiqib ketganning ovozi yo'q
+        return (sum(w(u) for u, c in live.items() if c), sum(w(u) for u, c in live.items() if not c))
 
     def resolve_confirm(self) -> list[Event]:
         ev: list[Event] = []
         yes, no = self.confirm_tally()
         t, self.candidate = self.candidate, None
+        if not self._alive(t):  # nomzod o'yindan chiqib ketgan: osish yo'q, chiqqani allaqachon e'lon qilingan
+            return self._end_day(ev)
         if yes > no:
             if self._hang(t, {"votes": yes, "yes": yes, "no": no}, ev):
                 return ev
@@ -584,10 +601,11 @@ class Game:
             self._finish(MAFIA, ev, podshoh=True)
             return True
         if v.role == "tulki":
-            first = next(u for u, x in self.vote_log if x == t and self.votes.get(u) == t)
-            self.get(first).alive = False
             v.won = True
-            ev.append(Event("tulki", t, first))
+            first = next((u for u, x in self.vote_log if x == t and self.votes.get(u) == t and self._alive(u)), None)
+            if first is not None:  # tasdiq bosqichida ovoz beruvchilar chiqib ketgan bo'lishi mumkin
+                self.get(first).alive = False
+                ev.append(Event("tulki", t, first))
         return False
 
     def _end_day(self, ev: list) -> list[Event]:

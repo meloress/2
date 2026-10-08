@@ -330,14 +330,14 @@ class Runner:
             self.game.pairs, self.game.couple_mode = pairs, True
         spent = self.game.use_role_picks() + [(u, "ticket") for u in self.game.use_tickets()]
         spent += [(p.uid, "mask") for p in self.game.players if p.items.get("mask", 0) > 0]  # maska shu o'yinga
-        for uid, item in spent:
-            await db.change_item(uid, item, -1)
         self.meta["started"] = time.time()
         self.game_id = await db.create_game(self.chat_id, self.state())
-        if self.game_id is None:
+        if self.game_id is None:  # o'yin yaratilmadi - buyumlar yechilmaydi
             await send(self.bot, self.chat_id, texts.GAME_EXISTS)
             self.close()
             return
+        for uid, item in spent:
+            await db.change_item(uid, item, -1)
         role_kb = Kb(inline_keyboard=[[Btn(text=texts.ROLE_BTN, callback_data=f"r:{self.game_id}", style="primary")]])
         if self.lobby_msg:
             await edit(self.bot, self.chat_id, self.lobby_msg,
@@ -410,6 +410,8 @@ class Runner:
             for p in g.alive():
                 if kb := self.night_kb(p.uid):
                     await send(self.bot, p.uid, texts.night_prompt(g, p.uid), kb)
+                elif p.role == "donishmand":  # tungi tugmasi yo'q: eshitish ishlayotganini bilsin
+                    await send(self.bot, p.uid, f"🌙 <b>{g.day}-tun</b>\n\n{texts.DONISHMAND_NIGHT}")
         elif ph == DAY:
             await send_gif(self.bot, self.chat_id, "kun.mp4", texts.DAY_CAPTION)
             await send(self.bot, self.chat_id, texts.day_start(g, secs))

@@ -651,3 +651,67 @@ def test_player_numbers_stay_the_same():
     texts_ = [b.text for row in r.vote_kb(1).inline_keyboard for b in row]
     assert texts_[:4] == ["3. p3", "4. p4", "6. p6", "7. p7"]
     r.close()
+
+
+def test_items_not_spent_when_game_not_created():
+    """Guruhda o'yin allaqachon bor (create_game -> None): maska yechilmasin."""
+    async def go():
+        await db.init()
+        u = 8_800_001
+        await db.upsert_user(u, "Ali", None)
+        await db.change_item(u, "mask", 1)
+        r = runner.Runner(FakeBot(), -8801, {"lobby": 0, "night": 0, "day": 0, "vote": 0, "items": True,
+                                              "afk": True, "disabled": []})
+        r.members = [(u, "Ali")]
+        r.add_bots(5)
+        orig, db.create_game = db.create_game, lambda *a: asyncio.sleep(0, None)
+        try:
+            await r._start_game()
+        finally:
+            db.create_game = orig
+        assert {i.item: i.qty for i in await db.inventory(u)}["mask"] == 1
+    asyncio.run(go())
+
+
+def _night_runner(roles):
+    from mafia_zone.engine.game import Game, Player
+    bot = FakeBot()
+    r = runner.Runner(bot, -8802, {"lobby": 0, "night": 60, "day": 0, "vote": 0, "items": False,
+                                    "afk": True, "disabled": []})
+    r.game = Game(-8802, 1, [Player(8_802_000 + i, f"p{i}", c) for i, c in enumerate(roles)], afk_limit=0)
+    r.game_id = 1
+    return r, bot, [p.uid for p in r.game.players]
+
+
+def test_donishmand_overhears_mafia_and_komissar_at_night():
+    async def go():
+        r, bot, (don, maf, kom, ser, dsh, tin) = _night_runner(["don", "mafiya", "komissar", "serjant",
+                                                                 "donishmand", "tinch"])
+        assert await r.on_private_text(don, "3-ni olamiz")
+        got = {c: t for c, t in bot.sent}
+        assert "3-ni olamiz" in got[maf] and "3-ni olamiz" in got[dsh] and "p0" not in got[dsh]  # ismsiz
+        bot.sent.clear()
+        assert await r.on_private_text(kom, "2 shubhali")
+        got = {c: t for c, t in bot.sent}
+        assert "2 shubhali" in got[ser] and "2 shubhali" in got[dsh] and don not in got
+        bot.sent.clear()
+        assert not await r.on_private_text(tin, "salom")  # tinch aholi yozishmasi eshitilmaydi
+        assert not bot.sent
+        r.close()
+    asyncio.run(go())
+
+
+def test_night_chat_is_explained_and_donishmand_is_told_to_listen():
+    """O'yinchilar tunda sheriklariga yozish mumkinligini bilmasa, Donishmand hech narsa eshitmaydi."""
+    async def go():
+        r, bot, (don, maf, kom, ser, dsh, tin) = _night_runner(["don", "mafiya", "komissar", "serjant",
+                                                                 "donishmand", "tinch"])
+        for uid in (don, maf, kom, ser):
+            assert texts.NIGHT_CHAT_HINT in texts.role_card(r.game, uid)
+        assert texts.NIGHT_CHAT_HINT not in texts.role_card(r.game, tin)
+        await r._intro(NIGHT, 60)
+        got = [t for c, t in bot.sent if c == dsh]
+        assert any(texts.DONISHMAND_NIGHT in t for t in got)
+        assert any(texts.NIGHT_CHAT_HINT in t for c, t in bot.sent if c == don)  # tungi tanlovda ham eslatma
+        r.close()
+    asyncio.run(go())

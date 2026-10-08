@@ -179,6 +179,10 @@ EXTEND_MAX = "⏳ Ro'yxat allaqachon 10 daqiqaga uzaytirilgan — bundan ko'p bo
 GROUP_ONLY = "Bu buyruq guruhda ishlaydi."
 
 
+NIGHT_CHAT_HINT = "💬 <i>Tunda shu yerga yozgan xabaringiz sheriklaringizga yetkaziladi.</i>"
+DONISHMAND_NIGHT = "👂 Devorga qulog'ingizni tuting... Mafiya yoki Komissar shivirlashsa, bu yerda eshitasiz."
+
+
 def role_card(g: Game, uid: int) -> str:
     p = g.get(uid)
     text = f"Siz - {role(p.role)} siz!\n{ROLES[p.role].about}"
@@ -186,6 +190,7 @@ def role_card(g: Game, uid: int) -> str:
     if mates:
         text += "\n\n🤝 <b>Sheriklaringizni eslab qoling!</b>\n" + "\n".join(
             f"<b>{escape(dn(m))}</b> - {role(m.role)}" + ("" if m.alive else " 💀") for m in mates)
+        text += "\n\n" + NIGHT_CHAT_HINT
     if q := g.partner(uid):
         text += (f"\n\n💞 <b>Sizning juftingiz:</b> {escape(dn(q))} - {role(q.role)}" + ("" if q.alive else " 💀")
                  + "\n<i>U o'lsa, siz ham o'yindan chiqasiz. Unga yozish: xabarni <b>+</b> bilan boshlang.</i>")
@@ -336,7 +341,8 @@ def night_start(g: Game, secs: int) -> str:
 
 def night_prompt(g: Game, uid: int) -> str:
     r = g.get(uid).role
-    return f"🌙 <b>{g.day}-tun</b>\n\n" + ROLE_PROMPT.get(r, f"{role(r)}, harakatingizni tanlang:")
+    hint = "\n\n" + NIGHT_CHAT_HINT if any(m.alive for m in g.teammates(uid)) else ""
+    return f"🌙 <b>{g.day}-tun</b>\n\n" + ROLE_PROMPT.get(r, f"{role(r)}, harakatingizni tanlang:") + hint
 
 
 SKIP_NIGHT_BTN = "🚫 Hech narsa qilmayman"
@@ -487,8 +493,8 @@ def morning(g: Game, ev: list[Event]) -> tuple[list[str], list[tuple[int, str]]]
             text = f"🔍 Tekshiruv natijasi: {n(e.target)} — {role(e.data['result'])}"
             priv.append((e.uid, text))
             priv.append((e.target, CHECKED_YOU))  # kim tekshirgani aytilmaydi
-            if g.get(e.uid).role == "komissar" and (s := g.by_role("serjant")):
-                priv.append((s.uid, f"🕵️‍♂️ Komissardan xabar: {text}"))
+            if g.get(e.uid).role == "komissar":  # sherigi (Serjant yoki shu tun Komissar bo'lgan Serjant) ham biladi
+                priv += [(m.uid, f"🕵️‍♂️ Komissardan xabar: {text}") for m in g.teammates(e.uid) if m.alive]
         elif k == "interview":
             vis = ", ".join(n(v) for v in e.data["visitors"]) or "hech kim"
             priv.append((e.uid, f"🎤 Intervyu tayyor! Bu tun {n(e.target)}ning oldiga kelganlar: {vis}"))
@@ -521,6 +527,9 @@ def morning(g: Game, ev: list[Event]) -> tuple[list[str], list[tuple[int, str]]]
                     priv.append((m.uid, f"👥 {n(e.uid)} sizning safingizga qo'shildi!"))
         elif k == "promoted":
             priv.append((e.uid, f"⭐️ Yuksalish! Siz endi {role(e.data['role'])}siz!\n\n" + role_card(g, e.uid)))
+            for m in g.teammates(e.uid):  # jamoa yangi Don/Komissarni bilsin
+                if m.alive:
+                    priv.append((m.uid, f"⭐️ {n(e.uid)} endi {role(e.data['role'])}!"))
         elif k == "penalty":
             priv.append((e.uid, "🏹 O'qingiz begunoh odamga tegdi! Vijdon azobi sizni qurolsiz qoldirdi."))
     return pub, priv
@@ -935,7 +944,7 @@ composition = alive_composition
 
 
 def death_pm(hanged: bool) -> str:
-    how = "Sizni shafqatsizlarcha osib o'ldirishdi!" if hanged else "Sizni vahshiylarcha otib o'ldirishdi!"
+    how = "Sizni shafqatsizlarcha osib o'ldirishdi!" if hanged else "Siz vahshiylarcha o'ldirildingiz!"
     return f"<b>{how}</b>\n💀 So'nggi so'zingizni aytishingiz mumkin.\n⏰ Vaqt: <b>{LAST_WORDS_SECS}</b> sekund"
 
 

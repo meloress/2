@@ -726,3 +726,231 @@ def test_checked_player_is_told():
     g = mk("don", "komissar", "tinch", "tinch", "tinch")
     _, priv = texts.morning(g, night(g, (2, "check", 1)))
     assert (1, texts.CHECKED_YOU) in priv and not any(u == 1 and "Komissar" in t for u, t in priv)  # kim - aytilmaydi
+
+
+# ---------- o'yindan chiqqan o'yinchi (/leave, guruhdan chiqish) ----------
+def test_left_podshoh_is_not_hanged_and_mafia_does_not_win():
+    """Podshoh ovozda yetakchi bo'lib /leave qilsa, o'lik Podshoh "osilib" mafiyaga g'alaba bermasin."""
+    g = mk("don", "mafiya", "qorovul", "podshoh", *["tinch"] * 5)
+    night(g)
+    g.start_voting()
+    for v in (1, 2, 5):
+        g.cast_vote(v, 4)
+    assert "left" in kinds(g.kill_player(4))
+    ev = g.resolve_vote()
+    assert "hanged" not in kinds(ev) and g.phase != FINISHED and g.winner is None
+
+
+def test_left_tulki_is_not_hanged():
+    g = mk("don", "tulki", "tinch", "tinch", "tinch", "tinch", "tinch")
+    night(g)
+    g.start_voting()
+    for v in (3, 4, 5):
+        g.cast_vote(v, 2)
+    g.kill_player(2)
+    ev = g.resolve_vote()
+    assert "hanged" not in kinds(ev) and "tulki" not in kinds(ev)
+    assert g.get(3).alive and not g.get(2).won
+
+
+def test_votes_of_left_players_do_not_count():
+    """Chiqib ketganning ovozi hisoblanmaydi: qolganlarning ovozi hal qiladi."""
+    g = mk("don", "tinch", "tinch", "tinch", "tinch", "tinch", "tinch")
+    night(g)
+    g.start_voting()
+    g.cast_vote(2, 3), g.cast_vote(4, 3), g.cast_vote(5, 6)
+    g.kill_player(2), g.kill_player(4)
+    ev = g.resolve_vote()
+    assert [e.target for e in ev if e.kind == "hanged"] == [6] and g.get(3).alive
+
+
+def test_left_candidate_is_not_hanged_in_confirm():
+    g = mk("don", "mafiya", "qorovul", "podshoh", *["tinch"] * 5)
+    g.confirm = True
+    night(g)
+    vote(g, (1, 4), (2, 4), (5, 4))
+    assert g.candidate == 4
+    for v in (1, 2, 5, 6):
+        g.cast_confirm(v, True)
+    g.kill_player(4)
+    ev = g.resolve_confirm()
+    assert "hanged" not in kinds(ev) and g.phase != FINISHED
+
+
+def test_confirms_of_left_players_do_not_count():
+    g = mk("don", "tinch", "tinch", "tinch", "tinch", "tinch", "tinch")
+    g.confirm = True
+    night(g)
+    vote(g, (2, 3), (4, 3))
+    g.cast_confirm(2, True), g.cast_confirm(4, True), g.cast_confirm(5, False)
+    g.kill_player(2), g.kill_player(4)
+    assert g.confirm_tally() == (0, 1)
+    assert "spared" in kinds(g.resolve_confirm()) and g.get(3).alive
+
+
+def test_night_actions_on_left_player_are_dropped():
+    """Tunda chiqib ketgan o'yinchini tekshirish/o'g'irlash/o'ldirish bekor bo'ladi."""
+    g = mk("don", "komissar", "qaroqchi", "jurnalist", "tinch", "tinch", "tinch", "tinch")
+    g.submit(1, "mafia_kill", 5)
+    g.submit(2, "check", 5)
+    g.submit(3, "rob", 5)
+    g.submit(4, "interview", 5)
+    g.kill_player(5)
+    ev = g.resolve_night()
+    assert not [e for e in ev if e.target == 5 and e.kind != "result"], [(e.kind, e.target) for e in ev]
+
+
+def test_don_target_left_falls_back_to_mafia_votes():
+    g = mk("don", "mafiya", "tinch", "tinch", "tinch", "tinch", "tinch")
+    g.submit(1, "mafia_kill", 3)
+    g.submit(2, "mafia_kill", 4)
+    g.kill_player(3)
+    ev = g.resolve_night()
+    assert [e.target for e in ev if e.kind == "killed"] == [4]
+
+
+def test_simulate_leaves_never_hit_left_players():
+    """Har fazada kimdir chiqib ketadi: chiqqan o'yinchi osilmaydi, tekshirilmaydi, o'g'irlanmaydi."""
+    from mafia_zone.engine.game import CONFIRM, NIGHT, VOTING
+    DEATH = {"killed", "hanged", "tulki", "checked", "interview", "robbed", "saw_role", "stolen", "vote_saved",
+             "guard_saved", "candidate", "mafia_result", "afk"}
+    bad = []
+    for seed in range(1500):
+        rng = random.Random(seed)
+        n = rng.randint(5, 20)
+        g = Game.create(1, [(i, f"p{i}") for i in range(1, n + 1)], seed, confirm=rng.random() < .5)
+        gone = set()
+        for _ in range(60):
+            if g.phase == FINISHED:
+                break
+            if g.alive() and rng.random() < .4:
+                u = rng.choice(g.alive()).uid
+                g.kill_player(u); gone.add(u)
+                if g.phase == FINISHED:
+                    break
+            if g.phase == NIGHT:
+                for p in g.alive():
+                    acts = g.available_actions(p.uid)
+                    if acts:
+                        k = rng.choice(acts); ts = g.targets(p.uid, k)
+                        g.submit(p.uid, k, rng.choice(ts) if ts else None)
+                if g.alive() and rng.random() < .5:
+                    u = rng.choice(g.alive()).uid; g.kill_player(u); gone.add(u)
+                    if g.phase == FINISHED: break
+                ev = g.resolve_night()
+            elif g.phase == DAY:
+                g.start_voting(); continue
+            elif g.phase == VOTING:
+                al = [p.uid for p in g.alive()]
+                for v in al:
+                    g.cast_vote(v, rng.choice([x for x in al if x != v] + [None]))
+                if al and rng.random() < .5:
+                    u = rng.choice(al); g.kill_player(u); gone.add(u)
+                    if g.phase == FINISHED: break
+                ev = g.resolve_vote()
+            else:
+                for p in g.alive():
+                    g.cast_confirm(p.uid, rng.random() < .6)
+                if rng.random() < .5 and g.candidate is not None and g.get(g.candidate).alive:
+                    g.kill_player(g.candidate); gone.add(g.candidate)
+                    if g.phase == FINISHED: break
+                ev = g.resolve_confirm()
+            for e in ev:
+                if e.kind in DEATH and e.target in gone:
+                    bad.append((seed, e.kind))
+    assert not bad, bad[:10]
+
+
+# ---------- dvijok auditi (2026-10-09) ----------
+def test_blocked_mafiya_vote_does_not_count():
+    """Kezuvchi uxlatgan Mafiya bu tun hech narsa qila olmaydi - o'ldirishga ovozi ham hisoblanmaydi."""
+    g = mk("don", "mafiya", "kezuvchi", "tinch", "tinch", "tinch", "tinch")
+    g.submit(2, "mafia_kill", 4)
+    g.submit(3, "block", 2)
+    ev = g.resolve_night()
+    assert g.get(4).alive and "killed" not in kinds(ev)
+
+
+def test_aferist_cannot_steal_block():
+    """Uxlatish birinchi bajariladi: Aferist uni o'g'irlay olmaydi, Kezuvchiga qarama-qarshi xabar bormaydi."""
+    g = mk("don", "kezuvchi", "aferist", "tinch", "tinch", "tinch", "tinch")
+    g.submit(2, "block", 4)
+    g.submit(3, "steal", 2)
+    ev = g.resolve_night()
+    assert "stolen" not in kinds(ev) and "saw_role" in kinds(ev)
+    assert any(e.kind == "blocked" and e.uid == 4 for e in ev)
+
+
+def test_aferist_saw_role_respects_disguise_and_sotqin():
+    """Aferist ko'rgan rol Komissar tekshiruvi bilan bir xil: niqob va Sotqin - Tinch aholi."""
+    g = mk("don", "mafiya", "advokat", "aferist", "sotqin", "tinch", "tinch", "tinch")
+    g.submit(3, "disguise", 2)
+    g.submit(4, "steal", 2)
+    ev = g.resolve_night()
+    assert [e.data["role"] for e in ev if e.kind == "saw_role"] == ["tinch"]
+    g2 = mk("don", "aferist", "sotqin", "tinch", "tinch", "tinch")
+    ev = g2.resolve_night() if not g2.submit(2, "steal", 3) else g2.resolve_night()
+    assert [e.data["role"] for e in ev if e.kind == "saw_role"] == ["tinch"]
+
+
+def test_qotil_immune_to_aka_uka():
+    """Qotil: "Mafiya sizga tegolmaydi" - Aka-Uka hujumi ham."""
+    g = mk("don", "aka", "uka", "qotil", "tinch", "tinch", "tinch", "tinch")
+    g.submit(2, "pair", 4)
+    g.submit(3, "pair", 4)
+    g.resolve_night()
+    assert g.get(4).alive
+
+
+def test_immune_attacker_is_told_fail_even_if_target_died():
+    """Komissar Sehrgarga o'q uzdi (ta'sir qilmaydi), Vampir uni tishlab o'ldirdi: Komissarga "omon qoldi"."""
+    g = mk("don", "komissar", "sehrgar", "vampir", *["tinch"] * 9)
+    g.submit(2, "shoot", 3)
+    g.submit(4, "bite", 3)
+    ev = g.resolve_night()
+    assert not g.get(3).alive
+    res = {e.uid: e.data["ok"] for e in ev if e.kind == "result"}
+    assert res[2] is False and res[4] is True
+
+
+def test_blocked_doctor_can_heal_same_target_next_night():
+    """Uxlatilgan Doktor davolamadi - ertasi kuni o'sha odamni davolay oladi."""
+    g = mk("don", "doktor", "kezuvchi", "tinch", "tinch", "tinch", "tinch")
+    night(g, (2, "heal", 4), (3, "block", 2))
+    g.start_voting(), g.resolve_vote()
+    assert 4 in g.targets(2, "heal")
+
+
+def test_promotion_skips_aka_uka_and_mafia_is_told():
+    """Don o'lsa Aka/Uka emas, boshqa mafiyadosh Don bo'ladi; jamoa yangi Donni biladi."""
+    from mafia_zone import texts
+    g = mk("don", "aka", "uka", "jurnalist", *["tinch"] * 8)
+    g.get(1).alive = False
+    ev = []
+    g._after_deaths(ev)
+    assert g.get(4).role == "don" and g.get(2).role == "aka"
+    _, priv = texts.morning(g, ev)
+    assert {u for u, t in priv if "Don" in t or texts.role("don") in t} >= {2, 3, 4}
+
+
+def test_komissar_check_reaches_serjant_promoted_same_night():
+    """Komissar tekshirib, shu tun o'ldirildi: Serjant (endi Komissar) natijani baribir oladi."""
+    from mafia_zone import texts
+    g = mk("don", "komissar", "serjant", "tinch", "tinch", "tinch", "tinch")
+    g.submit(1, "mafia_kill", 2)
+    g.submit(2, "check", 1)
+    ev = g.resolve_night()
+    assert g.get(3).role == "komissar"
+    _, priv = texts.morning(g, ev)
+    assert any(u == 3 and "Tekshiruv natijasi" in t for u, t in priv)
+
+
+def test_death_pm_does_not_say_shot():
+    """Tunda o'ldirish - har doim ham otish emas (zahar, tishlash, la'nat, Tulki)."""
+    from mafia_zone import texts
+    assert "otib" not in texts.death_pm(False) and "osib" in texts.death_pm(True)
+
+
+def test_sehrgar_about_says_curse_kills():
+    from mafia_zone.engine.roles import ROLES
+    assert "o'ladi" in ROLES["sehrgar"].about
