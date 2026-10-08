@@ -30,6 +30,7 @@ async def main() -> None:
         BotCommand(command="next", description="🔔 Keyingi o'yinda xabar berish"),
         BotCommand(command="players", description="👥 Tiriklar va o'liklar"),
         BotCommand(command="send", description="💸 Pul: /send 100 10 yoki reply + /send 100"),
+        BotCommand(command="give", description="💎 Olmos: /give 10 2 yoki reply + /give 5"),
         BotCommand(command="couple", description="❤️ Para bo'lish: reply yoki /couple @username"),
         BotCommand(command="uncouple", description="💔 Paradan chiqish"),
         BotCommand(command="mycouple", description="💞 Mening param"),

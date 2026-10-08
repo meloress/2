@@ -263,10 +263,11 @@ MAX_AMOUNT = 10 ** 9
 _refresh: dict[int, asyncio.Task] = {}  # giveaway_id -> kechiktirilgan tahrir
 
 
-@router.message(Command("send"), GROUPS)
+@router.message(Command("send", "give"), GROUPS)
 async def cmd_send(msg: Message, bot: Bot, command: CommandObject):
     """/send 100 10 - 10 dan 10 kishiga; /send 100 - bitta kishiga hammasi; reply + /send 100 - o'tkazish.
-    Buyruq har doim o'chiriladi (drop_commands)."""
+    /give - xuddi shunday, faqat olmos. Buyruq har doim o'chiriladi (drop_commands)."""
+    cur = "diamonds" if (getattr(command, "command", "") or "").lower() == "give" else "dollars"
     args = (command.args or "").split()
     nums = [int(a) for a in args] if args and all(a.isdigit() for a in args) else []
     me = await _user(msg) if nums and len(nums) <= 2 and all(0 < x <= MAX_AMOUNT for x in nums) else None
@@ -277,15 +278,16 @@ async def cmd_send(msg: Message, bot: Bot, command: CommandObject):
         target = reply.from_user if reply else None
         if len(nums) == 1 and target and not target.is_bot and target.id != u.id:
             await db.upsert_user(target.id, target.full_name, target.username)
-            if await db.transfer(u.id, target.id, nums[0]):
-                await send(bot, msg.chat.id, texts.transfer_done(u.full_name, u.id, target.full_name, target.id, nums[0]))
+            if await db.transfer(u.id, target.id, nums[0], cur):
+                await send(bot, msg.chat.id, texts.transfer_done(u.full_name, u.id, target.full_name, target.id,
+                                                                 nums[0], cur))
         elif len(nums) == 1 and not reply or len(nums) == 2 and nums[1] <= nums[0]:
             per = nums[-1]
             parts = nums[0] // per
-            gid = await db.create_giveaway(msg.chat.id, u.id, per, parts)
+            gid = await db.create_giveaway(msg.chat.id, u.id, per, parts, cur)
             if gid:
                 kb = Kb(inline_keyboard=[[Btn(text=texts.GIVEAWAY_BTN, callback_data=f"g:{gid}", style="success")]])
-                m = await send(bot, msg.chat.id, texts.giveaway(u.full_name, u.id, per, parts), kb)
+                m = await send(bot, msg.chat.id, texts.giveaway(u.full_name, u.id, per, parts, (), cur), kb)
                 if m:  # tarqatma tepada qadalib turadi, tugagach pindan olinadi (_refresh_giveaway)
                     await _call(bot.pin_chat_message, msg.chat.id, m.message_id, disable_notification=True)
                     await db.set_giveaway_msg(gid, m.message_id)
@@ -301,7 +303,7 @@ async def cb_giveaway(cq: CallbackQuery, bot: Bot):
     g = await db.claim(gid, cq.from_user.id) if me else None
     if not g:
         return await cq.answer(texts.GIVEAWAY_NO)
-    await cq.answer(texts.GIVEAWAY_GOT.format(g.per), show_alert=True)
+    await cq.answer(texts.GIVEAWAY_GOT.format(g.per, texts.CUR[g.currency or "dollars"]), show_alert=True)
     if gid not in _refresh:  # ko'p bosilganda 3 s da bir marta tahrirlash (guruh limiti)
         _refresh[gid] = asyncio.create_task(_refresh_giveaway(bot, cq.message.chat.id, cq.message.message_id, gid))
 
@@ -314,7 +316,8 @@ async def _refresh_giveaway(bot: Bot, chat_id: int, msg_id: int, gid: int) -> No
         kb = None if g.left <= 0 else Kb(inline_keyboard=[[Btn(text=f"{texts.GIVEAWAY_BTN} ({g.left})",
                                                                callback_data=f"g:{gid}", style="success")]])
         await edit(bot, chat_id, msg_id, texts.giveaway(sender.full_name if sender else "?", g.sender_id,
-                                                        g.per, g.parts, await db.giveaway_takers(gid)), kb)
+                                                        g.per, g.parts, await db.giveaway_takers(gid),
+                                                        g.currency or "dollars"), kb)
         if g.left <= 0:
             await _call(bot.unpin_chat_message, chat_id, message_id=msg_id)
     finally:
@@ -333,11 +336,12 @@ async def expire_giveaway(bot: Bot, gid: int, delay: float) -> None:
         return
     if g.msg_id:
         sender = await db.get_user(g.sender_id)
+        cur = g.currency or "dollars"
         text = texts.giveaway(sender.full_name if sender else "?", g.sender_id, g.per, g.parts,
-                              await db.giveaway_takers(gid))
-        await edit(bot, g.chat_id, g.msg_id, texts.giveaway_closed(text), None)
+                              await db.giveaway_takers(gid), cur)
+        await edit(bot, g.chat_id, g.msg_id, texts.giveaway_closed(text, cur), None)
         await _call(bot.unpin_chat_message, g.chat_id, message_id=g.msg_id)
-    await send(bot, g.sender_id, texts.giveaway_refund(refund))
+    await send(bot, g.sender_id, texts.giveaway_refund(refund, g.currency or "dollars"))
 
 
 async def restore_giveaways(bot: Bot) -> None:

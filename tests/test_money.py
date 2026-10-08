@@ -423,3 +423,43 @@ def test_new_accounts_cannot_send_or_claim_and_ref_paid_after_games():
         assert await db.pay_referrals([friend]) == [(inviter, f"u{friend}")]
         assert await db.pay_referrals([friend]) == [] and await bal(inviter) == config.REF_BONUS
     run(t())
+
+
+def test_diamond_giveaway():
+    """/give: olmos tarqatma - pul tarqatma bilan bir xil, faqat olmosda."""
+    async def t():
+        s, a, b = BASE + 900, BASE + 901, BASE + 902
+        for u in (s, a, b):
+            await mkuser(u, 0)
+        await db.add_balance(s, 0, 5)
+        assert await db.create_giveaway(-1, s, 2, 3, "diamonds") is None  # 6 > 5
+        gid = await db.create_giveaway(-1, s, 2, 2, "diamonds")
+        assert (await db.get_user(s)).diamonds == 1 and await bal(s) == 0
+        assert (await db.claim(gid, a)).currency == "diamonds"
+        assert (await db.get_user(a)).diamonds == 2 and await bal(a) == 0
+        g, refund = await db.close_giveaway(gid)
+        assert refund == 2 and (await db.get_user(s)).diamonds == 3 and await bal(s) == 0
+        text = texts.giveaway("Ali", s, 2, 2, await db.giveaway_takers(gid), "diamonds")
+        assert "4</b> 💎 ulashmoqda" in text and "- 2💎" in text
+        assert await db.transfer(a, b, 2, "diamonds")
+    run(t())
+
+
+def test_give_command_diamonds():
+    """Guruhda /give - /send bilan bir xil, faqat olmos; dollar tegilmaydi."""
+    async def t():
+        a, b = BASE + 950, BASE + 951
+        await mkuser(a, 100)
+        await mkuser(b, 0)
+        await db.add_balance(a, 0, 10)
+        await set_games(a, config.SEND_GAMES)
+        bot = FakeBot()
+        cmd = lambda args: SimpleNamespace(args=args, command="give")
+        m, _ = fake_msg(a, reply_uid=b)  # reply + /give 3
+        await handlers.cmd_send(m, bot, cmd("3"))
+        assert (await db.get_user(b)).diamonds == 3 and "3 💎" in bot.sent[-1]
+        m, _ = fake_msg(a)  # /give 6 2 -> 3 ulush
+        await handlers.cmd_send(m, bot, cmd("6 2"))
+        u = await db.get_user(a)
+        assert u.diamonds == 1 and u.dollars == 100 and "6</b> 💎 ulashmoqda" in bot.sent[-1]
+    run(t())

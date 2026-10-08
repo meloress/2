@@ -103,6 +103,7 @@ class Giveaway(Base):
     left: Mapped[int] = mapped_column(Integer)  # qolgan ulush
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     msg_id: Mapped[int | None] = mapped_column(BigInteger)  # guruhdagi xabar (muddati tugaganda tahrir/pin)
+    currency: Mapped[str] = mapped_column(String(16), default="dollars")  # dollars (/send) | diamonds (/give)
 
 
 class Payment(Base):
@@ -154,14 +155,16 @@ class _Rollback(Exception):
     pass
 
 
-async def create_giveaway(chat_id: int, sender: int, per: int, parts: int) -> int | None:
+async def create_giveaway(chat_id: int, sender: int, per: int, parts: int,
+                          currency: str = "dollars") -> int | None:
+    col = getattr(User, currency)
     async with Session.begin() as s:
-        r = await s.execute(update(User).where(User.telegram_id == sender, User.dollars >= per * parts,
+        r = await s.execute(update(User).where(User.telegram_id == sender, col >= per * parts,
                                                User.banned.is_(False))
-                            .values(dollars=User.dollars - per * parts))
+                            .values({col: col - per * parts}))
         if r.rowcount != 1:
             return None
-        g = Giveaway(chat_id=chat_id, sender_id=sender, per=per, parts=parts, left=parts)
+        g = Giveaway(chat_id=chat_id, sender_id=sender, per=per, parts=parts, left=parts, currency=currency)
         s.add(g)
         await s.flush()
         return g.id
@@ -235,8 +238,8 @@ async def close_giveaway(gid: int) -> tuple[Giveaway | None, int]:
         r = await s.execute(update(Giveaway).where(Giveaway.id == gid, Giveaway.left == left).values(left=0))
         if r.rowcount != 1:  # shu orada kimdir oldi - keyingi chaqiruvda qayta urinamiz
             return g, -1
-        await s.execute(update(User).where(User.telegram_id == g.sender_id)
-                        .values(dollars=User.dollars + left * g.per))
+        col = getattr(User, g.currency or "dollars")
+        await s.execute(update(User).where(User.telegram_id == g.sender_id).values({col: col + left * g.per}))
         g.left = 0
         return g, left * g.per
 
@@ -361,7 +364,8 @@ async def claim(gid: int, uid: int) -> Giveaway | None:
                                 .values(left=Giveaway.left - 1))
             if r.rowcount != 1:
                 raise _Rollback
-            await s.execute(update(User).where(User.telegram_id == uid).values(dollars=User.dollars + g.per))
+            col = getattr(User, g.currency or "dollars")
+            await s.execute(update(User).where(User.telegram_id == uid).values({col: col + g.per}))
             await s.refresh(g)
             await s.execute(update(Claim).where(Claim.giveaway_id == gid, Claim.user_id == uid)
                             .values(n=g.parts - g.left))
@@ -376,7 +380,8 @@ COLUMNS = [("users", "last_seen", "TIMESTAMP WITH TIME ZONE"), ("users", "leave_
            ("users", "leave_count", "INTEGER NOT NULL DEFAULT 0"), ("users", "referred_by", "BIGINT"),
            ("users", "ref_paid", "BOOLEAN NOT NULL DEFAULT FALSE"), ("giveaways", "msg_id", "BIGINT"),
            ("users", "pro_until", "TIMESTAMP WITH TIME ZONE"), ("users", "nickname", "VARCHAR(32)"),
-           ("users", "pro_reminded", "BOOLEAN NOT NULL DEFAULT FALSE")]
+           ("users", "pro_reminded", "BOOLEAN NOT NULL DEFAULT FALSE"),
+           ("giveaways", "currency", "VARCHAR(16) NOT NULL DEFAULT 'dollars'")]
 
 
 def _migrate(conn) -> None:

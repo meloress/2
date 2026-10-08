@@ -128,12 +128,16 @@ LOBBY_LOST = "♻️ Bot yangilandi va ro'yxatdan o'tish bekor bo'ldi.\nYangi o'
 GIVEAWAY_TTL_MIN = 60  # tarqatma shuncha daqiqadan keyin yopiladi
 
 
-def giveaway_closed(text: str) -> str:
-    return text + "\n\n⌛️ <b>Vaqt tugadi.</b> Olinmagan pul egasiga qaytarildi."
+CUR = {"dollars": "💵", "diamonds": "💎"}
 
 
-def giveaway_refund(amount: int) -> str:
-    return f"↩️ Tarqatmangizdan olinmagan <b>{amount} 💵</b> hisobingizga qaytarildi."
+def giveaway_closed(text: str, currency: str = "dollars") -> str:
+    what = "olmos" if currency == "diamonds" else "pul"
+    return text + f"\n\n⌛️ <b>Vaqt tugadi.</b> Olinmagan {what} egasiga qaytarildi."
+
+
+def giveaway_refund(amount: int, currency: str = "dollars") -> str:
+    return f"↩️ Tarqatmangizdan olinmagan <b>{amount} {CUR[currency]}</b> hisobingizga qaytarildi."
 
 
 STOPPED = "🛑 <b>O'yin to'xtatildi.</b>"
@@ -569,18 +573,21 @@ def players(g: Game) -> str:
             + (f"\n\n☠️ <b>Halok bo'lganlar:</b>\n{dead}" if dead else ""))
 
 
-def transfer_done(sender: str, sender_id: int, target: str, target_id: int, amount: int) -> str:
-    return f"💸 {mention(sender_id, sender)} → {mention(target_id, target)}: <b>{amount} 💵</b>"
+def transfer_done(sender: str, sender_id: int, target: str, target_id: int, amount: int,
+                  currency: str = "dollars") -> str:
+    return f"💸 {mention(sender_id, sender)} → {mention(target_id, target)}: <b>{amount} {CUR[currency]}</b>"
 
 
 GIVEAWAY_SHOW = 60  # ro'yxatda ko'rsatiladigan olganlar (xabar 4096 belgidan oshmasin)
 
 
-def giveaway(sender: str, sender_id: int, per: int, parts: int, takers: list[tuple[int, str]] = ()) -> str:
+def giveaway(sender: str, sender_id: int, per: int, parts: int, takers: list[tuple[int, str]] = (),
+             currency: str = "dollars") -> str:
     """takers: [(uid, ism)] olish tartibida."""
-    text = f"{mention(sender_id, sender)} <b>{per * parts}</b> 💵 ulashmoqda!"
+    c = CUR[currency]
+    text = f"{mention(sender_id, sender)} <b>{per * parts}</b> {c} ulashmoqda!"
     if takers:
-        lines = [f"{i}. {mention(uid, name)} - {per}💵" for i, (uid, name) in enumerate(takers[:GIVEAWAY_SHOW], 1)]
+        lines = [f"{i}. {mention(uid, name)} - {per}{c}" for i, (uid, name) in enumerate(takers[:GIVEAWAY_SHOW], 1)]
         if len(takers) > GIVEAWAY_SHOW:
             lines.append(f"... va yana {len(takers) - GIVEAWAY_SHOW} kishi")
         text += "\n\n<b>Sovg'a olganlar:</b>\n\n" + "\n".join(lines)
@@ -588,7 +595,7 @@ def giveaway(sender: str, sender_id: int, per: int, parts: int, takers: list[tup
 
 
 GIVEAWAY_BTN = "💰 Olish"
-GIVEAWAY_GOT = "🎉 +{} 💵 oldingiz!"
+GIVEAWAY_GOT = "🎉 +{} {} oldingiz!"
 GIVEAWAY_NO = "😔 Tugagan yoki siz allaqachon olgansiz"
 
 
@@ -764,7 +771,7 @@ def ref_bonus(name: str) -> str:
 
 
 def send_locked(games: int) -> str:
-    return (f"🔒 Pul o'tkazish va tarqatish <b>{config.SEND_GAMES} ta</b> o'yindan keyin ochiladi.\n"
+    return (f"🔒 Pul/olmos o'tkazish va tarqatish <b>{config.SEND_GAMES} ta</b> o'yindan keyin ochiladi.\n"
             f"Siz hozircha <b>{games} ta</b> o'yin o'ynagansiz.")
 
 
