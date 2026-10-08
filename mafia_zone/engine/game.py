@@ -39,6 +39,7 @@ class Player:
     won: bool = False
     mute_day: int = 0  # Qaroqchi ovoz huquqini o'g'irlagan kun
     idle: int = 0  # AFK hisoblagich
+    score: int = 0  # yashirin hissa balli: faqat o'yin oxirida g'oliblarni tartiblash uchun, hech qayerda ko'rsatilmaydi
 
     @property
     def team(self) -> str:
@@ -206,8 +207,11 @@ class Game:
     def resolve_night(self) -> list[Event]:
         rng = random.Random(f"{self.seed}:{self.day}:night")
         ev: list[Event] = []
-        self._track_idle([p for p in self.alive() if self.available_actions(p.uid)],
-                         self.actions.keys() | self.mafia_votes.keys())
+        expected, acted = [p for p in self.alive() if self.available_actions(p.uid)], self.actions.keys() | self.mafia_votes.keys()
+        self._track_idle(expected, acted)
+        for p in expected:
+            if p.uid not in acted:
+                p.score -= 2  # tunda harakat qilmadi
         # Tun boshidagi rollar: matnlarda shu ko'rsatiladi (Ovchi jarimasi, Voris o'zgarishidan oldingi holat)
         roles0 = {p.uid: p.role for p in self.players}
         # acts: actor -> (kind, target, harakat egasining roli)
@@ -218,6 +222,9 @@ class Game:
             acts[m[0]] = ("mafia_kill", m[1], "don")
 
         # 1a. Kezuvchi
+        for u, (k, t, _) in acts.items():
+            if k == "block" and self.get(t).team != self.get(u).team:
+                self.get(u).score += 2
         blocked = {t for k, t, _ in acts.values() if k == "block"}
         for t in blocked:
             acts.pop(t, None)
@@ -273,6 +280,8 @@ class Game:
                 visitors.setdefault(t, []).append(u)
         for u, (k, t, _) in acts.items():
             if k == "check":
+                if self.get(t).team != self.get(u).team:  # haqiqiy jamoa bo'yicha (niqob ballga ta'sir qilmaydi)
+                    self.get(u).score += 3
                 ev.append(Event("checked", u, t, {"result": self._appear(t, disguised, ev)}))
             elif k == "interview":
                 ev.append(Event("interview", u, t, {"visitors": [x for x in visitors.get(t, []) if x != u]}))
@@ -309,6 +318,9 @@ class Game:
             if not alist or not v.alive:
                 continue
             if t in healed:
+                for u, (k, x, _) in acts.items():
+                    if k == "heal" and x == t:
+                        self.get(u).score += 3
                 ev.append(Event("saved", target=t))
                 continue
             if v.role == "voris" and all(a[1] == "mafia_kill" or (a[1] == "shoot" and a[2] == "komissar") for a in alist):
@@ -331,6 +343,8 @@ class Game:
 
         for t, alist in deaths.items():
             self.get(t).alive = False
+            for u in {a[0] for a in alist}:  # dushmanni o'ldirish +3, o'z jamoadoshini -3
+                self.get(u).score += 3 if ROLES[roles0[u]].team != ROLES[roles0[t]].team else -3
             ev.append(Event("killed", target=t, data={"by": sorted({a[1] for a in alist}),
                                                       "killers": sorted({a[0] for a in alist}),
                                                       "killer_roles": killer_roles(alist), "role": roles0[t]}))
@@ -355,6 +369,10 @@ class Game:
 
         # Mafiya ovozining natijasi (sheriklarga) yoki Don umuman tanlamagani (guruhga)
         if m:
+            if not self.get(m[1]).alive:  # Don ballni o'ldirish uchun oladi, shu nishonga ovoz bergan sheriklar +2
+                for u, x in self.mafia_votes.items():
+                    if x == m[1] and u != m[0]:
+                        self.get(u).score += 2
             ev.append(Event("mafia_result", m[0], m[1], {"killed": not self.get(m[1]).alive}))
         elif self.by_role("don"):
             ev.append(Event("mafia_idle"))
@@ -455,6 +473,9 @@ class Game:
         """Osish. True qaytarsa, o'yin shu zahoti tugadi (Podshoh)."""
         v = self.get(t)
         v.alive = False
+        for u, x in self.votes.items():  # dushmanni osishga ovoz +2, jamoadoshni -1
+            if x == t:
+                self.get(u).score += 2 if self.get(u).team != v.team else -1
         ev.append(Event("hanged", target=t, data={**data, "role": v.role}))
         if v.role == "podshoh":
             self.guarded = None
@@ -470,6 +491,8 @@ class Game:
     def _end_day(self, ev: list) -> list[Event]:
         self.day += 1
         self.phase = NIGHT
+        for p in self.alive():
+            p.score += 1  # yana bir kun omon qoldi
         self._kick_afk(ev)
         self._after_deaths(ev)
         self.guarded = None
@@ -525,6 +548,7 @@ class Game:
         for p in self.players:
             if not p.alive:
                 continue
+            p.score += 2  # oxirigacha tirik
             if w == TOWN and p.team == TOWN:
                 p.won = True
             elif w == MAFIA and (p.team == MAFIA or p.role == "sotqin" or (podshoh and p.team == NEUTRAL)):

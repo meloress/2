@@ -165,7 +165,7 @@ def invite_url(uid: int) -> str:
 
 
 def profile_kb(inv, uid: int | None = None) -> Kb:
-    """Profil tugmalari: har buyum ON/OFF (3 tadan qatorda), almashtirish, do'kon, do'st taklif qilish."""
+    """Profil tugmalari: har buyum ON/OFF (3 tadan qatorda), PRO, hamyon, do'kon, do'st taklif qilish."""
     toggles = [Btn(text=f"{texts.ITEMS[i.item].split(' ', 1)[0]} - {'🟢 ON' if i.enabled else '🔴 OFF'}",
                    callback_data=f"t:{i.item}", style="success" if i.enabled else "danger")
                for i in inv if i.item in texts.ITEMS and i.qty > 0]
@@ -174,10 +174,9 @@ def profile_kb(inv, uid: int | None = None) -> Kb:
              [Btn(text=texts.BUY_BTN, callback_data="m:buy"), Btn(text=texts.GEM_BTN, callback_data="m:gem")],
              [Btn(text=texts.PAY_BTN, callback_data="m:pay"), Btn(text=texts.GIFT_BTN, callback_data="m:gift")],
              [Btn(text=texts.GROUPS_BTN, callback_data="m:groups"),
-              Btn(text=texts.exchange_btn(), callback_data="x", style="primary")]]
+              Btn(text=texts.SHOP_BTN, callback_data="shop", style="primary")]]
     if config.NEWS_URL:
         rows.append([Btn(text=texts.NEWS_BTN, url=config.NEWS_URL)])
-    rows.append([Btn(text=texts.SHOP_BTN, callback_data="shop", style="primary")])
     if uid is not None:
         rows.append([Btn(text=texts.INVITE_BTN, url=invite_url(uid), style="success")])
     rows.append([back_btn()])

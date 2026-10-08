@@ -472,13 +472,6 @@ async def pay_referrals(uids: list[int]) -> list[tuple[int, str]]:
     return out
 
 
-async def exchange_diamond(uid: int) -> bool:
-    async with Session.begin() as s:
-        r = await s.execute(update(User).where(User.telegram_id == uid, User.diamonds >= 1)
-                            .values(diamonds=User.diamonds - 1, dollars=User.dollars + config.DIAMOND_RATE))
-        return r.rowcount == 1
-
-
 async def buy_dollars(uid: int, diamonds: int) -> bool:
     """Xarid paketi: olmos -> dollar, atomar."""
     dollars = config.DOLLAR_PACKS.get(diamonds)

@@ -487,8 +487,9 @@ WINNER_STORY = {
 
 
 def game_over(g: Game, minutes: int | None = None) -> str:
-    won = [p for p in g.players if p.won]
-    rest = [p for p in g.players if not p.won]
+    order = sorted(g.players, key=lambda p: (-p.score, not p.alive))  # yashirin hissa balli bo'yicha (ko'rsatilmaydi)
+    won = [p for p in order if p.won]
+    rest = [p for p in order if not p.won]
     lines = ["🏁 <b>O'yin tugadi!</b>"]
     if g.winner in WINNER:  # qaysi tomon yutgani
         lines += [f"<b>{WINNER[g.winner]}</b>", f"<i>{WINNER_STORY[g.winner]}</i>"]
@@ -633,8 +634,6 @@ def shop(dollars: int, uid: int | None = None) -> str:
 
 BOUGHT = "✅ Sotib olindi!"
 NO_MONEY = "😔 Pul yetarli emas."
-def exchange_btn() -> str:
-    return f"💎 1 → {config.DIAMOND_RATE} 💵"
 
 
 # ---------- hamyon (profil menyusi) ----------

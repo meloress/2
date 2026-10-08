@@ -780,13 +780,9 @@ async def cmd_help(msg: Message):
     await msg.answer(texts.start_pm())
 
 
-@router.callback_query(F.data.startswith("t:") | (F.data == "x"))
+@router.callback_query(F.data.startswith("t:"))
 async def cb_profile(cq: CallbackQuery):
-    if cq.data == "x":
-        if not await db.exchange_diamond(cq.from_user.id):
-            return await cq.answer("😔 Olmos yo'q", show_alert=True)
-    else:
-        await db.toggle_item(cq.from_user.id, cq.data[2:])
+    await db.toggle_item(cq.from_user.id, cq.data[2:])
     u = await db.get_user(cq.from_user.id)
     inv = await db.inventory(u.telegram_id)
     await cq.message.edit_text(texts.profile(u, inv), reply_markup=profile_kb(inv, u.telegram_id))

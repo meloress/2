@@ -451,3 +451,31 @@ def test_simulate_with_confirm():
             if g.phase == FINISHED:
                 break
         assert g.phase == FINISHED, seed
+
+
+# ---------- yashirin hissa balli (g'oliblar tartibi) ----------
+def test_hidden_score_orders_winners():
+    from mafia_zone import texts
+    # ro'yxatda komissar va doktor oxirida: tartib qo'shilish navbatiga emas, o'yinga qarab bo'lishi kerak
+    g = mk("don", "tinch", "tinch", "tinch", "doktor", "komissar")
+    night(g, (1, "mafia_kill", 2), (5, "heal", 4), (6, "check", 1))  # tinch o'ldi, komissar Donni topdi
+    assert g.get(1).score == 3 and g.get(6).score == 3 and g.get(5).score == 0
+    s5 = g.get(5).score + 1  # +1 - kunduzgi kun omon qoldi
+    night(g, (1, "mafia_kill", 3), (5, "heal", 3), (6, "check", 1))  # doktor qutqardi
+    assert g.get(3).alive and g.get(5).score == s5 + 3
+    g2 = Game.from_dict(json.loads(json.dumps(g.to_dict())))  # ball saqlanadi
+    assert [p.score for p in g2.players] == [p.score for p in g.players]
+    vote(g, (3, 1), (4, 1), (5, 1), (6, 1))  # Don osildi - tinch aholi yutdi
+    assert g.phase == FINISHED and g.get(4).score < g.get(5).score < g.get(6).score
+    text = texts.game_over(g)
+    won = text.split("G'oliblar")[1].split("Qolgan")[0]
+    assert won.index("p6") < won.index("p5") < won.index("p3")
+    assert "ball" not in text.lower() and "ochko" not in text.lower()  # foydalanuvchiga ko'rsatilmaydi
+
+
+def test_score_penalties():
+    g = mk("don", "mafiya", "tinch", "tinch", "tinch", "tinch", "tinch")
+    vote(g, (1, 2), (3, 4))  # durang - hech kim osilmaydi: faqat kun omon qolgani uchun
+    assert g.get(1).score == g.get(3).score == 1
+    vote(g, (1, 2), (3, 2), (4, 2))  # mafiya osildi: tinchlar +2, Don (sherigini osdi) -1
+    assert g.get(3).score > 0 and g.get(1).score < g.get(3).score

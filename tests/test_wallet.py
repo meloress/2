@@ -177,8 +177,9 @@ def test_profile_kb_layout_and_sections():
         await mkuser(U + 40, 0)
         kb = runner.profile_kb([], U + 40)
         c = cbs(kb)
-        for d in ("m:pro", "m:buy", "m:gem", "m:pay", "m:gift", "m:groups", "x", "shop", "m:home"):
+        for d in ("m:pro", "m:buy", "m:gem", "m:pay", "m:gift", "m:groups", "shop", "m:home"):
             assert d in c, d
+        assert "x" not in c  # Exchange tugmasi yo'q: dollar Xarid orqali olinadi
         log = []
         for what in ("buy", "gem", "groups"):
             await handlers.cb_menu(cq(U + 40, f"m:{what}", log))
