@@ -131,17 +131,18 @@ class Claim(Base):
     n: Mapped[int] = mapped_column(Integer, default=0)  # olish tartibi
 
 
-async def transfer(src: int, dst: int, amount: int) -> bool:
-    """src -> dst. Balans yetmasa hech narsa o'zgarmaydi."""
-    if src == dst or amount <= 0:
+async def transfer(src: int, dst: int, amount: int, currency: str = "dollars") -> bool:
+    """src -> dst (currency: dollars | diamonds). Balans yetmasa hech narsa o'zgarmaydi."""
+    if src == dst or amount <= 0 or currency not in ("dollars", "diamonds"):
         return False
+    col = getattr(User, currency)
     try:
         async with Session.begin() as s:
-            r = await s.execute(update(User).where(User.telegram_id == src, User.dollars >= amount,
-                                                   User.banned.is_(False)).values(dollars=User.dollars - amount))
+            r = await s.execute(update(User).where(User.telegram_id == src, col >= amount,
+                                                   User.banned.is_(False)).values({col: col - amount}))
             if r.rowcount != 1:
                 return False
-            r = await s.execute(update(User).where(User.telegram_id == dst).values(dollars=User.dollars + amount))
+            r = await s.execute(update(User).where(User.telegram_id == dst).values({col: col + amount}))
             if r.rowcount != 1:
                 raise _Rollback  # qabul qiluvchi yo'q: yechilgan pul qaytadi
     except _Rollback:
@@ -476,6 +477,43 @@ async def exchange_diamond(uid: int) -> bool:
         r = await s.execute(update(User).where(User.telegram_id == uid, User.diamonds >= 1)
                             .values(diamonds=User.diamonds - 1, dollars=User.dollars + config.DIAMOND_RATE))
         return r.rowcount == 1
+
+
+async def buy_dollars(uid: int, diamonds: int) -> bool:
+    """Xarid paketi: olmos -> dollar, atomar."""
+    dollars = config.DOLLAR_PACKS.get(diamonds)
+    if not dollars:
+        return False
+    async with Session.begin() as s:
+        r = await s.execute(update(User).where(User.telegram_id == uid, User.diamonds >= diamonds)
+                            .values(diamonds=User.diamonds - diamonds, dollars=User.dollars + dollars))
+        return r.rowcount == 1
+
+
+async def add_paid_diamonds(payer: int, target: int, n: int, stars: int, charge_id: str) -> bool:
+    """Stars bilan olmos (target - o'zi yoki do'sti). Payment.days = olmos soni. Takror charge_id - False.
+    Qabul qiluvchi topilmasa - xato (to'lov qaytariladi)."""
+    from sqlalchemy.exc import IntegrityError
+    try:
+        async with Session.begin() as s:
+            s.add(Payment(user_id=payer, method="diamonds_stars", days=n, amount=stars, charge_id=charge_id))
+            await s.flush()
+            r = await s.execute(update(User).where(User.telegram_id == target).values(diamonds=User.diamonds + n))
+            if r.rowcount != 1:
+                raise LookupError(f"qabul qiluvchi yo'q: {target}")
+    except IntegrityError:
+        return False
+    return True
+
+
+async def top_groups(limit: int = 10) -> list[tuple[str, int]]:
+    """[(guruh nomi, tugagan o'yinlar)] - eng faol guruhlar."""
+    n = func.count(GameRow.id)
+    async with Session() as s:
+        rows = (await s.execute(select(Group.title, n).join(GameRow, GameRow.chat_id == Group.chat_id)
+                                .where(GameRow.status == "finished").group_by(Group.chat_id, Group.title)
+                                .order_by(n.desc()).limit(limit))).all()
+    return [(t or "?", int(c)) for t, c in rows]
 
 
 async def rob_dollars(victim: int, thief: int) -> int:

@@ -12,7 +12,7 @@ from . import config, db, pro, texts
 from .engine.game import CONFIRM, DAY, FINISHED, NIGHT, VOTING
 from .engine.roles import ROLES
 from .engine.setup import CORE
-from .runner import NEXT, PLAYING, RUNNERS, Runner, _call, spawn, back_btn, pro_btn, bot_link, edit, invite_url, profile_kb, send
+from .runner import NEXT, PLAYING, RUNNERS, Runner, _call, spawn, back_btn, pro_btn, bot_link, edit, grid, invite_url, profile_kb, send
 
 log = logging.getLogger(__name__)
 router = Router()
@@ -490,6 +490,7 @@ async def cb_menu(cq: CallbackQuery):
     """Bosh menyu bo'limlari o'sha xabarning o'zida ochiladi, ⬅️ Orqaga bilan menyuga qaytiladi."""
     what = cq.data[2:]
     back = Kb(inline_keyboard=[[back_btn()]])
+    ASK.pop(cq.from_user.id, None)  # boshqa bo'limga o'tdi - kutilayotgan javob bekor
     if what == "home":
         await show(cq, texts.welcome(), start_kb(cq.from_user.id))
     elif what == "rules":
@@ -498,6 +499,24 @@ async def cb_menu(cq: CallbackQuery):
         await show(cq, texts.pro_info(cq.from_user.id), pro_kb())
     elif what == "top":
         await show(cq, texts.top(await db.top(), "Umumiy reyting"), back)
+    elif what == "buy":
+        btns = [Btn(text=f"{d}💵 - {n}💎", callback_data=f"xd:{n}") for n, d in config.DOLLAR_PACKS.items()]
+        await show(cq, texts.BUY_DOLLARS, Kb(inline_keyboard=grid(btns, 2) + [[prof_back()]]))
+    elif what == "gem":
+        await show(cq, texts.GEM_WHO, Kb(inline_keyboard=[[Btn(text=texts.SELF_BTN, callback_data="gm:me"),
+                                                          Btn(text=texts.OTHER_BTN, callback_data="gm:to")],
+                                                         [prof_back()]]))
+    elif what == "groups":
+        await show(cq, texts.top_groups(await db.top_groups()), Kb(inline_keyboard=[[prof_back()]]))
+    elif what in ("pay", "gift"):
+        if not (u := await _user(cq)):
+            return await cq.answer(texts.BANNED, show_alert=True)
+        kb = Kb(inline_keyboard=[[prof_back()]])
+        if u.games < config.SEND_GAMES:  # /send bilan bir xil: yangi profillardan pul yig'ishga qarshi
+            await show(cq, texts.send_locked(u.games), kb)
+        else:
+            ASK[u.telegram_id] = "dollars" if what == "pay" else "diamonds"
+            await show(cq, texts.ask_send(ASK[u.telegram_id]), kb)
     elif what in ("profile", "shop"):
         if not (u := await _user(cq)):
             return await cq.answer(texts.BANNED, show_alert=True)
@@ -516,6 +535,82 @@ async def show(cq: CallbackQuery, text: str, kb: Kb) -> None:
     except TelegramBadRequest as e:
         if "not modified" not in str(e):
             await cq.message.answer(text, reply_markup=kb)
+
+
+# ---------- hamyon: Xarid, Olmos (Stars), yuborish ----------
+ASK: dict[int, str] = {}  # uid -> keyingi xabarda kutilgan javob: "to" (sovg'a kimga) | "dollars" / "diamonds" (kimga, qancha)
+
+
+def prof_back() -> Btn:
+    return Btn(text=texts.BACK_BTN, callback_data="m:profile")
+
+
+def stars_kb(target: int = 0) -> Kb:
+    """target: 0 - o'zim uchun, aks holda sovg'a oluvchi."""
+    btns = [Btn(text=f"💎 {n} = ⭐ {s}", callback_data=f"gs:{n}:{target}") for n, s in config.DIAMOND_STARS.items()]
+    return Kb(inline_keyboard=grid(btns, 2) + [[Btn(text=texts.BACK_BTN, callback_data="m:gem")]])
+
+
+@router.callback_query(F.data.startswith(("xd:", "gm:", "gs:")))
+async def cb_wallet(cq: CallbackQuery):
+    """xd:<olmos> - dollar paketi; gm:me / gm:to - kim uchun olmos; gs:<olmos>:<target> - Stars hisob-fakturasi."""
+    if not await _user(cq):
+        return await cq.answer(texts.BANNED, show_alert=True)
+    uid = cq.from_user.id
+    kind, _, rest = cq.data.partition(":")
+    if kind == "xd":
+        n = int(rest) if rest.isdigit() else 0
+        if not await db.buy_dollars(uid, n):
+            return await cq.answer(texts.NO_DIAMONDS, show_alert=True)
+        return await cq.answer(texts.dollars_bought(n, config.DOLLAR_PACKS[n]), show_alert=True)
+    if kind == "gm":
+        if rest == "to":
+            ASK[uid] = "to"
+            await show(cq, texts.ASK_TO, Kb(inline_keyboard=[[Btn(text=texts.BACK_BTN, callback_data="m:gem")]]))
+        else:
+            await show(cq, texts.stars_menu(), stars_kb())
+        return await cq.answer()
+    n, _, target = rest.partition(":")
+    if not (n.isdigit() and int(n) in config.DIAMOND_STARS and target.isdigit()):
+        return await cq.answer()
+    n, target = int(n), int(target)
+    if target and not await db.get_user(target):
+        return await cq.answer(texts.WALLET_NO_USER, show_alert=True)
+    await _call(cq.bot.send_invoice, chat_id=uid, title=f"{n} olmos" + (" (sovg'a)" if target else ""),
+                description=f"Admiral Mafia: {n} 💎 olmos" + (" do'stingizga sovg'a." if target else " hisobingizga."),
+                payload=f"dm:{n}:{target}", currency="XTR",
+                prices=[LabeledPrice(label=f"{n} olmos", amount=config.DIAMOND_STARS[n])])
+    await cq.answer()
+
+
+async def _find_user(s: str) -> db.User | None:
+    return await db.get_user(int(s)) if s.isdigit() else await db.user_by_username(s)
+
+
+async def _answer_ask(msg: Message, ask: str) -> None:
+    uid, parts = msg.from_user.id, msg.text.split()
+    if ask == "to":
+        t = await _find_user(parts[0]) if len(parts) == 1 else None
+        if not t:
+            return await msg.answer(texts.WALLET_NO_USER)
+        target = 0 if t.telegram_id == uid else t.telegram_id
+        return await msg.answer(texts.stars_menu(texts.mention(t.telegram_id, t.full_name) if target else None),
+                                reply_markup=stars_kb(target))
+    if len(parts) != 2 or not parts[1].isdigit() or not 0 < int(parts[1]) <= MAX_AMOUNT:
+        return await msg.answer(texts.WALLET_FORMAT)
+    if not (t := await _find_user(parts[0])):
+        return await msg.answer(texts.WALLET_NO_USER)
+    if t.telegram_id == uid:
+        return await msg.answer(texts.WALLET_SELF)
+    if not (me := await _user(msg)):
+        return await msg.answer(texts.BANNED)
+    if me.games < config.SEND_GAMES:
+        return await msg.answer(texts.send_locked(me.games))
+    n = int(parts[1])
+    if not await db.transfer(uid, t.telegram_id, n, ask):
+        return await msg.answer(texts.NO_MONEY if ask == "dollars" else texts.NO_DIAMONDS)
+    await msg.answer(texts.sent_ok(texts.mention(t.telegram_id, t.full_name), n, ask))
+    await send(msg.bot, t.telegram_id, texts.got_money(texts.mention(uid, me.full_name), n, ask))
 
 
 def shop_kb(uid: int | None = None) -> Kb:
@@ -565,11 +660,21 @@ def _pro_payload(payload: str) -> int | None:
     return int(days) if days.isdigit() and int(days) in pro.PACKS else None
 
 
+def _dm_payload(payload: str) -> tuple[int, int] | None:
+    """dm:<olmos>:<target> -> (olmos, target); target 0 - to'lovchining o'zi."""
+    p = payload.split(":")
+    if len(p) == 3 and p[0] == "dm" and p[1].isdigit() and p[2].isdigit() and int(p[1]) in config.DIAMOND_STARS:
+        return int(p[1]), int(p[2])
+    return None
+
+
 @router.pre_checkout_query()
 async def on_pre_checkout(q: PreCheckoutQuery):
     """Telegram to'lovdan oldin so'raydi: paket va narx mos bo'lsagina tasdiqlanadi."""
-    days = _pro_payload(q.invoice_payload)
-    if days and q.currency == "XTR" and q.total_amount == pro.PACKS[days][1]:
+    days, dm = _pro_payload(q.invoice_payload), _dm_payload(q.invoice_payload)
+    if q.currency == "XTR" and (
+            days and q.total_amount == pro.PACKS[days][1]
+            or dm and q.total_amount == config.DIAMOND_STARS[dm[0]] and (not dm[1] or await db.get_user(dm[1]))):
         return await q.answer(ok=True)
     await q.answer(ok=False, error_message="To'lov ma'lumoti noto'g'ri. /pro orqali qaytadan urinib ko'ring.")
 
@@ -577,15 +682,19 @@ async def on_pre_checkout(q: PreCheckoutQuery):
 @router.message(F.successful_payment)
 async def on_paid(msg: Message):
     pay = msg.successful_payment
-    days = _pro_payload(pay.invoice_payload)
-    if not days:
+    days, dm = _pro_payload(pay.invoice_payload), _dm_payload(pay.invoice_payload)
+    if not (days or dm):
         return
     uid, charge = msg.from_user.id, pay.telegram_payment_charge_id
     try:
         await db.upsert_user(uid, msg.from_user.full_name, msg.from_user.username)
-        end = await db.add_pro(uid, days, "stars", pay.total_amount, charge)
-    except Exception:  # pul yechilgan, PRO yozilmadi: Telegram qayta yubormaydi - Stars qaytariladi
-        log.exception("PRO to'lovi yozilmadi: uid=%s charge=%s days=%s amount=%s", uid, charge, days, pay.total_amount)
+        if days:
+            end = await db.add_pro(uid, days, "stars", pay.total_amount, charge)
+        else:
+            end = await db.add_paid_diamonds(uid, dm[1] or uid, dm[0], pay.total_amount, charge)
+    except Exception:  # pul yechilgan, xarid yozilmadi: Telegram qayta yubormaydi - Stars qaytariladi
+        log.exception("Stars to'lovi yozilmadi: uid=%s charge=%s payload=%s amount=%s", uid, charge,
+                      pay.invoice_payload, pay.total_amount)
         try:
             await msg.bot.refund_star_payment(user_id=uid, telegram_payment_charge_id=charge)
             await msg.answer(texts.PAY_REFUNDED)
@@ -593,8 +702,17 @@ async def on_paid(msg: Message):
             log.exception("Stars qaytarilmadi: uid=%s charge=%s", uid, charge)
             await msg.answer(texts.PAY_FAILED)
         return
-    if end:  # None - shu to'lov avval hisoblangan (takror xabar)
-        await msg.answer(texts.pro_done(end))
+    if not end:  # shu to'lov avval hisoblangan (takror xabar)
+        return
+    if days:
+        return await msg.answer(texts.pro_done(end))
+    n, target = dm
+    if target and target != uid:
+        t = await db.get_user(target)
+        await msg.answer(texts.diamonds_paid(n, texts.mention(target, t.full_name if t else "?")))
+        await send(msg.bot, target, texts.got_money(texts.mention(uid, msg.from_user.full_name), n, "diamonds"))
+    else:
+        await msg.answer(texts.diamonds_paid(n))
 
 
 @router.message(Command("paysupport"), PRIVATE)
@@ -794,6 +912,8 @@ async def cmd_give(msg: Message, command: CommandObject):
 
 @router.message(PRIVATE, F.text)
 async def on_private_text(msg: Message):
+    if (ask := ASK.pop(msg.from_user.id, None)) and not msg.text.startswith("/"):
+        return await _answer_ask(msg, ask)
     r = PLAYING.get(msg.from_user.id)
     if r and not msg.text.startswith("/") and await r.on_private_text(msg.from_user.id, msg.text):
         return

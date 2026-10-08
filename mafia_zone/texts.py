@@ -546,8 +546,8 @@ def pay_support() -> str:
             "Hal qilinmasa, ⭐ Stars to'liq qaytariladi.")
 
 
-PAY_REFUNDED = ("⚠️ Texnik xato tufayli PRO yoqilmadi — <b>⭐ Stars to'liq qaytarildi</b>.\n"
-                "Birozdan keyin /pro orqali qaytadan urinib ko'ring.")
+PAY_REFUNDED = ("⚠️ Texnik xato tufayli xarid amalga oshmadi — <b>⭐ Stars to'liq qaytarildi</b>.\n"
+                "Birozdan keyin qaytadan urinib ko'ring.")
 PAY_FAILED = "⚠️ To'lovda texnik xato bo'ldi. /paysupport orqali adminga yozing — muammo hal qilinadi."
 
 PRO_BTN = "PRO akkaunt"  # tugmada PRO belgisi ikonka bo'lib turadi
@@ -635,6 +635,58 @@ BOUGHT = "✅ Sotib olindi!"
 NO_MONEY = "😔 Pul yetarli emas."
 def exchange_btn() -> str:
     return f"💎 1 → {config.DIAMOND_RATE} 💵"
+
+
+# ---------- hamyon (profil menyusi) ----------
+BUY_BTN, GEM_BTN, PAY_BTN, GIFT_BTN = "💵 Xarid", "💎 Olmos", "💵 Pul yuborish", "💎 Olmos yuborish"
+GROUPS_BTN, NEWS_BTN, SHOP_BTN = "🏆 Top guruhlar", "📰 Yangiliklar", "🛒 Do'kon"
+SELF_BTN, OTHER_BTN = "🙋 O'zim uchun", "🎁 Birov uchun"
+BUY_DOLLARS = "💵 <b>Dollar sotib olish uchun variantni tanlang:</b>"
+GEM_WHO = "💎 <b>Olmos sotib olish</b>\n\nKimga sotib olmoqchisiz?"
+ASK_TO = ("🎁 <b>Kimga olmos sovg'a qilasiz?</b>\n\n<b>@username</b> yoki <b>Telegram ID</b> yuboring.\n"
+          "<i>U botga kamida bir marta /start bosgan bo'lishi kerak.</i>")
+NO_DIAMONDS = "😔 Olmos yetarli emas."
+WALLET_NO_USER = "😔 Bunday foydalanuvchi topilmadi. U botga /start bosgan bo'lishi kerak."
+WALLET_FORMAT = "❌ Format: <code>@username 100</code> yoki <code>123456789 100</code>. Menyudan qaytadan urinib ko'ring."
+WALLET_SELF = "❌ O'zingizga yuborib bo'lmaydi."
+
+
+def stars_menu(target: str | None = None) -> str:
+    return "⭐ <b>STARS ORQALI TO'LOV</b>" + (f"\n\n🎁 Sovg'a: {target}" if target else "")
+
+
+def ask_send(currency: str) -> str:
+    what = "💵 Pul" if currency == "dollars" else "💎 Olmos"
+    return (f"{what} <b>yuborish</b>\n\nKimga va qancha? Masalan:\n"
+            "<code>@username 100</code> yoki <code>123456789 100</code>")
+
+
+def _cur(currency: str) -> str:
+    return "💵" if currency == "dollars" else "💎"
+
+
+def sent_ok(target: str, n: int, currency: str) -> str:
+    return f"✅ {target} ga <b>{n} {_cur(currency)}</b> yuborildi."
+
+
+def got_money(sender: str, n: int, currency: str) -> str:
+    return f"🎁 {sender} sizga <b>{n} {_cur(currency)}</b> yubordi!"
+
+
+def dollars_bought(diamonds: int, dollars: int) -> str:
+    return f"✅ {diamonds} 💎 → {dollars} 💵"
+
+
+def diamonds_paid(n: int, target: str | None = None) -> str:
+    return f"🎉 {target} ga <b>{n} 💎</b> sovg'a qilindi!" if target else f"🎉 Hisobingizga <b>{n} 💎</b> qo'shildi!"
+
+
+def top_groups(rows) -> str:
+    if not rows:
+        return "🏆 <b>Top guruhlar</b>\n\n— hali o'yinlar yo'q —"
+    medals = ["🥇", "🥈", "🥉"]
+    body = "\n".join(f"{medals[i] if i < 3 else f'{i + 1}.'} <b>{escape(t)}</b> — {n} 🎮" for i, (t, n) in enumerate(rows))
+    return f"🏆 <b>Top guruhlar</b>\n\n{body}"
 
 
 def top(rows, title: str) -> str:

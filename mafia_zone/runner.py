@@ -170,9 +170,14 @@ def profile_kb(inv, uid: int | None = None) -> Kb:
                    callback_data=f"t:{i.item}", style="success" if i.enabled else "danger")
                for i in inv if i.item in texts.ITEMS and i.qty > 0]
     rows = grid(toggles, 3) if toggles else []
-    rows.append([Btn(text=texts.exchange_btn(), callback_data="x", style="primary"),
-                 Btn(text="🛒 Do'kon", callback_data="shop", style="primary")])
-    rows.append([pro_btn()])
+    rows += [[pro_btn()],
+             [Btn(text=texts.BUY_BTN, callback_data="m:buy"), Btn(text=texts.GEM_BTN, callback_data="m:gem")],
+             [Btn(text=texts.PAY_BTN, callback_data="m:pay"), Btn(text=texts.GIFT_BTN, callback_data="m:gift")],
+             [Btn(text=texts.GROUPS_BTN, callback_data="m:groups"),
+              Btn(text=texts.exchange_btn(), callback_data="x", style="primary")]]
+    if config.NEWS_URL:
+        rows.append([Btn(text=texts.NEWS_BTN, url=config.NEWS_URL)])
+    rows.append([Btn(text=texts.SHOP_BTN, callback_data="shop", style="primary")])
     if uid is not None:
         rows.append([Btn(text=texts.INVITE_BTN, url=invite_url(uid), style="success")])
     rows.append([back_btn()])
