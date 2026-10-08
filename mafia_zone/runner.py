@@ -216,6 +216,7 @@ class Runner:
         self.live_lines: list[str] = []  # tungi harakatlar va ovozlar: har biri alohida xabar
         self.confirm_dirty = False
         self.lock = asyncio.Lock()
+        self.confirm_shown: tuple[int, int] | None = None  # guruh xabaridagi 👍/👎 sonlari (keraksiz tahrir bo'lmasin)
         self.task: asyncio.Task | None = None
         self.last_words: dict[int, float] = {}
         RUNNERS[chat_id] = self
@@ -266,8 +267,13 @@ class Runner:
             await asyncio.sleep(1)
             if self.lobby_msg and (self.lobby_dirty and time.time() - last_edit > 5 or time.time() - last_edit > 30):
                 self.lobby_dirty, last_edit = False, time.time()
-                await edit(self.bot, self.chat_id, self.lobby_msg, self._lobby_text(), self._lobby_kb())
+                await self._refresh_lobby()
         await self._start_game()
+
+    async def _refresh_lobby(self) -> None:
+        """Ro'yxatni yangilaydi; tahrirlab bo'lmasa (admin o'chirgan) - qayta yuboriladi, qo'shilish tugmasi yo'qolmaydi."""
+        if not await edit(self.bot, self.chat_id, self.lobby_msg, self._lobby_text(), self._lobby_kb()):
+            await self.repost_lobby()
 
     def join(self, uid: int, name: str) -> str:
         if self.game:
@@ -396,6 +402,12 @@ class Runner:
         else:
             m = await send(self.bot, self.chat_id, texts.confirm_prompt(g, secs), self._confirm_kb())
             self.meta["confirm_msg"] = m.message_id if m else None
+            self.confirm_shown = g.confirm_tally()
+            # tugmalar botda ham: admin guruhdagi xabarni o'chirsa ham hamma ovoz bera oladi
+            pm_kb = self._confirm_kb(pm=True)
+            for p in g.alive():
+                if g.can_confirm(p.uid):
+                    await send(self.bot, p.uid, texts.confirm_pm(g), pm_kb)
         await self._bots_act(ph)
 
     def add_bots(self, n: int) -> None:
@@ -428,9 +440,9 @@ class Runner:
         g = self.game
         return all(p.uid in g.confirms for p in g.alive() if g.can_confirm(p.uid))
 
-    def _confirm_kb(self) -> Kb:
+    def _confirm_kb(self, pm: bool = False) -> Kb:
         pre = f"c:{self.game_id}:{self.game.day}"
-        yes, no = self.game.confirm_tally()
+        yes, no = ("Osilsin", "Rahm qilinsin") if pm else self.game.confirm_tally()
         return Kb(inline_keyboard=[[Btn(text=f"👍 {yes}", callback_data=f"{pre}:1", style="success"),
                                     Btn(text=f"👎 {no}", callback_data=f"{pre}:0", style="danger")]])
 
@@ -439,13 +451,20 @@ class Runner:
         if g.phase != CONFIRM or g.candidate is None:  # kech kelgan bosish: tasdiq allaqachon tugagan
             self.confirm_dirty = False
             return
-        if mid := self.meta.get("confirm_msg"):
-            if final:
-                self.confirm_dirty = False
-                self.meta.pop("confirm_msg", None)
-                await edit(self.bot, self.chat_id, mid, texts.confirm_result(g))
-            else:
-                await edit(self.bot, self.chat_id, mid, texts.confirm_prompt(g, self.s["vote"]), self._confirm_kb())
+        mid = self.meta.get("confirm_msg")
+        if final:  # tahrirlab bo'lmasa (xabar o'chirilgan) - natija yangi xabar bo'lib chiqadi
+            self.confirm_dirty = False
+            self.meta.pop("confirm_msg", None)
+            if not (mid and await edit(self.bot, self.chat_id, mid, texts.confirm_result(g))):
+                await send(self.bot, self.chat_id, texts.confirm_result(g))
+            return
+        if g.confirm_tally() == self.confirm_shown:
+            return
+        self.confirm_shown = g.confirm_tally()
+        text, kb = texts.confirm_prompt(g, self.s["vote"]), self._confirm_kb()
+        if not (mid and await edit(self.bot, self.chat_id, mid, text, kb)):  # admin o'chirdi - qayta yuboriladi
+            m = await send(self.bot, self.chat_id, text, kb)
+            self.meta["confirm_msg"] = m.message_id if m else None
 
     async def on_confirm(self, uid: int, day: int, yes: bool) -> bool:
         async with self.lock:

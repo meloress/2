@@ -27,6 +27,7 @@ class FakeBot:
 
     async def edit_message_text(self, text, chat_id, message_id, **kw):
         self.sent.append((chat_id, text))
+        return True
 
     async def send_animation(self, chat_id, animation, caption=None, **kw):
         self._id += 1
@@ -488,3 +489,84 @@ def test_bot_removed_aborts_game():
         await handlers.on_bot_removed(upd)
         assert -998 not in runner.RUNNERS
     asyncio.run(t())
+
+
+def test_confirm_cannot_be_killed_by_deleting_group_message():
+    """Admin guruhdagi 👍/👎 xabarini o'chirsa ham: tugmalar botda ham bor, xabar qayta yuboriladi."""
+    from aiogram.exceptions import TelegramBadRequest
+    from aiogram.methods import EditMessageText
+    from mafia_zone import handlers
+    from mafia_zone.engine.game import Game
+
+    class DeletedBot(FakeBot):
+        async def edit_message_text(self, text, chat_id, message_id, **kw):
+            raise TelegramBadRequest(EditMessageText(text=text), "Bad Request: message to edit not found")
+
+    async def go():
+        await db.init()
+        bot, chat = DeletedBot(), -4444
+        r = runner.Runner(bot, chat, {"vote": 10})
+        r.game, r.game_id = Game.create(chat, [(i, f"p{i}") for i in range(1, 7)], 3), 55
+        g = r.game
+        g.phase, g.candidate = CONFIRM, 1
+        handlers.RUNNERS[chat] = r
+        for p in g.players:
+            handlers.PLAYING[p.uid] = r
+        try:
+            await r._intro(CONFIRM, 10)
+            pms = {c for c, _ in bot.sent if c > 0}
+            assert pms == {p.uid for p in g.alive() if g.can_confirm(p.uid)}  # har kimga botda tugmalar
+            said = []
+
+            async def answer(text=None, **kw):
+                said.append(text)
+
+            async def edit_text(*a, **kw):
+                pass
+            cq = SimpleNamespace(data=f"c:55:{g.day}:1", from_user=SimpleNamespace(id=2), answer=answer,
+                                 message=SimpleNamespace(chat=SimpleNamespace(id=2), edit_text=edit_text))
+            await handlers.cb_confirm(cq)  # botning shaxsiy chatidan
+            assert g.confirms.get(2) is True
+            old, n = r.meta["confirm_msg"], len(bot.sent)
+            await r._edit_confirm(final=False)  # guruh xabari o'chirilgan - qayta yuboriladi
+            assert r.meta["confirm_msg"] != old and bot.sent[n][0] == chat
+            n = len(bot.sent)
+            await r._edit_confirm(final=True)
+            assert bot.sent[n][0] == chat and "vaqt tugadi" in bot.sent[n][1]  # natija yangi xabar bo'lib chiqadi
+        finally:
+            handlers.RUNNERS.pop(chat, None)
+            for p in g.players:
+                handlers.PLAYING.pop(p.uid, None)
+            r.close()
+
+    asyncio.run(go())
+
+
+def test_deleted_lobby_is_reposted():
+    from aiogram.exceptions import TelegramBadRequest
+    from aiogram.methods import EditMessageText
+
+    class DeletedBot(FakeBot):
+        async def edit_message_text(self, text, chat_id, message_id, **kw):
+            raise TelegramBadRequest(EditMessageText(text=text), "Bad Request: message to edit not found")
+
+        async def delete_message(self, *a, **kw):
+            return True
+
+        async def pin_chat_message(self, *a, **kw):
+            return True
+
+    async def go():
+        await db.init()
+        bot, chat = DeletedBot(), -4545
+        r = runner.Runner(bot, chat, {"lobby": 60})
+        runner.RUNNERS[chat] = r
+        try:
+            r.lobby_msg, r.lobby_deadline = 5, __import__("time").time() + 60
+            await r._refresh_lobby()  # admin ro'yxatni o'chirgan - qayta chiqadi
+            assert r.lobby_msg != 5 and bot.sent[-1][0] == chat
+        finally:
+            runner.RUNNERS.pop(chat, None)
+            r.close()
+
+    asyncio.run(go())

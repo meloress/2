@@ -519,7 +519,7 @@ def test_night_results_for_every_actor():
         to.setdefault(uid, []).append(t)
     for uid in (2, 3, 4, 5, 6, 10):
         assert uid in to, uid
-    assert any("qutqar" in t for t in to[2]) and any("omon" in t for t in to[7])  # hujum qilingan o'zi ham biladi
+    assert any("qutqar" in t for t in to[2]) and any("Doktor" in t for t in to[7])  # hujum qilingan o'zi ham biladi
 
 
 def test_heal_without_attack_and_failed_attack():
@@ -554,3 +554,54 @@ def test_check_shows_exact_role():
     ev = night(g, (3, "check", 2))
     _, priv = texts.morning(g, ev)
     assert any(texts.role("qotil") in t for u, t in priv if u == 3)
+
+
+def test_doctor_and_patient_both_told():
+    from mafia_zone import texts
+
+    def pms(g, ev):
+        out = {}
+        for uid, t in texts.morning(g, ev)[1]:
+            out.setdefault(uid, []).append(t)
+        return out
+    g = mk("don", "doktor", "tinch", "tinch", "tinch", "tinch")
+    to = pms(g, night(g, (1, "mafia_kill", 3), (2, "heal", 3)))
+    assert any("yordam bera oldingiz" in t for t in to[2])
+    assert len(to[3]) == 1 and "Doktor" in to[3][0] and "qutqar" in to[3][0]  # bitta xabar, takror emas
+    g = mk("don", "doktor", "tinch", "tinch", "tinch", "tinch")
+    to = pms(g, night(g, (1, "mafia_kill", 3), (2, "heal", 4)))
+    assert any("hech kim hujum qilmadi" in t for t in to[2]) and any("Doktor" in t for t in to[4])
+
+
+# ---------- himoyalar bekorga yonmasin ----------
+def test_doc_only_for_mafia_and_neutrals():
+    g = mk("don", "komissar", "tinch", "doktor", "tinch", "tinch", p3={"doc": 1}, p4={"doc": 1})
+    ev = night(g, (2, "check", 3))
+    assert [e.data["result"] for e in ev if e.kind == "checked"] == ["tinch"] and "item_used" not in kinds(ev)
+    assert g.get(3).items["doc"] == 1  # tinch aholida hujjat yonmaydi
+    ev = night(g, (2, "check", 4))
+    assert [e.data["result"] for e in ev if e.kind == "checked"] == ["doktor"] and g.get(4).items["doc"] == 1
+    g = mk("don", "qotil", "komissar", "tinch", "tinch", "tinch", "tinch", p2={"doc": 1})
+    ev = night(g, (3, "check", 2))
+    assert [e.data["result"] for e in ev if e.kind == "checked"] == ["tinch"] and g.get(2).items["doc"] == 0
+
+
+def test_doc_covers_every_check_that_night():
+    g = mk("don", "komissar", "ovchi", "tinch", "tinch", "tinch", "tinch", p1={"doc": 1})
+    ev = night(g, (2, "check", 1), (3, "check", 1))
+    assert [e.data["result"] for e in ev if e.kind == "checked"] == ["tinch", "tinch"]
+    assert kinds(ev).count("item_used") == 1
+
+
+def test_suitsid_shield_not_used_against_mafia():
+    g = mk("don", "suitsid", "tinch", "tinch", "tinch", "tinch", "mafiya", p2={"shield": 1})
+    ev = night(g, (1, "mafia_kill", 2))
+    assert not g.get(2).alive and g.get(2).won and not g.get(1).alive  # Donni olib ketdi
+    assert g.get(2).items["shield"] == 1 and "item_used" not in kinds(ev)
+
+
+def test_tulki_votesave_not_used():
+    g = mk("don", "tulki", "tinch", "tinch", "tinch", "tinch", "mafiya", p2={"votesave": 1})
+    ev = vote(g, (3, 2), (4, 2))
+    assert not g.get(2).alive and g.get(2).won and g.get(2).items["votesave"] == 1
+    assert "vote_saved" not in kinds(ev)

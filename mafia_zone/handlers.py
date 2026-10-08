@@ -243,7 +243,7 @@ async def cb_settings(cq: CallbackQuery, bot: Bot):
 @router.callback_query(F.data.startswith("c:"))
 async def cb_confirm(cq: CallbackQuery):
     _, gid, day, yes = cq.data.split(":")
-    r = RUNNERS.get(cq.message.chat.id)
+    r = RUNNERS.get(cq.message.chat.id) or PLAYING.get(cq.from_user.id)  # guruhdan yoki botning shaxsiy chatidan
     if not r or r.game_id != int(gid):
         return await cq.answer("⌛️ Bu ovoz berish tugagan.")
     ok = await r.on_confirm(cq.from_user.id, int(day), yes == "1")

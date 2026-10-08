@@ -14,7 +14,7 @@ ITEMS = {"shield": "🛡 Qalqon", "verbena": "🧄 Verbena", "doc": "📄 Hujjat
 ITEM_ABOUT = {
     "shield": "tungi o'limdan 1 marta saqlaydi",
     "verbena": "Vampir tishlashidan 1 marta saqlaydi",
-    "doc": "tekshiruvda 1 marta \"Tinch\" ko'rsatadi",
+    "doc": "mafiya yoki yakka rol bo'lsangiz, tekshiruvda 1 marta \"Tinch\" ko'rsatadi",
     "mask": "bir o'yin davomida rolingiz guruhga ochilmaydi — o'lganingizda ham",
     "votesave": "kunduzi osilishdan 1 marta saqlaydi (bir o'yinda bir marta)",
     "ticket": "keyingi o'yinda oddiy Tinch o'rniga maxsus rol kafolatlanadi",
@@ -247,7 +247,7 @@ def skip_feed(role_code: str) -> str | None:
 
 
 RESULT = {  # (harakat, muvaffaqiyat) -> shaxsiy xabar; {t} - nishon
-    ("heal", True): "💉 Siz {t}ni o'limdan qutqarib qoldingiz!",
+    ("heal", True): "💉 Siz {t}ga yordam bera oldingiz — uni o'limdan qutqarib qoldingiz!",
     ("heal", False): "💉 Siz {t}ni davoladingiz. Bu tun unga hech kim hujum qilmadi.",
     ("guard", True): "🛡 {t} sizning himoyangizda: ertaga uni osib bo'lmaydi.",
     ("block", True): "💤 {t}ga uyqu dori berdingiz: u bu tun hech narsa qila olmadi va ertaga ovoz bera olmaydi.",
@@ -258,6 +258,8 @@ RESULT = {  # (harakat, muvaffaqiyat) -> shaxsiy xabar; {t} - nishon
 ATTACK_OK = "🎯 Nishoningiz {t} halok bo'ldi."
 ATTACK_FAIL = "😤 {t} omon qoldi — kimdir uni himoya qildi yoki unga kuchingiz yetmadi."
 ATTACKED_SAVED = "🩹 Tunda sizga hujum qilishdi, lekin omon qoldingiz!"
+PATIENT = {True: "👨‍⚕️ Tunda sizga hujum qilishdi, lekin <b>Doktor</b> sizni qutqarib qoldi!",
+           False: "👨‍⚕️ Tunda <b>Doktor</b> sizni ko'rgani keldi. Bu tun sizga hech kim hujum qilmadi."}
 
 
 def act_feed(role_code: str, kind: str = "") -> str:
@@ -341,6 +343,7 @@ def morning(g: Game, ev: list[Event]) -> tuple[list[str], list[tuple[int, str]]]
     """([guruhga alohida xabarlar], [(uid, shaxsiy matn)])"""
     pub, priv = [], []
     n = lambda uid: pm(g, uid)  # ismlar bosilsa Telegram profili ochiladi
+    healed = {e.target for e in ev if e.kind == "result" and e.data["kind"] == "heal" and e.data["ok"]}
     w = lambda uid: who(g, uid)
     for e in ev:
         k = e.kind
@@ -356,10 +359,13 @@ def morning(g: Game, ev: list[Event]) -> tuple[list[str], list[tuple[int, str]]]
                 pub.append(f"Tunda {victim}...\n{choice(VERBS)}\nAytishlaricha unikiga {killers} kelgan")
         elif k == "saved":
             pub.append(choice(SAVED))
-            priv.append((e.target, ATTACKED_SAVED))
+            if e.target not in healed:  # Doktor qutqargan bo'lsa - unga alohida (PATIENT)
+                priv.append((e.target, ATTACKED_SAVED))
         elif k == "result":
             t = RESULT.get((e.data["kind"], e.data["ok"])) or (ATTACK_OK if e.data["ok"] else ATTACK_FAIL)
             priv.append((e.uid, t.format(t=f"<b>{n(e.target)}</b>")))
+            if e.data["kind"] == "heal" and e.target != e.uid:  # bemorga ham
+                priv.append((e.target, PATIENT[e.data["ok"]]))
         elif k == "mafia_idle":
             pub.append(f"🤵 Mafialar kelisha olishmadi va {role('don')} hech kimni tanlamadi!\n"
                        "Mafiya bu tun hech kimga tegmadi..")
@@ -423,7 +429,9 @@ def morning(g: Game, ev: list[Event]) -> tuple[list[str], list[tuple[int, str]]]
             priv.append((e.uid, f"{head}⛏ Tunnel qazib <b>{d} 💵</b>{extra} topdingiz!"))
             pub.append(f"{role('konchi')} bugun tunda <b>{d} 💵</b> dollar{extra} topdi!")
         elif k == "item_used":
-            priv.append((e.uid, f"{ITEMS[e.data['item']]} sizni qutqardi: {ITEM_ABOUT[e.data['item']]}."))
+            used = ("tekshiruvda «Tinch aholi» bo'lib ko'rindingiz" if e.data["item"] == "doc"
+                    else ITEM_ABOUT[e.data["item"]])
+            priv.append((e.uid, f"{ITEMS[e.data['item']]} sizni qutqardi: {used}."))
         elif k == "robbed":
             what = {"dollars": f"💵 {e.data.get('amount', 0)} dollar", "vote": "🗳 ertangi ovoz huquqi",
                     "item": ITEMS.get(e.data.get("item"), "")}[e.data["what"]]
@@ -462,6 +470,10 @@ SKIP_BTN = "🤐 Hech kimga ovoz bermayman"
 def confirm_prompt(g: Game, secs: int) -> str:
     return (f"Rostdan ham <b>{pm(g, g.candidate)}</b> ni osishni hohlaysizmi?\n\n"
             f"⏰ Tasdiqlash uchun vaqt: <b>{secs}</b> sekund")
+
+
+def confirm_pm(g: Game) -> str:
+    return f"🪢 <b>{pm(g, g.candidate)}</b> ni osamizmi?\nTanlang:"
 
 
 def confirm_result(g: Game) -> str:

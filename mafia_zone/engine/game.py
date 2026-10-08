@@ -326,11 +326,12 @@ class Game:
         for u, (k, t, _) in acts.items():
             if t is not None:
                 visitors.setdefault(t, []).append(u)
+        docced: set[int] = set()  # shu tun Hujjat ko'rsatganlar: boshqa tekshiruvda ham Tinch
         for u, (k, t, _) in acts.items():
             if k == "check":
                 if self.get(t).team != self.get(u).team:  # haqiqiy jamoa bo'yicha (niqob ballga ta'sir qilmaydi)
                     self.get(u).score += 3
-                ev.append(Event("checked", u, t, {"result": self._appear(t, disguised, ev)}))
+                ev.append(Event("checked", u, t, {"result": self._appear(t, disguised, docced, ev)}))
             elif k == "interview":
                 ev.append(Event("interview", u, t, {"visitors": [x for x in visitors.get(t, []) if x != u]}))
             elif k == "dig":
@@ -381,7 +382,9 @@ class Game:
                 ev.append(Event("transformed", t, data={"role": v.role}))
                 continue
             only_bites = all(a[1] == "bite" for a in alist)
-            if (only_bites and self._use(v, "verbena", ev)) or self._use(v, "shield", ev):
+            # Suitsid mafiya qo'lida o'lib yutadi: unga qalqon/verbena zarar - ishlatilmaydi
+            wants = v.role == "suitsid" and any(a[1] == "mafia_kill" for a in alist)
+            if not wants and ((only_bites and self._use(v, "verbena", ev)) or self._use(v, "shield", ev)):
                 ev.append(Event("saved", target=t))
                 continue
             deaths[t] = alist
@@ -448,10 +451,14 @@ class Game:
         self._check_win(ev)
         return ev
 
-    def _appear(self, t: int, disguised: set, ev: list) -> str:
-        """Tekshiruvda ko'rinadigan rol: aniq rol; niqob, Hujjat va Sotqin - Tinch aholi."""
+    def _appear(self, t: int, disguised: set, docced: set, ev: list) -> str:
+        """Tekshiruvda ko'rinadigan rol: aniq rol; niqob, Hujjat va Sotqin - Tinch aholi.
+        Hujjat faqat mafiya va yakka rollarda sarflanadi: tinch aholiga yashirinish kerak emas."""
         v = self.get(t)
-        if t in disguised or v.role == "sotqin" or self._use(v, "doc", ev):
+        if t in disguised or v.role == "sotqin" or t in docced:
+            return "tinch"
+        if v.team != TOWN and self._use(v, "doc", ev):
+            docced.add(t)
             return "tinch"
         return v.role
 
@@ -537,7 +544,7 @@ class Game:
     def _hang(self, t: int, data: dict, ev: list) -> bool:
         """Osish. True qaytarsa, o'yin shu zahoti tugadi (Podshoh)."""
         v = self.get(t)
-        if self._use(v, "votesave", ev):  # ⚖️ Ovoz himoyasi: bir marta osilishdan saqlaydi, guruhga e'lon qilinadi
+        if v.role != "tulki" and self._use(v, "votesave", ev):  # Tulki osilib yutadi; ⚖️ Ovoz himoyasi: bir marta osilishdan saqlaydi, guruhga e'lon qilinadi
             ev.append(Event("vote_saved", target=t))
             return False
         v.alive = False
