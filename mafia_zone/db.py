@@ -581,6 +581,8 @@ def gem_price(item: str) -> int | None:
 
 async def buy(uid: int, item: str) -> bool:
     if gems := gem_price(item):
+        if config.DIAMONDS_OFF:
+            return False
         col, price = User.diamonds, gems
     elif item in config.SHOP and item not in config.SHOP_OFF:
         col, price = User.dollars, pro.price(uid, config.SHOP[item])  # PRO: -25%

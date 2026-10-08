@@ -25,6 +25,7 @@ REWARD_PLAY, REWARD_WIN, REF_BONUS = 0, 40, 50  # yutsa 40$, yutqazsa 0
 REF_GAMES, CLAIM_GAMES, SEND_GAMES = 3, 3, 5  # taklif bonusi / tarqatmadan olish / /send
 LEAVE_FREE, LEAVE_FINE, DEBT_LIMIT = 3, 200, -1000  # kuniga 3 ta bepul chiqish; -1000 da o'yinga kirolmaydi
 DIAMOND_RATE = 300  # Exchange: 1 olmos -> 300 dollar
+DIAMONDS_OFF = True  # hozircha olmos bilan xarid (PRO, Xarid, olmosli buyumlar, Stars->olmos) yopiq: "hali ishlamayapti"
 DOLLAR_PACKS = {1: 300, 2: 600, 3: 800, 4: 1500, 15: 5000, 30: 10000}  # Xarid: olmos -> dollar
 DIAMOND_STARS = {1: 7, 5: 35, 10: 66, 15: 101, 30: 202, 50: 342, 200: 1388, 500: 3488, 1000: 6984, 2000: 13984}  # olmos -> Stars
 NEWS_URL = os.environ.get("NEWS_URL", "").strip()  # yangiliklar kanali, bo'sh bo'lsa tugma chiqmaydi

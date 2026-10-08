@@ -809,6 +809,7 @@ GEM_WHO = "💎 <b>Olmos sotib olish</b>\n\nKimga sotib olmoqchisiz?"
 ASK_TO = ("🎁 <b>Kimga olmos sovg'a qilasiz?</b>\n\n<b>@username</b> yoki <b>Telegram ID</b> yuboring.\n"
           "<i>U botga kamida bir marta /start bosgan bo'lishi kerak.</i>")
 NO_DIAMONDS = "😔 Olmos yetarli emas."
+DIAMONDS_OFF = "🚧 Bu tizim hali ishlamayapti. Tez orada ishga tushadi!"
 WALLET_NO_USER = "😔 Bunday foydalanuvchi topilmadi. U botga /start bosgan bo'lishi kerak."
 WALLET_FORMAT = "❌ Format: <code>@username 100</code> yoki <code>123456789 100</code>. Menyudan qaytadan urinib ko'ring."
 WALLET_SELF = "❌ O'zingizga yuborib bo'lmaydi."

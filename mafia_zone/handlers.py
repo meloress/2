@@ -510,6 +510,8 @@ async def cb_menu(cq: CallbackQuery):
         await show(cq, texts.pro_info(cq.from_user.id), pro_kb())
     elif what == "top":
         await show(cq, texts.top(await db.top(), "Umumiy reyting"), back)
+    elif what in ("buy", "gem") and config.DIAMONDS_OFF:
+        return await cq.answer(texts.DIAMONDS_OFF, show_alert=True)
     elif what == "buy":
         btns = [Btn(text=f"{d}💵 - {n}💎", callback_data=f"xd:{n}") for n, d in config.DOLLAR_PACKS.items()]
         await show(cq, texts.BUY_DOLLARS, Kb(inline_keyboard=grid(btns, 2) + [[prof_back()]]))
@@ -567,6 +569,8 @@ async def cb_wallet(cq: CallbackQuery):
     """xd:<olmos> - dollar paketi; gm:me / gm:to - kim uchun olmos; gs:<olmos>:<target> - Stars hisob-fakturasi."""
     if not await _user(cq):
         return await cq.answer(texts.BANNED, show_alert=True)
+    if config.DIAMONDS_OFF:
+        return await cq.answer(texts.DIAMONDS_OFF, show_alert=True)
     uid = cq.from_user.id
     kind, _, rest = cq.data.partition(":")
     if kind == "xd":
@@ -662,6 +666,8 @@ async def cb_pro(cq: CallbackQuery):
     days = int(days) if days.isdigit() else 0
     if days not in pro.PACKS or not await _user(cq):
         return await cq.answer()
+    if how == "d" and config.DIAMONDS_OFF:
+        return await cq.answer(texts.DIAMONDS_OFF, show_alert=True)
     if how == "d":
         end = await db.buy_pro_diamonds(cq.from_user.id, days)
         if not end:
@@ -693,6 +699,8 @@ def _dm_payload(payload: str) -> tuple[int, int] | None:
 async def on_pre_checkout(q: PreCheckoutQuery):
     """Telegram to'lovdan oldin so'raydi: paket va narx mos bo'lsagina tasdiqlanadi."""
     days, dm = _pro_payload(q.invoice_payload), _dm_payload(q.invoice_payload)
+    if dm and config.DIAMONDS_OFF:
+        return await q.answer(ok=False, error_message=texts.DIAMONDS_OFF)
     if q.currency == "XTR" and (
             days and q.total_amount == pro.PACKS[days][1]
             or dm and q.total_amount == config.DIAMOND_STARS[dm[0]] and (not dm[1] or await db.get_user(dm[1]))):
@@ -816,6 +824,8 @@ async def cb_shop(cq: CallbackQuery):
         return await cq.answer(texts.BANNED, show_alert=True)
     item = cq.data[2:] if cq.data.startswith("b:") else None
     gems = db.gem_price(item) if item else None
+    if config.DIAMONDS_OFF and (gems or cq.data == "shoproles"):
+        return await cq.answer(texts.DIAMONDS_OFF, show_alert=True)
     if item:
         if not gems and (item not in config.SHOP or item in config.SHOP_OFF):
             return await cq.answer()
