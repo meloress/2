@@ -824,7 +824,7 @@ async def cb_shop(cq: CallbackQuery):
         return await cq.answer(texts.BANNED, show_alert=True)
     item = cq.data[2:] if cq.data.startswith("b:") else None
     gems = db.gem_price(item) if item else None
-    if config.DIAMONDS_OFF and (gems or cq.data == "shoproles"):
+    if config.DIAMONDS_OFF and gems:  # bo'limlar ochiladi, olmosga sotib olish yopiq
         return await cq.answer(texts.DIAMONDS_OFF, show_alert=True)
     if item:
         if not gems and (item not in config.SHOP or item in config.SHOP_OFF):

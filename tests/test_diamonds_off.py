@@ -25,8 +25,7 @@ def test_every_diamond_purchase_is_closed():
         async def send_invoice(**kw):
             invoices.append(kw)
         bot = SimpleNamespace(send_invoice=send_invoice)
-        for data in ("pro:d:7", "xd:1", "gm:me", "gm:to", "gs:5:0", "b:mask", "b:votesave", "b:r_don", "shoproles",
-                     "m:buy", "m:gem"):
+        for data in ("pro:d:7", "xd:1", "gm:me", "gm:to", "gs:5:0", "b:mask", "b:votesave", "b:r_don", "m:buy", "m:gem"):
             alerts.clear()
             cq = SimpleNamespace(data=data, from_user=SimpleNamespace(id=U, full_name="Ali", username=None),
                                  answer=answer, bot=bot, message=SimpleNamespace(edit_text=edit_text, answer=edit_text))
@@ -34,6 +33,15 @@ def test_every_diamond_purchase_is_closed():
                  "b": handlers.cb_shop, "shoproles": handlers.cb_shop, "m": handlers.cb_menu}[data.split(":")[0]]
             await h(cq)
             assert texts.DIAMONDS_OFF in alerts, data
+        shown = []
+
+        async def show_text(text, reply_markup=None, **kw):
+            shown.append(text)
+        alerts.clear()
+        cq = SimpleNamespace(data="shoproles", from_user=SimpleNamespace(id=U, full_name="Ali", username=None),
+                             answer=answer, bot=bot, message=SimpleNamespace(edit_text=show_text, answer=show_text))
+        await handlers.cb_shop(cq)  # bo'lim ochiladi, faqat sotib olish yopiq
+        assert texts.DIAMONDS_OFF not in alerts and "Rolni tanlab olish" in shown[-1]
         assert (await db.get_user(U)).diamonds == 100 and not invoices and not await db.buy(U, "mask")
         ok = []
 
