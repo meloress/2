@@ -17,6 +17,26 @@ ATTACKS = {"mafia_kill", "hit", "kill", "bite", "shoot", "curse", "rage"}
 SKIP = "skip"  # tunda "hech narsa qilmayman"
 PICK = "r_"  # do'kondan olingan rol: "r_komissar" - keyingi o'yinda shu rol (o'yinda bo'lsa)
 DRAW = "draw"
+# Konchi o'ljasi: (ehtimol, dan, gacha). Foizlar o'yinchilarga ko'rsatilmaydi
+DIG_DOLLARS = [(0.60, 10, 50), (0.25, 51, 150), (0.10, 151, 300), (0.04, 301, 500), (0.008, 501, 1000),
+               (0.002, 1001, 2000)]
+DIG_DIAMONDS = [(0.94, 0), (0.05, 1), (0.008, 2), (0.002, 3)]
+
+
+def dig_loot(rng: random.Random) -> tuple[int, int]:
+    """(dollar, olmos). Oraliq ichida kichik summa ko'proq chiqadi."""
+    x = rng.random()
+    for p, lo, hi in DIG_DOLLARS:
+        if x < p:
+            break
+        x -= p
+    dollars = min(hi, int(rng.triangular(lo, hi + 1, lo)))
+    y = rng.random()
+    for p, gems in DIG_DIAMONDS:
+        if y < p:
+            break
+        y -= p
+    return dollars, gems
 
 
 @dataclass
@@ -314,7 +334,8 @@ class Game:
             elif k == "interview":
                 ev.append(Event("interview", u, t, {"visitors": [x for x in visitors.get(t, []) if x != u]}))
             elif k == "dig":
-                ev.append(Event("dug", u, data={"dollars": rng.randint(10, 30), "diamond": rng.random() < 0.05}))
+                dollars, gems = dig_loot(rng)
+                ev.append(Event("dug", u, data={"dollars": dollars, "diamonds": gems}))
 
         # 4. Hujumlar
         attacks: dict[int, list[tuple[int, str, str]]] = {}  # target -> [(actor, kind, src)]
@@ -428,10 +449,11 @@ class Game:
         return ev
 
     def _appear(self, t: int, disguised: set, ev: list) -> str:
+        """Tekshiruvda ko'rinadigan rol: aniq rol; niqob, Hujjat va Sotqin - Tinch aholi."""
         v = self.get(t)
         if t in disguised or v.role == "sotqin" or self._use(v, "doc", ev):
-            return TOWN
-        return v.team
+            return "tinch"
+        return v.role
 
     def _after_deaths(self, ev: list) -> None:
         bros = [p for p in self.players if p.role in ("aka", "uka")]

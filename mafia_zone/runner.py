@@ -498,7 +498,7 @@ class Runner:
             elif e.kind == "item_used":
                 await db.change_item(e.uid, e.data["item"], -1)
             elif e.kind == "dug":
-                await db.add_balance(e.uid, e.data["dollars"], int(e.data["diamond"]))
+                await db.add_balance(e.uid, e.data["dollars"], e.data["diamonds"])
 
     async def _announce(self, ph: str, ev) -> None:
         g = self.game

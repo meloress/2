@@ -124,17 +124,17 @@ def test_qotil_immune_to_mafia():
 def test_advokat_and_doc_disguise():
     g = mk("don", "advokat", "komissar", "tinch", "tinch", "tinch", "tinch", p1={"doc": 1})
     ev = night(g, (2, "disguise", 2), (3, "check", 2))
-    assert [e.data["result"] for e in ev if e.kind == "checked"] == [TOWN]
+    assert [e.data["result"] for e in ev if e.kind == "checked"] == ["tinch"]  # niqob: Tinch aholi
     ev = night(g, (3, "check", 1))
-    assert [e.data["result"] for e in ev if e.kind == "checked"] == [TOWN] and "item_used" in kinds(ev)
+    assert [e.data["result"] for e in ev if e.kind == "checked"] == ["tinch"] and "item_used" in kinds(ev)
     ev = night(g, (3, "check", 1))
-    assert [e.data["result"] for e in ev if e.kind == "checked"] == [MAFIA]
+    assert [e.data["result"] for e in ev if e.kind == "checked"] == ["don"]  # aniq rol
 
 
 def test_sotqin_looks_town():
     g = mk("don", "sotqin", "komissar", "tinch", "tinch")
     ev = night(g, (3, "check", 2))
-    assert ev[0].data["result"] == TOWN
+    assert ev[0].data["result"] == "tinch"
 
 
 def test_aka_uka_pair_and_link():
@@ -167,7 +167,7 @@ def test_aferist_steals_kill_and_check():
     assert not g.get(3).alive and "stolen" in kinds(ev)
     ev = night(g, (7, "check", 1), (2, "steal", 7))
     checked = [e for e in ev if e.kind == "checked"]
-    assert checked[0].uid == 2 and checked[0].data["result"] == MAFIA
+    assert checked[0].uid == 2 and checked[0].data["result"] == "don"
 
 
 def test_ovchi_penalty():
@@ -229,9 +229,27 @@ def test_daydi_and_jurnalist():
 
 
 def test_konchi_dig():
+    from mafia_zone import texts
     g = mk("don", "konchi", "tinch", "tinch", "tinch")
     ev = night(g, (2, "dig", None))
-    assert 10 <= next(e for e in ev if e.kind == "dug").data["dollars"] <= 30
+    d = next(e for e in ev if e.kind == "dug").data
+    assert 10 <= d["dollars"] <= 2000 and 0 <= d["diamonds"] <= 3
+    pub, priv = texts.morning(g, ev)
+    assert any(f"{d['dollars']} 💵" in x and "topdi" in x for x in pub)  # guruhga ham
+    assert "10 dan 2000" in texts.role_card(g, 2) and "%" not in texts.role_card(g, 2)
+
+
+def test_konchi_dig_distribution():
+    from mafia_zone.engine.game import dig_loot
+    import random as _r
+    rng = _r.Random(1)
+    loot = [dig_loot(rng) for _ in range(100_000)]
+    dollars = [x for x, _ in loot]
+    gems = [y for _, y in loot]
+    assert min(dollars) >= 10 and max(dollars) <= 2000 and max(dollars) > 1000
+    assert 0.003 < sum(x > 500 for x in dollars) / len(loot) < 0.02  # 500 dan tepasi - ~1%
+    assert 0.55 < sum(x <= 50 for x in dollars) / len(loot) < 0.65
+    assert set(gems) <= {0, 1, 2, 3} and 0.92 < gems.count(0) / len(loot) < 0.96 and gems.count(3) < gems.count(2)
 
 
 # ---------- kun ----------
@@ -527,3 +545,12 @@ def test_blocked_player_cannot_vote_next_day():
     night(g)
     g.start_voting()
     assert g.can_vote(3)  # faqat bir kun
+
+
+
+def test_check_shows_exact_role():
+    from mafia_zone import texts
+    g = mk("don", "qotil", "komissar", "tinch", "tinch", "tinch")
+    ev = night(g, (3, "check", 2))
+    _, priv = texts.morning(g, ev)
+    assert any(texts.role("qotil") in t for u, t in priv if u == 3)

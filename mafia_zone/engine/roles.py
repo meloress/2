@@ -44,7 +44,8 @@ _ROLES = [
     Role("sehrgar", "🧙 Sehrgar", NEUTRAL, ("curse",), "Don, Qotil va Komissar sizga tegolmaydi. Tunda uylarni la'natlaysiz. Omon qoling!"),
     Role("vampir", "🧛 Vampir", NEUTRAL, ("bite",), "Tunda o'yinchini tishlaysiz. Doktor davolamasa, u o'ladi."),
     Role("qaroqchi", "🦹‍♂️ Qaroqchi", NEUTRAL, ("rob",), "O'yinchilardan pul, buyum yoki ovoz huquqini o'g'irlaysiz."),
-    Role("konchi", "👷‍♂️ Konchi", NEUTRAL, ("dig",), "Tunnel qazib dollar va olmos topasiz. Oxirigacha tirik qolsangiz, g'olibsiz."),
+    Role("konchi", "👷‍♂️ Konchi", NEUTRAL, ("dig",), "Har tunda tunnel qazib 10 dan 2000 gacha 💵 va 0 dan 3 tagacha 💎 topishingiz mumkin. "
+         "Oxirigacha tirik qolsangiz, g'olibsiz."),
     Role("tulki", "🦊 Tulki", NEUTRAL, (), "Kunduzi osilsangiz, sizga 1-ovoz bergan bilan birga o'lasiz va g'olib bo'lasiz."),
     Role("aferist", "🤹 Aferist", NEUTRAL, ("steal",), "Boshqa o'yinchining tungi harakatini o'g'irlaysiz. Tirik qolib, g'olib tomonga qo'shilasiz."),
 ]

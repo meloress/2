@@ -406,7 +406,7 @@ def morning(g: Game, ev: list[Event]) -> tuple[list[str], list[tuple[int, str]]]
             priv.append((e.uid, f"🤹 {n(e.target)}da o'g'irlaydigan harakat yo'q edi, lekin uning sirini bildingiz: "
                                 f"{role(e.data['role'])}"))
         elif k == "checked":
-            text = f"🔍 Tekshiruv natijasi: {n(e.target)} — <b>{TEAM[e.data['result']]}</b>"
+            text = f"🔍 Tekshiruv natijasi: {n(e.target)} — {role(e.data['result'])}"
             priv.append((e.uid, text))
             if g.get(e.uid).role == "komissar" and (s := g.by_role("serjant")):
                 priv.append((s.uid, f"🕵️‍♂️ Komissardan xabar: {text}"))
@@ -417,8 +417,11 @@ def morning(g: Game, ev: list[Event]) -> tuple[list[str], list[tuple[int, str]]]
             priv.append((e.uid, f"👀 Siz {n(e.target)}ning uyi oldida qotillikni o'z ko'zingiz bilan ko'rdingiz!\n"
                                 "Qotil(lar): " + ", ".join(f"<b>{n(x)}</b>" for x in e.data["killers"])))
         elif k == "dug":
-            extra = " va 💎 <b>olmos</b>" if e.data["diamond"] else ""
-            priv.append((e.uid, f"⛏ Tunnel qazib <b>{e.data['dollars']} 💵</b>{extra} topdingiz!"))
+            d, gems = e.data["dollars"], e.data["diamonds"]
+            extra = f" va <b>{gems} 💎</b> olmos" if gems else ""
+            head = ("💎 <b>Olmos koni!</b> " if gems >= 2 else "") + ("💰 <b>Oltin tomir!</b> " if d > 500 else "")
+            priv.append((e.uid, f"{head}⛏ Tunnel qazib <b>{d} 💵</b>{extra} topdingiz!"))
+            pub.append(f"{role('konchi')} bugun tunda <b>{d} 💵</b> dollar{extra} topdi!")
         elif k == "item_used":
             priv.append((e.uid, f"{ITEMS[e.data['item']]} sizni qutqardi: {ITEM_ABOUT[e.data['item']]}."))
         elif k == "robbed":
