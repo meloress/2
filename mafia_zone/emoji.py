@@ -47,18 +47,21 @@ async def load_pack(bot, name: str) -> None:
 
 
 # havola (o'yinchi ismlari), code/pre va mavjud tg-emoji ichiga tegilmaydi: ichma-ich entity rad etilishi mumkin
-SKIP = re.compile(r"<(a|code|pre|tg-emoji)\b.*?</\1>", re.S)
+# USER: o'yinchi yozgan matn (texts.said) ikki tomonidan shu ko'rinmas belgi bilan o'ralgan - u aynan yuborilgandek qoladi
+USER = "\u2063"
+SKIP = re.compile(r"<(a|code|pre|tg-emoji)\b.*?</\1>|" + USER + ".*?" + USER, re.S)
 
 
 def premiumize(html: str) -> str:
+    """Matndagi oddiy emoji -> to'plamdagi animatsion emoji. USER belgilari har doim olib tashlanadi."""
     if not _pattern or not html:
-        return html
+        return html.replace(USER, "") if html else html
     sub = lambda s: _pattern.sub(lambda m: f'<tg-emoji emoji-id="{IDS[norm(m.group())]}">{m.group()}</tg-emoji>', s)
     out, i = [], 0
     for m in SKIP.finditer(html):
         out += [sub(html[i:m.start()]), m.group()]
         i = m.end()
-    return "".join(out) + sub(html[i:])
+    return ("".join(out) + sub(html[i:])).replace(USER, "")
 
 
 def _icon_button(b: InlineKeyboardButton) -> InlineKeyboardButton:
@@ -109,9 +112,11 @@ class PremiumEmoji(BaseRequestMiddleware):
         global DISABLED
         if not isinstance(method, METHODS):
             return await make_request(bot, method)
+        text = getattr(method, _field(method), None)
+        if text and USER in text:  # belgilar Telegramga bormasin
+            method = method.model_copy(update={_field(method): text.replace(USER, "")})
         if DISABLED:
             return await make_request(bot, plain(method))
-        text = getattr(method, _field(method), None)
         new = method.model_copy(update={"reply_markup": iconize(method.reply_markup)}
                                 | ({_field(method): premiumize(text)} if text is not None else {}))
         if not _has_custom(new):

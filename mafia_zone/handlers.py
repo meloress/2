@@ -936,7 +936,7 @@ async def on_private_text(msg: Message):
     if (ask := ASK.pop(msg.from_user.id, None)) and not msg.text.startswith("/"):
         return await _answer_ask(msg, ask)
     r = PLAYING.get(msg.from_user.id)
-    if r and not msg.text.startswith("/") and await r.on_private_text(msg.from_user.id, msg.text):
+    if r and not msg.text.startswith("/") and await r.on_private_text(msg.from_user.id, msg.text, msg.entities):
         return
     if not r:
         await msg.answer(texts.start_pm())

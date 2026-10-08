@@ -64,3 +64,24 @@ def test_load_pack_failure_is_quiet():
             raise RuntimeError("yo'q")
     asyncio.run(emoji.load_pack(Bot(), "Nope"))
     assert emoji.IDS  # fixture mosligi o'zgarmadi
+
+
+def test_user_text_kept_as_sent():
+    """O'yinchi yozgani (so'nggi so'z, o'liklar chati...): premium emoji saqlanadi, oddiy emoji almashtirilmaydi."""
+    from aiogram.types import MessageEntity
+    from mafia_zone import texts
+    u16 = lambda s: len(s.encode("utf-16-le")) // 2  # Telegram ofsetlari UTF-16 da
+    text = "xayr 💣 do'stlar 😎"
+    at = u16(text[:text.index("😎")])
+    ents = [MessageEntity(type="custom_emoji", offset=at, length=2, custom_emoji_id="999"),
+            MessageEntity(type="bold", offset=0, length=4)]  # boshqa formatlash o'tmaydi
+    said = texts.said(text, ents)
+    assert '<tg-emoji emoji-id="999">😎</tg-emoji>' in said and "<b>" not in said
+    out = emoji.premiumize("💣 " + texts.ghost("Ali", said))
+    assert out.startswith('<tg-emoji emoji-id="777">💣</tg-emoji>')  # botning o'z matni - almashtiriladi
+    assert "xayr 💣 do'stlar" in out and 'emoji-id="999"' in out and texts.USER_MARK not in out
+    assert texts.USER_MARK not in emoji.premiumize(texts.said("salom"))
+    assert texts.said("<b>x</b>") == f"{texts.USER_MARK}&lt;b&gt;x&lt;/b&gt;{texts.USER_MARK}"
+    cut = texts.said("+  " + text, [MessageEntity(type="custom_emoji", offset=3 + at, length=2, custom_emoji_id="999")],
+                     skip=3)  # "+" va bo'shliq olib tashlanadi
+    assert cut.startswith(texts.USER_MARK + "xayr") and 'emoji-id="999">😎<' in cut

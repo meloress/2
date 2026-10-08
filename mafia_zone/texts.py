@@ -62,7 +62,8 @@ def role(code: str) -> str:
 
 # ---------- lobby ----------
 def lobby(members: list[tuple[int, str]], left: int) -> str:
-    body = "\n".join(f"{i}. {mention(u, n)}" for i, (u, n) in enumerate(members, 1)) or "— hali hech kim yo'q —"
+    # bir qatorda chapdan o'ngga: ko'p o'yinchida xabar uzayib ketmasin
+    body = ", ".join(mention(u, n) for u, n in members) or "— hali hech kim yo'q —"
     return (f"🎮 <b>ADMIRAL MAFIA</b> — ro'yxatdan o'tish boshlandi!\n\n"
             f"👥 <b>O'yinchilar ({len(members)}):</b>\n{body}\n\n⏳ Qoldi: <b>{left}</b> soniya")
 
@@ -302,6 +303,7 @@ RESULT = {  # (harakat, muvaffaqiyat) -> shaxsiy xabar; {t} - nishon
     ("visit", False): "🍾 {t}ning uyi oldida tun tinch o'tdi — qotillik bo'lmadi.",
     ("pair", False): "👊 Sherigingiz boshqa nishonni tanladi — {t}ga hujum bo'lmadi.",
 }
+CHECKED_YOU = "🔍 Kimdir rolingizga juda ham qiziqdi..."
 ATTACK_OK = "🎯 Nishoningiz {t} halok bo'ldi."
 ATTACK_FAIL = "😤 {t} omon qoldi — kimdir uni himoya qildi yoki unga kuchingiz yetmadi."
 ATTACKED_SAVED = "🩹 Tunda sizga hujum qilishdi, lekin omon qoldingiz!"
@@ -347,12 +349,30 @@ def mafia_voted(voter: str, target: str) -> str:
     return f"{escape(voter)} - {escape(target)} ga ovoz berdi"
 
 
+USER_MARK = "\u2063"  # = emoji.USER: o'yinchi yozgan qism animatsion emoji'ga almashtirilmaydi
+MAX_SAID = 500
+
+
+def said(text: str, entities=None, skip: int = 0) -> str:
+    """O'yinchi yozgan matn guruhga/boshqalarga: HTML-xavfsiz, premium (custom) emoji saqlanadi, boshqa formatlash yo'q.
+    skip - boshidan tashlanadigan belgilar (masalan, juftga xabardagi "+")."""
+    from aiogram.utils.text_decorations import html_decoration
+    shift = len(text[:skip].encode("utf-16-le")) // 2  # Telegram ofsetlari UTF-16 birliklarida
+    text = text[skip:]
+    ents = [e.model_copy(update={"offset": e.offset - shift}) for e in entities or ()
+            if e.type == "custom_emoji" and e.offset >= shift]
+    if len(text) > MAX_SAID:  # kesilsa ofsetlar buziladi - oddiy matn
+        text, ents = text[:MAX_SAID], []
+    return USER_MARK + (html_decoration.unparse(text, ents) if ents else escape(text)) + USER_MARK
+
+
 def relay(name: str, text: str) -> str:
-    return f"<b>{escape(name)}</b>:\n{escape(text)}"
+    """text - said() natijasi."""
+    return f"<b>{escape(name)}</b>:\n{text}"
 
 
 def overheard(text: str) -> str:
-    return f"👂 <i>Devor ortidan pichirlash eshitildi:</i> {escape(text)}"
+    return f"👂 <i>Devor ortidan pichirlash eshitildi:</i> {text}"
 
 
 LAST_WORDS_SECS = 60
@@ -375,7 +395,7 @@ def victims(ev: list[Event]) -> list[int]:
 
 
 def last_words(g: Game, uid: int, text: str) -> str:
-    return f"🕯 O'limidan oldin kimdir <b>{nm(g, uid)}</b> ning qichqirganini eshitdi:\n<i>{escape(text)}</i>"
+    return f"🕯 O'limidan oldin kimdir <b>{nm(g, uid)}</b> ning qichqirganini eshitdi:\n<i>{text}</i>"
 
 
 SAVED = ["💉 Kimdir bu tun o'lim yoqasidan qaytdi! Ajal bu safar quruq ketdi.",
@@ -463,6 +483,7 @@ def morning(g: Game, ev: list[Event]) -> tuple[list[str], list[tuple[int, str]]]
         elif k == "checked":
             text = f"🔍 Tekshiruv natijasi: {n(e.target)} — {role(e.data['result'])}"
             priv.append((e.uid, text))
+            priv.append((e.target, CHECKED_YOU))  # kim tekshirgani aytilmaydi
             if g.get(e.uid).role == "komissar" and (s := g.by_role("serjant")):
                 priv.append((s.uid, f"🕵️‍♂️ Komissardan xabar: {text}"))
         elif k == "interview":
@@ -531,7 +552,7 @@ def confirm_result(g: Game) -> str:
 
 
 def partner_msg(name: str, text: str) -> str:
-    return f"💞 <b>{escape(name)}</b> (juftingiz): {escape(text)}"
+    return f"💞 <b>{escape(name)}</b> (juftingiz): {text}"
 
 
 PARTNER_SENT = "💞 Juftingizga yuborildi."
@@ -540,7 +561,7 @@ NO_PARTNER = "💔 Sizda tirik juft yo'q."
 
 
 def ghost(name: str, text: str) -> str:
-    return f"👻 <b>{escape(name)}</b> (narigi dunyodan): {escape(text)}"
+    return f"👻 <b>{escape(name)}</b> (narigi dunyodan): {text}"
 
 
 def players(g: Game) -> str:

@@ -719,3 +719,10 @@ def test_protections_never_double_spent():
             g.resolve_vote()
             if g.phase == FINISHED:
                 break
+
+
+def test_checked_player_is_told():
+    from mafia_zone import texts
+    g = mk("don", "komissar", "tinch", "tinch", "tinch")
+    _, priv = texts.morning(g, night(g, (2, "check", 1)))
+    assert (1, texts.CHECKED_YOU) in priv and not any(u == 1 and "Komissar" in t for u, t in priv)  # kim - aytilmaydi

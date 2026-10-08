@@ -648,13 +648,14 @@ class Runner:
             del self.last_words[uid]
             await send(self.bot, uid, texts.LAST_WORDS_TIMEOUT)
 
-    async def on_private_text(self, uid: int, text: str) -> bool:
+    async def on_private_text(self, uid: int, text: str, entities=None) -> bool:
+        """text - oddiy matn (mantiq uchun); ko'rsatishda texts.said: premium emoji saqlanadi."""
         g = self.game
         if not g:
             return False
         if (deadline := self.last_words.pop(uid, None)) is not None:
             if deadline > time.time():
-                await send(self.bot, self.chat_id, texts.last_words(g, uid, text[:500]))
+                await send(self.bot, self.chat_id, texts.last_words(g, uid, texts.said(text, entities)))
                 await send(self.bot, uid, texts.LAST_WORDS_SENT)
             else:  # kechikdi: hech qayerga yuborilmaydi
                 await send(self.bot, uid, texts.LAST_WORDS_LATE)
@@ -663,7 +664,7 @@ class Runner:
         if g.pairs and p and p.alive and text.startswith("+"):  # 💞 juftga shaxsiy xabar
             q = g.partner(uid)
             if q and q.alive and text[1:].strip():
-                await send(self.bot, q.uid, texts.partner_msg(texts.dn(p), text[1:].strip()[:500]))
+                await send(self.bot, q.uid, texts.partner_msg(texts.dn(p), texts.said(text, entities, len(text) - len(text[1:].lstrip()))))
                 await send(self.bot, uid, texts.PARTNER_SENT)
             else:
                 await send(self.bot, uid, texts.NO_PARTNER)
@@ -671,16 +672,16 @@ class Runner:
         if p and not p.alive:  # 👻 o'liklar chati
             for d in g.players:
                 if not d.alive and d.uid != uid:
-                    await send(self.bot, d.uid, texts.ghost(texts.dn(p), text[:500]))
+                    await send(self.bot, d.uid, texts.ghost(texts.dn(p), texts.said(text, entities)))
             return True
         if g.phase != NIGHT or not p or not (p.team == MAFIA or p.role in ("komissar", "serjant")):
             return False
         for m in g.teammates(uid):
             if m.alive:
-                await send(self.bot, m.uid, texts.relay(texts.dn(p), text[:500]))
+                await send(self.bot, m.uid, texts.relay(texts.dn(p), texts.said(text, entities)))
         dn = g.by_role("donishmand")
         if dn and dn.uid != uid:
-            await send(self.bot, dn.uid, texts.overheard(text[:500]))
+            await send(self.bot, dn.uid, texts.overheard(texts.said(text, entities)))
         return True
 
     async def move(self, new_id: int) -> None:
