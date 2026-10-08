@@ -396,7 +396,7 @@ def test_last_words_timeout_notifies_and_vote_kb_marks_mates():
                                  Player(4, "d", "tinch", alive=False)], phase="voting")
         rows = r.vote_kb(1).inline_keyboard
         assert all(len(row) == 1 for row in rows)  # bir ustun
-        assert rows[0][0].text == "🤵🏼 b" and rows[1][0].text == "c"
+        assert rows[0][0].text == "2. 🤵🏼 b" and rows[1][0].text == "3. c"
         r.last_words = {4: _t.time() + 0.05}
         await r._last_words_timeout(4, r.last_words[4])
         assert bot.sent[-1] == (4, texts.LAST_WORDS_TIMEOUT) and 4 not in r.last_words
@@ -602,8 +602,8 @@ def test_couple_game_through_runner():
                 await handlers.cmd_start(m, bot, SimpleNamespace(args=f"join{chat}"))
             assert said[-1] == texts.NO_COUPLE_JOIN and base + 99_999 not in dict(r.members)
             lobby = r._lobby_text()
-            assert "PARALAR" in lobby and "❤️" in lobby and "Jufti kutilmoqda" in lobby and "💞" not in lobby
-            assert "Faqat /couple" not in lobby and lobby.count("\n") <= 9  # o'yinchilar bir qatorda
+            assert "PARALAR" in lobby and "❤️" in lobby and "jufti kutilmoqda" in lobby and "💞" not in lobby
+            assert "Faqat /couple" not in lobby and "\n1. ❤️ " in lobby  # har para yangi qatorda
             assert r._lobby_kb().inline_keyboard[0][0].style == "danger"
             r.lobby_msg = 1
             await r._start_game()
@@ -635,3 +635,19 @@ def test_partner_chat_with_plus():
         r.close()
 
     asyncio.run(go())
+
+
+def test_player_numbers_stay_the_same():
+    """O'yin boshidagi raqam saqlanadi: 5-o'yinchi chiqsa, ro'yxatda 5 bo'lmaydi; tugmalarda ham shu raqam."""
+    from mafia_zone.engine.game import Game
+
+    g = Game.create(-4747, [(i, f"p{i}") for i in range(1, 8)], 3)
+    g.get(2).alive = g.get(5).alive = False
+    lines = texts.alive_list(g).split("\n")[1:]
+    assert [ln.split(".")[0] for ln in lines] == ["1", "3", "4", "6", "7"]
+    r = runner.Runner(FakeBot(), -4747, {})
+    r.game, r.game_id = g, 1
+    g.start_voting()
+    texts_ = [b.text for row in r.vote_kb(1).inline_keyboard for b in row]
+    assert texts_[:4] == ["3. p3", "4. p4", "6. p6", "7. p7"]
+    r.close()

@@ -496,13 +496,13 @@ class Runner:
         return True
 
     def _labeler(self, uid: int):
-        """Tugma: (matn, icon). Sheriklar (mafiya, Komissar+Serjant) oldida rolining emojisi; PRO - belgi ikonkasi."""
+        """Tugma: (matn, icon). "5. Ism": o'yin boshidagi raqam; sheriklar oldida rol emojisi; PRO - belgi ikonkasi."""
         g = self.game
         mates = {m.uid: ROLES[m.role].name.split(" ", 1)[0] for m in g.teammates(uid)}
 
         def label(t: int) -> tuple[str, str | None]:
             text, icon = pro.label(t, g.get(t).name)
-            return (f"{mates[t]} {text}" if t in mates else text), icon
+            return f"{g.num(t)}. " + (f"{mates[t]} {text}" if t in mates else text), icon  # raqam - ro'yxatdagi
         return label
 
     def _btn(self, lab: tuple[str, str | None], data: str, style: str | None) -> Btn:

@@ -133,8 +133,8 @@ def test_pro_buttons_profile_and_lobby_name():
     r.game_id = 3
     rows = r.vote_kb(4).inline_keyboard
     b = rows[0][0]
-    assert b.text == "🤵🏼 PRO Shoh" and b.icon_custom_emoji_id == pro.BADGE_ID
-    assert rows[1][0].text == "Hasan" and rows[1][0].icon_custom_emoji_id is None
+    assert b.text == "2. 🤵🏼 PRO Shoh" and b.icon_custom_emoji_id == pro.BADGE_ID
+    assert rows[1][0].text == "3. Hasan" and rows[1][0].icon_custom_emoji_id is None
     r.close()
     u = SimpleNamespace(telegram_id=5, full_name="Ali", wins=0, dollars=0, diamonds=0, games=0)
     card = texts.profile_card(u, [])

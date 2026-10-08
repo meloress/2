@@ -159,6 +159,10 @@ class Game:
     def get(self, uid: int) -> Player | None:
         return next((p for p in self.players if p.uid == uid), None)
 
+    def num(self, uid: int) -> int:
+        """O'yin boshidagi tartib raqami (1..n): o'yinchilar o'lsa ham o'zgarmaydi."""
+        return next(i for i, p in enumerate(self.players, 1) if p.uid == uid)
+
     def alive(self) -> list[Player]:
         return [p for p in self.players if p.alive]
 
