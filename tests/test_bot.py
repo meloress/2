@@ -602,7 +602,8 @@ def test_couple_game_through_runner():
                 await handlers.cmd_start(m, bot, SimpleNamespace(args=f"join{chat}"))
             assert said[-1] == texts.NO_COUPLE_JOIN and base + 99_999 not in dict(r.members)
             lobby = r._lobby_text()
-            assert "PARALAR" in lobby and "💞" in lobby and "jufti kutilmoqda" in lobby
+            assert "PARALAR" in lobby and "❤️" in lobby and "Jufti kutilmoqda" in lobby and "💞" not in lobby
+            assert "Faqat /couple" not in lobby and lobby.count("\n") <= 9  # o'yinchilar bir qatorda
             assert r._lobby_kb().inline_keyboard[0][0].style == "danger"
             r.lobby_msg = 1
             await r._start_game()

@@ -79,7 +79,7 @@ NOT_COUPLE_LOBBY = "⚠️ Ochiq ro'yxat oddiy o'yin uchun. Uni /begin bilan bos
 
 
 def couple_lobby(members: list[tuple[int, str]], partners: dict[int, int], left: int) -> str:
-    """💞 Ro'yxat: qo'shilganlar juft-juft, jufti hali kelmaganlar alohida."""
+    """❤️ Ro'yxat: paralar bir qatorda chapdan o'ngga (xabar uzayib ketmasin), jufti kelmaganlar alohida."""
     names = dict(members)
     done, rows, waiting = set(), [], []
     for u, n in members:
@@ -88,15 +88,13 @@ def couple_lobby(members: list[tuple[int, str]], partners: dict[int, int], left:
         p = partners.get(u)
         if p in names and partners.get(p) == u:
             done |= {u, p}
-            rows.append(f"{len(rows) + 1}. ❤️ {mention(u, n)} 💞 {mention(p, names[p])} ❤️")
+            rows.append(f"❤️{mention(u, n)} + {mention(p, names[p])}❤️")
         else:
-            waiting.append(f"💔 {mention(u, n)} — jufti kutilmoqda")
-    body = "\n".join(rows) or "— hali hech qaysi para yo'q —"
-    wait = ("\n\n" + "\n".join(waiting)) if waiting else ""
-    return (f"❤️💞 <b>PARALAR O'YINI</b> 💞❤️\n<b>Ro'yxatdan o'tish boshlandi!</b>\n\n"
-            f"💘 <b>Paralar ({len(rows)}):</b>\n{body}{wait}\n\n⏳ Qoldi: <b>{left}</b> soniya\n\n"
-            "<i>❤️ Faqat /couple bilan para bo'lganlar qo'shila oladi.\n"
-            "💔 Biringiz o'lsa, ikkinchingiz ham chiqadi. Oxirgi tirik qolgan para — g'olib! 🏆</i>")
+            waiting.append(mention(u, n))
+    body = "  ".join(rows) or "— hali hech qaysi para yo'q —"
+    wait = "\n\n💔 <b>Jufti kutilmoqda:</b> " + ", ".join(waiting) if waiting else ""
+    return ("❤️❤️ <b>PARALAR O'YINI</b> ❤️❤️\n<b>Ro'yxatdan o'tish boshlandi!</b>\n\n"
+            f"❤️ <b>Paralar ({len(rows)}):</b>\n{body}{wait}\n\n⏳ Qoldi: <b>{left}</b> soniya")
 
 
 def couple_dropped(dropped: list[tuple[int, str]]) -> str:
@@ -110,8 +108,8 @@ def couple_started(g: Game) -> str:
             continue
         q = g.partner(p.uid)
         done |= {p.uid, q.uid}
-        rows.append(f"❤️ {mention(p.uid, p.name)} 💞 {mention(q.uid, q.name)} ❤️")
-    return (f"❤️💞 <b>PARALAR O'YINI BOSHLANDI!</b> 💞❤️\n\n💘 <b>Paralar ({len(rows)}):</b>\n" + "\n".join(rows)
+        rows.append(f"❤️{mention(p.uid, p.name)} + {mention(q.uid, q.name)}❤️")
+    return (f"❤️❤️ <b>PARALAR O'YINI BOSHLANDI!</b> ❤️❤️\n\n❤️ <b>Paralar ({len(rows)}):</b>\n" + "  ".join(rows)
             + "\n\n<i>Tinch aholi ham, mafiya ham yo'q — har kim o'z parasi uchun! Kim qo'lidan kelsa, otadi va osadi. "
               "Oxirgi tirik para g'olib bo'ladi 🏆</i>\n\n" + composition(g))
 
