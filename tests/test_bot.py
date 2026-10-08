@@ -570,3 +570,67 @@ def test_deleted_lobby_is_reposted():
             r.close()
 
     asyncio.run(go())
+
+
+def test_couple_game_through_runner():
+    """/couplegame: faqat juftlar qo'shiladi, jufti kelmaganlar chiqariladi, oxirgi tirik juft yutadi."""
+    from mafia_zone import handlers
+
+    async def go():
+        await db.init()
+        bot, base = CleanBot(), 9_100_000
+        runner.BOT_USERNAME = "AdmiralMafiaBot"
+        for chat in range(-51, -59, -1):
+            k = 2 + (-chat) % 5  # 2..6 para
+            uids = [base + chat * -100 + i for i in range(1, 2 * k + 3)]
+            for u in uids:
+                await db.upsert_user(u, f"o'yinchi {u}", None)
+            for a, b in zip(uids[:2 * k:2], uids[1:2 * k:2]):
+                assert await db.make_couple(a, b)
+            assert await db.make_couple(uids[-2], uids[-1])  # bu juftning faqat biri qo'shiladi
+            settings = {"lobby": 0, "night": 0, "day": 0, "vote": 0, "items": True, "disabled": []}
+            r = AutoRunner(bot, chat, settings, couple=True)
+            said = []
+
+            async def answer(text=None, **kw):
+                said.append(text)
+            for u in uids[:-1] + [base + 99_999]:  # oxirgisi - umuman jufti yo'q
+                runner.PLAYING.pop(u, None)
+                await db.upsert_user(u, f"o'yinchi {u}", None)
+                m = SimpleNamespace(from_user=SimpleNamespace(id=u, full_name=f"o'yinchi {u}", username=None),
+                                    answer=answer)
+                await handlers.cmd_start(m, bot, SimpleNamespace(args=f"join{chat}"))
+            assert said[-1] == texts.NO_COUPLE_JOIN and base + 99_999 not in dict(r.members)
+            lobby = r._lobby_text()
+            assert "PARALAR" in lobby and "💞" in lobby and "jufti kutilmoqda" in lobby
+            assert r._lobby_kb().inline_keyboard[0][0].style == "danger"
+            r.lobby_msg = 1
+            await r._start_game()
+            g = r.game
+            assert g.couple_mode and g.phase == FINISHED and uids[-2] not in g.pairs and len(g.players) == 2 * k
+            won = {p.uid for p in g.players if p.won}
+            assert g.winner == "draw" and not won or len(won) == 2 and g.pairs[min(won)] == max(won)
+        for _, text in bot.sent:
+            assert_telegram_html(text)
+        assert any("PARALAR O'YINI BOSHLANDI" in t for _, t in bot.sent)
+        assert any("juftingiz" in t for _, t in bot.sent)
+
+    asyncio.run(go())
+
+
+def test_partner_chat_with_plus():
+    from mafia_zone.engine.game import Game
+
+    async def go():
+        bot = FakeBot()
+        r = runner.Runner(bot, -4646, {})
+        r.game = Game.create(-4646, [(i, f"p{i}") for i in range(1, 7)], 3)
+        r.game.pairs = {1: 2, 2: 1}
+        assert await r.on_private_text(1, "+salom jonim")
+        assert any(c == 2 and "salom jonim" in t for c, t in bot.sent) and any(c == 1 for c, _ in bot.sent)
+        n = len(bot.sent)
+        assert await r.on_private_text(3, "+salom")  # juft yo'q
+        assert bot.sent[n:] == [(3, texts.NO_PARTNER)]
+        r.close()
+
+    asyncio.run(go())

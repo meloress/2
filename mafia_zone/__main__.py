@@ -23,6 +23,8 @@ async def main() -> None:
         BotCommand(command="game", description="🎮 Yangi o'yin"),
         BotCommand(command="extend", description="⏳ Ro'yxatni uzaytirish: /extend yoki /extend 60"),
         BotCommand(command="begin", description="▶️ Darhol boshlash (admin)"),
+        BotCommand(command="couplegame", description="💞 Paralar o'yini"),
+        BotCommand(command="couplestart", description="❤️ Paralar o'yinini boshlash"),
         BotCommand(command="stop", description="🛑 O'yinni to'xtatish (admin)"),
         BotCommand(command="leave", description="🚪 O'yindan chiqish"),
         BotCommand(command="next", description="🔔 Keyingi o'yinda xabar berish"),

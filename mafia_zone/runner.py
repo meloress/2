@@ -14,7 +14,7 @@ from aiogram.exceptions import (TelegramBadRequest, TelegramForbiddenError, Tele
 from aiogram.types import FSInputFile, InlineKeyboardButton as Btn, InlineKeyboardMarkup as Kb
 
 from . import config, db, pro, texts
-from .engine.game import AFK_LIMIT, CONFIRM, DAY, FINISHED, NIGHT, SKIP, VOTING, Game
+from .engine.game import AFK_LIMIT, CONFIRM, DAY, FINISHED, NIGHT, SKIP, VOTING, Game, couple_pairs
 from .engine.roles import ACTION_LABELS, MAFIA, NO_TARGET, ROLES
 from .engine.setup import MAX_PLAYERS, MIN_PLAYERS
 
@@ -203,8 +203,10 @@ def bot_link(payload: str = "") -> str:
 
 
 class Runner:
-    def __init__(self, bot: Bot, chat_id: int, settings: dict, title: str = ""):
+    def __init__(self, bot: Bot, chat_id: int, settings: dict, title: str = "", couple: bool = False):
         self.bot, self.chat_id, self.s, self.title = bot, chat_id, settings, title
+        self.couple = couple  # 💞 paralar o'yini (/couplegame)
+        self.partners: dict[int, int] = {}  # qo'shilganda: uid -> /couple jufti (ro'yxatda juftlab ko'rsatish)
         self.members: list[tuple[int, str]] = []
         self.opener: int | None = None  # /game bosgan: adminlardan tashqari u ham /begin qila oladi
         self.lobby_msg: int | None = None
@@ -256,9 +258,13 @@ class Runner:
             await _call(self.bot.delete_message, self.chat_id, msg)
 
     def _lobby_text(self) -> str:
-        return texts.lobby(self.members, max(0, int(self.lobby_deadline - time.time())))
+        left = max(0, int(self.lobby_deadline - time.time()))
+        return texts.couple_lobby(self.members, self.partners, left) if self.couple else texts.lobby(self.members, left)
 
     def _lobby_kb(self) -> Kb:
+        if self.couple:  # 💞 qizil tugma
+            return Kb(inline_keyboard=[[Btn(text=texts.COUPLE_JOIN_BTN, url=bot_link(f"join{self.chat_id}"),
+                                            style="danger")]])
         return Kb(inline_keyboard=[[Btn(text=texts.JOIN_BTN, url=bot_link(f"join{self.chat_id}"), style="success")]])
 
     async def _lobby_loop(self) -> None:
@@ -298,9 +304,19 @@ class Runner:
 
     async def _start_game(self) -> None:
         await db.drop_lobby(self.chat_id)  # ro'yxat bosqichi tugadi (boshlandi yoki bekor)
+        if self.couple:  # jufti qo'shilmaganlar (yoki ajrashganlar) chiqariladi
+            partners = {u: p for u, _ in self.members if (p := await db.partner(u))}
+            pairs = couple_pairs([u for u, _ in self.members], partners)
+            dropped = [(u, n) for u, n in self.members if u not in pairs]
+            self.members = [(u, n) for u, n in self.members if u in pairs]
+            for u, _ in dropped:
+                PLAYING.pop(u, None)
+                await send(self.bot, u, texts.COUPLE_DROPPED)
+            if dropped:
+                await send(self.bot, self.chat_id, texts.couple_dropped(dropped))
         if len(self.members) < MIN_PLAYERS:  # ro'yxat xabari o'chadi, bekor qilingani alohida yoziladi
             await self._drop_lobby_msg()
-            await send(self.bot, self.chat_id, texts.NEED_PLAYERS)
+            await send(self.bot, self.chat_id, texts.NEED_COUPLES if self.couple else texts.NEED_PLAYERS)
             self.close()
             return
         if self.lobby_msg:
@@ -310,6 +326,8 @@ class Runner:
         self.game = Game.create(self.chat_id, self.members, random.SystemRandom().randrange(2 ** 31),
                                 frozenset(self.s["disabled"]), items, AFK_LIMIT if self.s.get("afk", True) else 0,
                                 self.s.get("confirm", True))
+        if self.couple:
+            self.game.pairs, self.game.couple_mode = pairs, True
         spent = self.game.use_role_picks() + [(u, "ticket") for u in self.game.use_tickets()]
         spent += [(p.uid, "mask") for p in self.game.players if p.items.get("mask", 0) > 0]  # maska shu o'yinga
         for uid, item in spent:
@@ -322,8 +340,10 @@ class Runner:
             return
         role_kb = Kb(inline_keyboard=[[Btn(text=texts.ROLE_BTN, callback_data=f"r:{self.game_id}", style="primary")]])
         if self.lobby_msg:
-            await edit(self.bot, self.chat_id, self.lobby_msg, texts.game_started(self.game), role_kb)
+            await edit(self.bot, self.chat_id, self.lobby_msg,
+                       texts.couple_started(self.game) if self.couple else texts.game_started(self.game), role_kb)
         await send(self.bot, self.chat_id, texts.GAME_STARTED, role_kb)  # pastda: botga o'tmasdan rolni ko'rish
+
         for p in self.game.players:
             await send(self.bot, p.uid, texts.role_card(self.game, p.uid))
         await self._loop()
@@ -537,15 +557,16 @@ class Runner:
 
     async def _finish(self) -> None:
         g = self.game
+        double = {p.uid for p in g.players if p.won and p.alive and (q := g.partner(p.uid)) and q.won and q.alive}
         await db.finish_game(self.game_id, self.chat_id, "finished", g.winner,
-                             [(p.uid, p.role, p.team, p.alive, p.won) for p in g.players])
+                             [(p.uid, p.role, p.team, p.alive, p.won) for p in g.players], double)
         for inviter, name in await db.pay_referrals([p.uid for p in g.players if p.uid < FAKE_BASE]):
             await send(self.bot, inviter, texts.ref_bonus(name))
         self.close()
         minutes = max(1, round((time.time() - self.meta["started"]) / 60)) if "started" in self.meta else None
         await send(self.bot, self.chat_id, texts.game_over(g, minutes))
         for p in g.players:
-            reward = config.REWARD_PLAY + (pro.win_reward(p.uid) if p.won else 0)
+            reward = config.REWARD_PLAY + (pro.win_reward(p.uid) * (2 if p.uid in double else 1) if p.won else 0)
             if p.uid >= FAKE_BASE:
                 continue
             u = await db.get_user(p.uid)
@@ -639,6 +660,14 @@ class Runner:
                 await send(self.bot, uid, texts.LAST_WORDS_LATE)
             return True
         p = g.get(uid)
+        if g.pairs and p and p.alive and text.startswith("+"):  # 💞 juftga shaxsiy xabar
+            q = g.partner(uid)
+            if q and q.alive and text[1:].strip():
+                await send(self.bot, q.uid, texts.partner_msg(texts.dn(p), text[1:].strip()[:500]))
+                await send(self.bot, uid, texts.PARTNER_SENT)
+            else:
+                await send(self.bot, uid, texts.NO_PARTNER)
+            return True
         if p and not p.alive:  # 👻 o'liklar chati
             for d in g.players:
                 if not d.alive and d.uid != uid:

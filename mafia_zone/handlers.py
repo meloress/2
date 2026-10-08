@@ -44,19 +44,21 @@ async def is_admin(bot: Bot, chat_id: int, uid: int, msg: Message | None = None)
 
 
 # ============ GURUH ============
-@router.message(Command("game"), GROUPS)
-async def cmd_game(msg: Message, bot: Bot):
+@router.message(Command("game", "couplegame"), GROUPS)
+async def cmd_game(msg: Message, bot: Bot, command: CommandObject | None = None):
+    """/game - oddiy o'yin; /couplegame - 💞 paralar o'yini (faqat /couple juftlari)."""
+    couple = getattr(command, "command", "") == "couplegame"
     if r := RUNNERS.get(msg.chat.id):
-        if not r.game:  # ro'yxat hali ochiq: pastga qayta chiqariladi
+        if not r.game and r.couple == couple:  # ro'yxat hali ochiq: pastga qayta chiqariladi
             return await r.repost_lobby()
-        return await msg.answer(texts.GAME_EXISTS)
+        return await msg.answer(texts.GAME_EXISTS if r.game else texts.OTHER_LOBBY)
     me = await bot.get_chat_member(msg.chat.id, bot.id)
     if me.status != "administrator":
         await msg.answer(texts.NOT_ADMIN_WARN)
     settings = await db.group_settings(msg.chat.id, msg.chat.title or "")
     if msg.chat.id in RUNNERS:  # await paytida boshqasi ochgan bo'lishi mumkin
         return
-    r = Runner(bot, msg.chat.id, settings, msg.chat.title or "")
+    r = Runner(bot, msg.chat.id, settings, msg.chat.title or "", couple=couple)
     r.opener = msg.from_user.id if msg.from_user else None
     await r.open_lobby()
 
@@ -98,9 +100,11 @@ async def cmd_extend(msg: Message, bot: Bot, command: CommandObject):
         await msg.answer(f"⏳ Ro'yxatdan o'tish {secs} soniyaga uzaytirildi.")
 
 
-@router.message(Command("begin"), GROUPS)
-async def cmd_begin(msg: Message, bot: Bot):
+@router.message(Command("begin", "couplestart"), GROUPS)
+async def cmd_begin(msg: Message, bot: Bot, command: CommandObject | None = None):
     r = RUNNERS.get(msg.chat.id)
+    if r and not r.game and getattr(command, "command", "") == "couplestart" and not r.couple:
+        return await msg.answer(texts.NOT_COUPLE_LOBBY)
     if r and not r.game:
         uid = msg.from_user.id
         if uid != r.opener and not await is_admin(bot, msg.chat.id, uid, msg):
@@ -180,6 +184,9 @@ TIMERS = {"lobby": ("👥 Ro'yxat", [60, 90, 120, 180, 300]), "night": ("🌙 Tu
           "day": ("🌆 Kun", [30, 60, 90, 120, 180]), "vote": ("🗳 Ovoz", [30, 45, 60, 90])}
 
 
+FLAGS = ("items", "afk", "confirm")
+
+
 def settings_kb(s: dict) -> Kb:
     on = lambda x: "success" if x else "danger"
     rows = [[Btn(text=f"{label}: {s[k]} s", callback_data=f"s:{k}", style="primary")] for k, (label, _) in TIMERS.items()]
@@ -219,14 +226,14 @@ async def cb_settings(cq: CallbackQuery, bot: Bot):
     if key in TIMERS:
         vals = TIMERS[key][1]
         s[key] = vals[(vals.index(s[key]) + 1) % len(vals)] if s[key] in vals else vals[0]
-    elif key in ("items", "afk", "confirm"):
-        s[key] = not s[key]
+    elif key in FLAGS:
+        s[key] = not s.get(key)
     elif key == "r":
         code = parts[2]
         dis = set(s["disabled"])
         dis.symmetric_difference_update({code})
         s["disabled"] = sorted(dis)
-    if key in TIMERS or key in ("items", "afk", "confirm"):
+    if key in TIMERS or key in FLAGS:
         await db.save_group_settings(chat, s)
         await cq.message.edit_reply_markup(reply_markup=settings_kb(s))
     elif key == "r":
@@ -467,6 +474,10 @@ async def cmd_start(msg: Message, bot: Bot, command: CommandObject):
         if u and u.dollars <= config.DEBT_LIMIT:
             return await msg.answer(texts.debt_block(u.dollars))
         r = RUNNERS.get(int(arg[4:])) if arg[4:].lstrip("-").isdigit() else None
+        if r and r.couple and not r.game:  # 💞 faqat jufti borlar
+            if not (p := await db.partner(msg.from_user.id)):
+                return await msg.answer(texts.NO_COUPLE_JOIN)
+            r.partners[msg.from_user.id] = p
         return await msg.answer(r.join(msg.from_user.id, msg.from_user.full_name) if r else texts.NO_LOBBY)
     await msg.answer(texts.welcome(), reply_markup=start_kb(msg.from_user.id))
 

@@ -664,8 +664,9 @@ async def running_games() -> list[GameRow]:
 
 
 async def finish_game(game_id: int, chat_id: int, status: str, winner: str | None,
-                      players: list[tuple[int, str, str, bool, bool]]) -> None:
-    """players: (uid, role, team, alive, won). Mukofot faqat status == 'finished' bo'lsa."""
+                      players: list[tuple[int, str, str, bool, bool]], double: set[int] = frozenset()) -> None:
+    """players: (uid, role, team, alive, won). Mukofot faqat status == 'finished' bo'lsa.
+    double: 💞 ikkalasi tirik yutgan juftlar - g'alaba puli x2."""
     async with Session.begin() as s:
         await s.execute(update(GameRow).where(GameRow.id == game_id)
                         .values(status=status, winner=winner, finished_at=now()))
@@ -676,7 +677,7 @@ async def finish_game(game_id: int, chat_id: int, status: str, winner: str | Non
                              alive=alive, won=won))
             await s.execute(update(User).where(User.telegram_id == uid).values(
                 games=User.games + 1, wins=User.wins + int(won),
-                dollars=User.dollars + config.REWARD_PLAY + (pro.win_reward(uid) if won else 0)))
+                dollars=User.dollars + config.REWARD_PLAY + (pro.win_reward(uid) * (2 if uid in double else 1) if won else 0)))
 
 
 # ============ ADMIN PANEL ============

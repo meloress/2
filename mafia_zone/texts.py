@@ -40,7 +40,7 @@ def rank(wins: int) -> str:
     return [title for need, title in RANKS if wins >= need][-1]
 WINNER = {TOWN: "👨 Tinch aholi g'alaba qildi!", MAFIA: "🤵 Mafiya g'alaba qildi!",
           "qotil": "🔪 Qotil yakka g'alaba qildi!", "vampir": "🧛 Vampir yakka g'alaba qildi!",
-          DRAW: "🤝 Durang!"}
+          DRAW: "🤝 Durang!", "couple": "💞 Sevishganlar g'alaba qildi!"}
 
 
 def mention(uid: int, name: str) -> str:
@@ -68,6 +68,52 @@ def lobby(members: list[tuple[int, str]], left: int) -> str:
 
 
 JOIN_BTN = "🤝 Qo'shilish"
+COUPLE_JOIN_BTN = "❤️ Qo'shilish ❤️"
+NO_COUPLE_JOIN = ("💔 <b>Sizda hozirda para yo'q.</b>\n\n"
+                  "Paralar o'yiniga faqat juftlar qo'shiladi. Guruhda kimningdir xabariga javoban <b>/couple</b> "
+                  "yozib, para bo'ling ❤️")
+COUPLE_DROPPED = "💔 Jufti ro'yxatga yozilmagani uchun paralar o'yiniga kira olmadingiz. Keyingisida birga qo'shiling ❤️"
+NEED_COUPLES = "💔 Paralar yetarli emas (kamida <b>2</b> para kerak).\n<b>O'yin bekor qilindi.</b>"
+OTHER_LOBBY = "⚠️ Hozir boshqa o'yin ro'yxati ochiq. Avval u tugasin yoki admin /stop qilsin."
+NOT_COUPLE_LOBBY = "⚠️ Ochiq ro'yxat oddiy o'yin uchun. Uni /begin bilan boshlang."
+
+
+def couple_lobby(members: list[tuple[int, str]], partners: dict[int, int], left: int) -> str:
+    """💞 Ro'yxat: qo'shilganlar juft-juft, jufti hali kelmaganlar alohida."""
+    names = dict(members)
+    done, rows, waiting = set(), [], []
+    for u, n in members:
+        if u in done:
+            continue
+        p = partners.get(u)
+        if p in names and partners.get(p) == u:
+            done |= {u, p}
+            rows.append(f"{len(rows) + 1}. ❤️ {mention(u, n)} 💞 {mention(p, names[p])} ❤️")
+        else:
+            waiting.append(f"💔 {mention(u, n)} — jufti kutilmoqda")
+    body = "\n".join(rows) or "— hali hech qaysi para yo'q —"
+    wait = ("\n\n" + "\n".join(waiting)) if waiting else ""
+    return (f"❤️💞 <b>PARALAR O'YINI</b> 💞❤️\n<b>Ro'yxatdan o'tish boshlandi!</b>\n\n"
+            f"💘 <b>Paralar ({len(rows)}):</b>\n{body}{wait}\n\n⏳ Qoldi: <b>{left}</b> soniya\n\n"
+            "<i>❤️ Faqat /couple bilan para bo'lganlar qo'shila oladi.\n"
+            "💔 Biringiz o'lsa, ikkinchingiz ham chiqadi. Oxirgi tirik qolgan para — g'olib! 🏆</i>")
+
+
+def couple_dropped(dropped: list[tuple[int, str]]) -> str:
+    return "💔 Jufti qo'shilmagani uchun chiqarildi: " + ", ".join(mention(u, n) for u, n in dropped)
+
+
+def couple_started(g: Game) -> str:
+    done, rows = set(), []
+    for p in g.players:
+        if p.uid in done:
+            continue
+        q = g.partner(p.uid)
+        done |= {p.uid, q.uid}
+        rows.append(f"❤️ {mention(p.uid, p.name)} 💞 {mention(q.uid, q.name)} ❤️")
+    return (f"❤️💞 <b>PARALAR O'YINI BOSHLANDI!</b> 💞❤️\n\n💘 <b>Paralar ({len(rows)}):</b>\n" + "\n".join(rows)
+            + "\n\n<i>Tinch aholi ham, mafiya ham yo'q — har kim o'z parasi uchun! Kim qo'lidan kelsa, otadi va osadi. "
+              "Oxirgi tirik para g'olib bo'ladi 🏆</i>\n\n" + composition(g))
 
 
 NEED_PLAYERS = "😔 O'yinchilar yetarli emas (kamida <b>4</b> kishi kerak).\n<b>O'yin bekor qilindi.</b>"
@@ -138,6 +184,9 @@ def role_card(g: Game, uid: int) -> str:
     if mates:
         text += "\n\n🤝 <b>Sheriklaringizni eslab qoling!</b>\n" + "\n".join(
             f"<b>{escape(dn(m))}</b> - {role(m.role)}" + ("" if m.alive else " 💀") for m in mates)
+    if q := g.partner(uid):
+        text += (f"\n\n💞 <b>Sizning juftingiz:</b> {escape(dn(q))} - {role(q.role)}" + ("" if q.alive else " 💀")
+                 + "\n<i>U o'lsa, siz ham o'yindan chiqasiz. Unga yozish: xabarni <b>+</b> bilan boshlang.</i>")
     own = [f"{ITEMS[i]} ×{q}" for i, q in p.items.items() if q > 0 and i in ITEMS and not i.startswith("r_")]
     if own:
         text += "\n\n🎒 <b>Buyumlaringiz:</b> " + ", ".join(own)
@@ -321,7 +370,7 @@ def victims(ev: list[Event]) -> list[int]:
     out = []
     for e in ev:
         uid = {"killed": e.target, "hanged": e.target, "revenge": e.target, "linked": e.target,
-               "tulki": e.target}.get(e.kind)
+               "tulki": e.target, "heartbreak": e.target}.get(e.kind)
         if uid is not None and uid not in out:
             out.append(uid)
     return out
@@ -375,6 +424,8 @@ def morning(g: Game, ev: list[Event]) -> tuple[list[str], list[tuple[int, str]]]
             priv += [(p.uid, text) for p in g.players if p.alive and p.team == MAFIA]
         elif k == "revenge":
             pub.append(f"💥 {w(e.uid)} yolg'iz ketmadi — {w(e.target)} ham u bilan birga halok bo'ldi!")
+        elif k == "heartbreak":
+            pub.append(f"💔 {w(e.target)} juftidan — <b>{n(e.uid)}</b>dan ayrilib, u bilan birga o'yinni tark etdi...")
         elif k == "linked":
             pub.append(f"💔 {w(e.target)} jigaridan ayrilib, qayg'udan jon berdi...")
         elif k == "sacrificed":
@@ -481,6 +532,15 @@ def confirm_result(g: Game) -> str:
     return f"Rostdan ham <b>{pm(g, g.candidate)}</b> ni osishni hohlaysizmi?\n\n<b>{yes} 👍 | {no} 👎</b> — vaqt tugadi"
 
 
+def partner_msg(name: str, text: str) -> str:
+    return f"💞 <b>{escape(name)}</b> (juftingiz): {escape(text)}"
+
+
+PARTNER_SENT = "💞 Juftingizga yuborildi."
+NO_PARTNER = "💔 Sizda tirik juft yo'q."
+
+
+
 def ghost(name: str, text: str) -> str:
     return f"👻 <b>{escape(name)}</b> (narigi dunyodan): {escape(text)}"
 
@@ -555,6 +615,7 @@ WINNER_STORY = {
     "qotil": "Shahar huvullab qoldi. Faqat Qotil qon izlarini artib, yo'lida davom etdi... 🔪",
     "vampir": "Tun abadiy bo'ldi. Vampir taxtga o'tirdi... 🦇",
     DRAW: "Hech kim g'olib bo'lmadi. Shahar xarobaga aylandi... 🌫",
+    "couple": "Shaharda faqat ikki yurak qoldi. Ular qo'l ushlashib, tongni birga kutib olishdi... 💞",
 }
 
 

@@ -605,3 +605,117 @@ def test_tulki_votesave_not_used():
     ev = vote(g, (3, 2), (4, 2))
     assert not g.get(2).alive and g.get(2).won and g.get(2).items["votesave"] == 1
     assert "vote_saved" not in kinds(ev)
+
+
+# ---------- 💞 paralar o'yini ----------
+def test_couple_pairs_only_real_couples():
+    from mafia_zone.engine.game import couple_pairs
+    pairs = couple_pairs([1, 2, 3, 4, 5], {1: 2, 2: 1, 3: 9, 4: 5, 5: 4})  # 3 ning jufti o'yinda yo'q
+    assert pairs == {1: 2, 2: 1, 4: 5, 5: 4}
+
+
+def couple_game(*roles):
+    g = mk(*roles)
+    g.couple_mode = True
+    g.pairs = {u: (u + 1 if u % 2 else u - 1) for u in range(1, len(roles) + 1)}  # 1-2, 3-4, 5-6 ...
+    return g
+
+
+def test_partner_dies_too_and_serializes():
+    g = couple_game("don", "tinch", "tinch", "tinch", "tinch", "tinch", "doktor", "mafiya")
+    ev = night(g, (1, "mafia_kill", 3))
+    assert not g.get(3).alive and not g.get(4).alive
+    assert any(e.kind == "heartbreak" and e.target == 4 for e in ev)
+    g2 = Game.from_dict(json.loads(json.dumps(g.to_dict())))
+    assert g2.pairs == g.pairs and g2.couple_mode
+
+
+def test_couple_mode_no_teams_anyone_can_be_killed():
+    g = couple_game("don", "tinch", "mafiya", "tinch", "tinch", "tinch")
+    assert 3 in g.targets(1, "mafia_kill") and 2 not in g.targets(1, "mafia_kill")  # sherik mumkin, jufti - yo'q
+    night(g, (1, "mafia_kill", 3))  # Don mafiyani o'ldirdi: 3-4 jufti chiqdi
+    assert not g.get(3).alive and not g.get(4).alive and g.phase != FINISHED  # mafiya "yutmaydi"
+    vote(g, (1, 5), (2, 5), (5, 1))
+    assert g.phase == FINISHED and g.winner == "couple"
+    assert {p.uid for p in g.players if p.won} == {1, 2}  # faqat oxirgi tirik juft
+
+
+def test_couple_mode_ignores_side_wins():
+    g = couple_game("don", "tinch", "podshoh", "tinch", "suitsid", "tinch")
+    vote(g, (1, 3), (2, 3))  # Podshoh osildi - oddiy o'yindagidek tugamaydi
+    assert g.phase != FINISHED and not g.get(4).alive
+    night(g, (1, "mafia_kill", 5))  # Suitsid Donni olib ketadi, lekin yutmaydi
+    assert g.phase == FINISHED and g.winner == "draw" and not any(p.won for p in g.players)  # hamma o'ldi
+
+
+def test_simulate_couple_mode():
+    from mafia_zone import texts
+    from mafia_zone.engine.game import DRAW
+    wins = 0
+    for seed in range(2000):
+        rng = random.Random(seed)
+        n = rng.randrange(4, 41, 2)
+        g = Game.create(1, [(i, f"p{i}") for i in range(1, n + 1)], seed)
+        g.couple_mode = True
+        g.pairs = {u: (u + 1 if u % 2 else u - 1) for u in range(1, n + 1)}
+        for _ in range(g.max_days + 2):
+            for p in g.alive():
+                acts = g.available_actions(p.uid)
+                if acts and rng.random() > 0.1:
+                    k = rng.choice(acts)
+                    ts = g.targets(p.uid, k)
+                    if ts or k in ("dig", "sacrifice"):
+                        assert g.submit(p.uid, k, rng.choice(ts) if ts else None)
+            texts.morning(g, g.resolve_night())
+            if g.phase == FINISHED:
+                break
+            g.start_voting()
+            for p in g.alive():
+                if g.can_vote(p.uid):
+                    g.cast_vote(p.uid, rng.choice([None] + [x.uid for x in g.alive() if x.uid != p.uid]))
+            texts.morning(g, g.resolve_vote())
+            if g.phase == FINISHED:
+                break
+        assert g.phase == FINISHED and g.winner in ("couple", DRAW), (seed, g.winner)
+        winners = {p.uid for p in g.players if p.won}
+        if g.winner == "couple":
+            a = next(iter(winners))
+            assert winners == {a, g.pairs[a]}, seed  # har doim bitta juft
+            wins += 1
+        else:
+            assert not winners, seed
+        texts.game_over(g)
+    assert wins > 1500
+
+
+def test_healed_player_keeps_shield():
+    g = mk("don", "doktor", "tinch", "tinch", "tinch", "tinch", "komissar", p3={"shield": 1, "verbena": 1})
+    ev = night(g, (1, "mafia_kill", 3), (7, "shoot", 3), (2, "heal", 3))  # ikki hujum + davolash
+    assert g.get(3).alive and g.get(3).items == {"shield": 1, "verbena": 1} and "item_used" not in kinds(ev)
+
+
+def test_protections_never_double_spent():
+    """Tasodifiy o'yinlar: davolangan odamning qalqoni/verbenasi hech qachon yonmaydi."""
+    for seed in range(3000):
+        rng = random.Random(seed)
+        n = rng.randint(6, 30)
+        g = Game.create(1, [(i, f"p{i}") for i in range(1, n + 1)], seed,
+                        items={i: {k: rng.randint(0, 1) for k in ("shield", "verbena", "doc")} for i in range(1, n + 1)})
+        for _ in range(5):
+            for p in g.alive():
+                acts = g.available_actions(p.uid)
+                if acts:
+                    k = rng.choice(acts)
+                    ts = g.targets(p.uid, k)
+                    if ts or k in ("dig", "sacrifice"):
+                        g.submit(p.uid, k, rng.choice(ts) if ts else None)
+            ev = g.resolve_night()
+            healed = {e.target for e in ev if e.kind == "result" and e.data["kind"] == "heal"}
+            assert not any(e.kind == "item_used" and e.uid in healed and e.data["item"] in ("shield", "verbena")
+                           for e in ev), seed
+            if g.phase == FINISHED:
+                break
+            g.start_voting()
+            g.resolve_vote()
+            if g.phase == FINISHED:
+                break
