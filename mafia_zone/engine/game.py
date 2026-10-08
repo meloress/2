@@ -15,6 +15,7 @@ GAZAB_KILLS = 3
 AFK_LIMIT = 3  # ketma-ket o'tkazib yuborilgan navbatlar (0 = o'chiq)
 ATTACKS = {"mafia_kill", "hit", "kill", "bite", "shoot", "curse", "rage"}
 SKIP = "skip"  # tunda "hech narsa qilmayman"
+PICK = "r_"  # do'kondan olingan rol: "r_komissar" - keyingi o'yinda shu rol (o'yinda bo'lsa)
 DRAW = "draw"
 
 
@@ -37,7 +38,7 @@ class Player:
     self_heal_used: bool = False
     kills: int = 0  # G'azabkor
     won: bool = False
-    mute_day: int = 0  # Qaroqchi ovoz huquqini o'g'irlagan kun
+    mute_day: int = 0  # shu kuni ovoz bera olmaydi (Qaroqchi o'g'irladi yoki Kezuvchi uxlatdi)
     idle: int = 0  # AFK hisoblagich
     score: int = 0  # yashirin hissa balli: faqat o'yin oxirida g'oliblarni tartiblash uchun, hech qayerda ko'rsatilmaydi
 
@@ -74,8 +75,29 @@ class Game:
         items = items or {}
         players = [Player(uid, name, role, items=dict(items.get(uid, {})))
                    for (uid, name), role in zip(members, roles)]
+        for p in players:
+            if p.items.get("votesave", 0) > 1:
+                p.items["votesave"] = 1  # bir o'yinda bir martadan ko'p emas
         return cls(chat_id, seed, players, afk_limit=afk_limit, confirm=confirm,
                    max_days=max(MAX_DAYS, len(players)))
+
+    def use_role_picks(self) -> list[tuple[int, str]]:
+        """Sotib olingan rollar: shu rol kimga tushgan bo'lsa, o'sha bilan almashtiriladi (tarkib o'zgarmaydi).
+        Rol bu o'yinda yo'q yoki allaqachon o'zida bo'lsa - token sarflanmaydi. [(uid, item)] - sarflanganlar."""
+        used, fixed = [], set()
+        for p in self.players:  # qo'shilish tartibida: birinchi qo'shilgan oldin oladi
+            for item in sorted(i for i, q in p.items.items() if i.startswith(PICK) and q > 0):
+                want = item[len(PICK):]
+                if p.role == want and p.uid not in fixed:
+                    fixed.add(p.uid)
+                    break
+                x = next((x for x in self.players if x.role == want and x.uid not in fixed), None)
+                if x and p.uid not in fixed:
+                    p.role, x.role = x.role, p.role
+                    fixed.add(p.uid)
+                    used.append((p.uid, item))
+                    break
+        return used
 
     def use_tickets(self) -> list[int]:
         """🎟 Faol rol: chipta egasi Tinch aholi bo'lsa, rolini tasodifiy maxsus rol bilan almashtiradi."""
@@ -83,7 +105,8 @@ class Game:
         used = []
         for p in self.players:
             if p.items.get("ticket", 0) > 0 and p.role == "tinch":
-                pool = [x for x in self.players if x.role != "tinch" and not x.items.get("ticket")]
+                pool = [x for x in self.players if x.role != "tinch" and not x.items.get("ticket")
+                        and not x.items.get(PICK + x.role)]  # sotib olingan rol tortib olinmaydi
                 if pool:
                     x = rng.choice(pool)
                     p.role, x.role = x.role, p.role
@@ -223,11 +246,14 @@ class Game:
 
         # 1a. Kezuvchi
         for u, (k, t, _) in acts.items():
-            if k == "block" and self.get(t).team != self.get(u).team:
-                self.get(u).score += 2
+            if k == "block":
+                ev.append(Event("result", u, t, {"kind": k, "ok": True}))
+                if self.get(t).team != self.get(u).team:
+                    self.get(u).score += 2
         blocked = {t for k, t, _ in acts.values() if k == "block"}
         for t in blocked:
             acts.pop(t, None)
+            self.get(t).mute_day = self.day  # ertangi kunduzgi ovoz berishda ham qatnasha olmaydi
             ev.append(Event("blocked", t))
 
         # 1b. Aferist
@@ -246,7 +272,7 @@ class Game:
             if k != "rob":
                 continue
             v, thief = self.get(t), self.get(u)
-            owned = sorted(i for i, q in v.items.items() if q > 0)
+            owned = sorted(i for i, q in v.items.items() if q > 0 and i != "mask" and not i.startswith(PICK))
             what = rng.choice(["dollars", "vote"] + (["item"] if owned else []))
             data = {"what": what}
             if what == "item":
@@ -267,8 +293,10 @@ class Game:
                     self.get(u).self_heal_used = True
             elif k == "guard":
                 self.guarded = t
+                ev.append(Event("result", u, t, {"kind": k, "ok": True}))
             elif k == "disguise":
                 disguised.add(t)
+                ev.append(Event("result", u, t, {"kind": k, "ok": True}))
         for p in self.players:
             if p.role in ("doktor", "kezuvchi", "qorovul"):
                 p.last_target = self.actions.get(p.uid, [None, None])[1]
@@ -299,6 +327,8 @@ class Game:
         for t, us in pairs.items():
             if len(us) >= 2:
                 attacks.setdefault(t, []).extend((u, "pair", "aka") for u in us)
+            else:
+                ev.append(Event("result", us[0], t, {"kind": "pair", "ok": False}))
 
         for u, (k, t, _) in acts.items():  # Ovchi jarimasi: haqiqiy jamoa bo'yicha
             if k == "shoot" and self.get(u).role == "ovchi" and self.get(t).team == TOWN:
@@ -312,12 +342,14 @@ class Game:
                 ev.append(Event("sacrificed", u))
 
         deaths: dict[int, list[tuple[int, str, str]]] = {}
+        heal_saved: set[int] = set()
         for t, alist in attacks.items():
             v = self.get(t)
             alist = [a for a in alist if not self._immune(v, a[1], a[2])]
             if not alist or not v.alive:
                 continue
             if t in healed:
+                heal_saved.add(t)
                 for u, (k, x, _) in acts.items():
                     if k == "heal" and x == t:
                         self.get(u).score += 3
@@ -366,6 +398,17 @@ class Game:
                 if self.get(u).alive:
                     self.get(u).alive = False
                     ev.append(Event("revenge", t, u))
+
+        # Shaxsiy natijalar: Doktor, Daydi (qotillik bo'lmasa), hujum qilganlar (mafiya ovozi - quyida, jamoaga)
+        for u, (k, t, _) in acts.items():
+            if k == "heal":
+                ev.append(Event("result", u, t, {"kind": k, "ok": t in heal_saved}))
+            elif k == "visit" and t not in deaths:
+                ev.append(Event("result", u, t, {"kind": k, "ok": False}))
+        for t, alist in attacks.items():
+            for u, k, _ in alist:
+                if k != "mafia_kill":
+                    ev.append(Event("result", u, t, {"kind": k, "ok": not self.get(t).alive}))
 
         # Mafiya ovozining natijasi (sheriklarga) yoki Don umuman tanlamagani (guruhga)
         if m:
@@ -472,6 +515,9 @@ class Game:
     def _hang(self, t: int, data: dict, ev: list) -> bool:
         """Osish. True qaytarsa, o'yin shu zahoti tugadi (Podshoh)."""
         v = self.get(t)
+        if self._use(v, "votesave", ev):  # ⚖️ Ovoz himoyasi: bir marta osilishdan saqlaydi, guruhga e'lon qilinadi
+            ev.append(Event("vote_saved", target=t))
+            return False
         v.alive = False
         for u, x in self.votes.items():  # dushmanni osishga ovoz +2, jamoadoshni -1
             if x == t:

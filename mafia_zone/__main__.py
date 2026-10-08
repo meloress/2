@@ -39,7 +39,7 @@ async def main() -> None:
         BotCommand(command="profile", description="👤 Profil"),
         BotCommand(command="role", description="🎭 Mening rolim"),
         BotCommand(command="shop", description="🛒 Do'kon"),
-        BotCommand(command="pro", description="✅ PRO akkaunt"),
+        BotCommand(command="pro", description="🌟 PRO akkaunt"),
         BotCommand(command="nickname", description="🏷 Nickname (PRO)"),
         BotCommand(command="paysupport", description="💳 To'lov bo'yicha yordam"),
         BotCommand(command="top", description="🏆 Reyting"),

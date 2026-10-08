@@ -28,7 +28,9 @@ DIAMOND_RATE = 300  # Exchange: 1 olmos -> 300 dollar
 DOLLAR_PACKS = {1: 300, 2: 600, 3: 800, 4: 1500, 15: 5000, 30: 10000}  # Xarid: olmos -> dollar
 DIAMOND_STARS = {1: 7, 5: 35, 10: 66, 15: 101, 30: 202, 50: 342, 200: 1388, 500: 3488, 1000: 6984, 2000: 13984}  # olmos -> Stars
 NEWS_URL = os.environ.get("NEWS_URL", "").strip()  # yangiliklar kanali, bo'sh bo'lsa tugma chiqmaydi
-SHOP = {"shield": 100, "verbena": 80, "doc": 120, "ticket": 150}
+SHOP = {"shield": 140, "verbena": 145, "doc": 190}  # dollar
+SHOP_GEMS = {"mask": 1, "votesave": 2}  # olmos (PRO chegirmasi yo'q)
+ROLE_PICKS = {"komissar": 3, "don": 3, "doktor": 2, "kezuvchi": 2}  # rolni tanlab olish, olmos
 SHOP_OFF: set[str] = set()  # paneldan sotuvdan olingan buyumlar
 # Bular paneldan o'zgaradi (db.load_settings): kodda doim config.X deb o'qing, "from config import X" emas.
 

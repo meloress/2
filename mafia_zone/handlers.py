@@ -521,7 +521,7 @@ async def cb_menu(cq: CallbackQuery):
         if not (u := await _user(cq)):
             return await cq.answer(texts.BANNED, show_alert=True)
         if what == "shop":
-            await show(cq, texts.shop(u.dollars, u.telegram_id), shop_kb(u.telegram_id))
+            await show(cq, texts.shop(u.dollars, u.telegram_id, u.diamonds), shop_kb(u.telegram_id))
         else:
             inv = await db.inventory(u.telegram_id)
             await show(cq, texts.profile(u, inv), profile_kb(inv, u.telegram_id))
@@ -615,8 +615,18 @@ async def _answer_ask(msg: Message, ask: str) -> None:
 
 def shop_kb(uid: int | None = None) -> Kb:
     price = (lambda p: pro.price(uid, p)) if uid is not None else (lambda p: p)  # PRO: -25%
-    return Kb(inline_keyboard=[[Btn(text=f"{texts.ITEMS[i]} — {price(p)} 💵", callback_data=f"b:{i}", style="success")]
-                               for i, p in config.SHOP.items() if i not in config.SHOP_OFF] + [[back_btn()]])
+    rows = [[Btn(text=f"{texts.ITEMS[i]} ({price(p)}💵)", callback_data=f"b:{i}", style="success")]
+            for i, p in config.SHOP.items() if i not in config.SHOP_OFF]
+    rows += [[Btn(text=f"{texts.ITEMS[i]} ({p}💎)", callback_data=f"b:{i}", style="primary")]
+             for i, p in config.SHOP_GEMS.items()]
+    rows.append([Btn(text=texts.ROLE_SHOP_BTN, callback_data="shoproles", style="primary")])
+    return Kb(inline_keyboard=rows + [[back_btn()]])
+
+
+def roles_shop_kb() -> Kb:
+    rows = [[Btn(text=f"{texts.ITEMS['r_' + c]} ({p}💎)", callback_data=f"b:r_{c}", style="primary")]
+            for c, p in config.ROLE_PICKS.items()]
+    return Kb(inline_keyboard=rows + [[Btn(text=texts.BACK_BTN, callback_data="shop")]])
 
 
 def pro_kb() -> Kb:
@@ -767,7 +777,7 @@ async def cmd_role(msg: Message):
 async def cmd_shop(msg: Message):
     if not (u := await _user(msg)):
         return await msg.answer(texts.BANNED)
-    await msg.answer(texts.shop(u.dollars, u.telegram_id), reply_markup=shop_kb(u.telegram_id))
+    await msg.answer(texts.shop(u.dollars, u.telegram_id, u.diamonds), reply_markup=shop_kb(u.telegram_id))
 
 
 @router.message(Command("top"), PRIVATE)
@@ -789,18 +799,22 @@ async def cb_profile(cq: CallbackQuery):
     await cq.answer()
 
 
-@router.callback_query(F.data.startswith("b:") | (F.data == "shop"))
+@router.callback_query(F.data.startswith("b:") | F.data.in_({"shop", "shoproles"}))
 async def cb_shop(cq: CallbackQuery):
     if not await _user(cq):
         return await cq.answer(texts.BANNED, show_alert=True)
-    if cq.data != "shop":
-        item = cq.data[2:]
-        if item not in config.SHOP or item in config.SHOP_OFF:
+    item = cq.data[2:] if cq.data.startswith("b:") else None
+    gems = db.gem_price(item) if item else None
+    if item:
+        if not gems and (item not in config.SHOP or item in config.SHOP_OFF):
             return await cq.answer()
         ok = await db.buy(cq.from_user.id, item)
-        await cq.answer(texts.BOUGHT if ok else texts.NO_MONEY, show_alert=not ok)
+        await cq.answer(texts.BOUGHT if ok else texts.NO_DIAMONDS if gems else texts.NO_MONEY, show_alert=not ok)
     u = await db.get_user(cq.from_user.id)
-    await cq.message.edit_text(texts.shop(u.dollars, u.telegram_id), reply_markup=shop_kb(u.telegram_id))
+    if cq.data == "shoproles" or (item or "").startswith("r_"):
+        await show(cq, texts.roles_shop(u.diamonds), roles_shop_kb())
+    else:
+        await show(cq, texts.shop(u.dollars, u.telegram_id, u.diamonds), shop_kb(u.telegram_id))
 
 
 @router.callback_query(F.data.startswith("r:"))

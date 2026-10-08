@@ -216,10 +216,10 @@ def test_game_reward_win_40_lose_0():
 def test_concurrent_buys_and_new_users():
     async def t():
         u = BASE + 800
-        await mkuser(u, 1000)
+        await mkuser(u, 10 * config.SHOP["shield"])
         res = await asyncio.gather(*(db.buy(u, "shield") for _ in range(15)))
         inv = {i.item: i.qty for i in await db.inventory(u)}
-        assert sum(res) == 10 and inv["shield"] == 10 and await bal(u) == 0  # 1000/100
+        assert sum(res) == 10 and inv["shield"] == 10 and await bal(u) == 0  # 10 ta narxi
         await db.change_item(u, "shield", -50)  # manfiyga tushmaydi
         assert {i.item: i.qty for i in await db.inventory(u)}["shield"] == 10
         await asyncio.gather(*(db.upsert_user(BASE + 900, "yangi", None) for _ in range(10)))  # xatosiz

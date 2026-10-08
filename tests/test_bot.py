@@ -377,7 +377,7 @@ def test_role_button_shows_own_role_only():
                 await handlers.cb_role(SimpleNamespace(data=data, from_user=SimpleNamespace(id=uid), answer=answer))
         finally:
             handlers.PLAYING.pop(1, None); handlers.PLAYING.pop(4, None)
-        assert "Don" in said[0][0] and "Sheriklar" in said[0][0] and len(said[0][0]) <= 200
+        assert "Don" in said[0][0] and "Sheriklar" not in said[0][0] and len(said[0][0]) <= 200  # sheriklar - faqat botda
         assert "Tinch aholi" in said[1][0]
         assert said[2][0] == said[3][0] == texts.NOT_IN_GAME and all(a for _, a in said)
     asyncio.run(t())

@@ -20,6 +20,8 @@ def test_badge_name_and_expiry():
     assert pro.is_pro(1) and pro.name(1, "Ali") == "Shoh<b>"
     m = texts.mention(1, "Ali")
     assert pro.BADGE_ID in m and "<b>PRO</b>" in m and "Shoh&lt;b&gt;" in m and "tg://user?id=1" in m
+    # 🌟 PRO <nickname> 🔥
+    assert m.index("5226766493886225846") < m.index("<b>PRO</b>") < m.index("Shoh") < m.index("5220136481720409403")
     pro.set_user(1, db.now() - timedelta(seconds=1), "Shoh")
     assert not pro.is_pro(1) and texts.mention(1, "Ali") == '<a href="tg://user?id=1">Ali</a>'
 
@@ -53,7 +55,7 @@ def test_custom_emoji_rejected_falls_back_to_plain():
                     reply_markup=Kb(inline_keyboard=[[Btn(text="PRO Ali", callback_data="x",
                                                           icon_custom_emoji_id=pro.BADGE_ID)]]))
     assert asyncio.run(emoji.PremiumEmoji()(make_request, None, m)) == "ok"
-    assert calls[-1].text == "✅ <b>PRO</b> Ali"
+    assert calls[-1].text == f"{pro.BADGE_FALLBACK} <b>PRO</b> Ali"
     assert calls[-1].reply_markup.inline_keyboard[0][0].icon_custom_emoji_id is None
     n = len(calls)  # bir marta rad etilgach: keyingilari darhol oddiy yuboriladi
     assert asyncio.run(emoji.PremiumEmoji()(make_request, None, m)) == "ok" and len(calls) == n + 1

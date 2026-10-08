@@ -191,18 +191,18 @@ def test_economy_settings_apply_and_persist():
         csrf = await login(c, OWNER)
         hdr = {"X-CSRF": csrf}
         old_win, old_price = config.REWARD_WIN, config.SHOP["shield"]
-        r = await c.post("/api/economy", json={"reward_win": 55, "shop": {"shield": 130}, "shop_off": ["ticket"]},
+        r = await c.post("/api/economy", json={"reward_win": 55, "shop": {"shield": 130}, "shop_off": ["doc"]},
                          headers=hdr)
         assert r.status == 200
-        assert config.REWARD_WIN == 55 and config.SHOP["shield"] == 130 and config.SHOP_OFF == {"ticket"}
-        assert not await db.buy(USER, "ticket")  # sotuvdan olingan
+        assert config.REWARD_WIN == 55 and config.SHOP["shield"] == 130 and config.SHOP_OFF == {"doc"}
+        assert not await db.buy(USER, "doc")  # sotuvdan olingan
         for bad in [{"reward_win": -1}, {"diamond_rate": 0}, {"shop": {"bomb": 1}}, {"shop": {"shield": 0}},
                     {"shop_off": ["bomb"]}, {}]:
             assert (await c.post("/api/economy", json=bad, headers=hdr)).status == 400, bad
         config.REWARD_WIN, config.SHOP["shield"] = 1, 1  # "qayta ishga tushish": bazadan yuklanadi
         config.SHOP_OFF.clear()
         await db.load_settings()
-        assert config.REWARD_WIN == 55 and config.SHOP["shield"] == 130 and config.SHOP_OFF == {"ticket"}
+        assert config.REWARD_WIN == 55 and config.SHOP["shield"] == 130 and config.SHOP_OFF == {"doc"}
         await c.post("/api/economy", json={"reward_win": old_win, "shop": {"shield": old_price}, "shop_off": []},
                      headers=hdr)
         assert config.REWARD_WIN == old_win and not config.SHOP_OFF

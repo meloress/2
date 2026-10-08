@@ -304,8 +304,10 @@ class Runner:
         self.game = Game.create(self.chat_id, self.members, random.SystemRandom().randrange(2 ** 31),
                                 frozenset(self.s["disabled"]), items, AFK_LIMIT if self.s.get("afk", True) else 0,
                                 self.s.get("confirm", True))
-        for uid in self.game.use_tickets():
-            await db.change_item(uid, "ticket", -1)
+        spent = self.game.use_role_picks() + [(u, "ticket") for u in self.game.use_tickets()]
+        spent += [(p.uid, "mask") for p in self.game.players if p.items.get("mask", 0) > 0]  # maska shu o'yinga
+        for uid, item in spent:
+            await db.change_item(uid, item, -1)
         self.meta["started"] = time.time()
         self.game_id = await db.create_game(self.chat_id, self.state())
         if self.game_id is None:
@@ -575,8 +577,10 @@ class Runner:
             if not g or g.phase != NIGHT or g.day != day or not g.submit(uid, kind, target or None):
                 return False
             await self.save()
-            if kind != SKIP and not again:  # hech narsa qilmagani va qayta tanlov guruhga yozilmaydi
-                self.live_lines.append(texts.act_feed(g.get(uid).role, kind))
+            if not again:  # qayta tanlov guruhga yozilmaydi
+                line = texts.skip_feed(g.get(uid).role) if kind == SKIP else texts.act_feed(g.get(uid).role, kind)
+                if line:
+                    self.live_lines.append(line)
         if kind == SKIP and g.get(uid).role == "don":
             for m in g.teammates(uid):
                 if m.alive:

@@ -572,13 +572,22 @@ async def _add_item(s, uid: int, item: str, n: int) -> None:
         await s.flush()
 
 
+def gem_price(item: str) -> int | None:
+    """Olmosli buyum narxi: Maska, Ovoz himoyasi, "r_<rol>"."""
+    if item.startswith("r_"):
+        return config.ROLE_PICKS.get(item[2:])
+    return config.SHOP_GEMS.get(item)
+
+
 async def buy(uid: int, item: str) -> bool:
-    if item not in config.SHOP or item in config.SHOP_OFF:
+    if gems := gem_price(item):
+        col, price = User.diamonds, gems
+    elif item in config.SHOP and item not in config.SHOP_OFF:
+        col, price = User.dollars, pro.price(uid, config.SHOP[item])  # PRO: -25%
+    else:
         return False
-    price = pro.price(uid, config.SHOP[item])  # PRO: -25%
     async with Session.begin() as s:
-        r = await s.execute(update(User).where(User.telegram_id == uid, User.dollars >= price)
-                            .values(dollars=User.dollars - price))
+        r = await s.execute(update(User).where(User.telegram_id == uid, col >= price).values({col: col - price}))
         if r.rowcount != 1:
             return False
         await _add_item(s, uid, item, 1)

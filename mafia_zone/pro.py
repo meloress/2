@@ -5,12 +5,12 @@ from datetime import datetime
 
 from . import config
 
-BADGE_ID = "5197557379083804570"  # ✅ "Verified" custom emoji
-BADGE_FALLBACK = "✅"
+BADGE_ID, BADGE_FALLBACK = "5226766493886225846", "🌟"  # ismdan oldin (thecamelot to'plami)
+TAIL_ID, TAIL_FALLBACK = "5220136481720409403", "🔥"  # ismdan keyin
 PACKS = {7: (30, 100), 15: (55, 150), 30: (99, 249)}  # kun -> (olmos, stars)
 CACHE: dict[int, tuple[datetime, str | None]] = {}  # uid -> (tugash vaqti, nickname)
 _BAD_NICK = re.compile(r"@|https?:|t\.me|www\.|\badmin\b|\bbot\b", re.I)  # "Botir", "Admiral" - mumkin
-_FAKE = re.compile(r"^[\s✅☑✔\ufe0f]*PRO\b[\s:|·•-]*", re.I)  # oddiy ismdagi "✅ PRO" soxta belgi
+_FAKE = re.compile(r"^[\s✅☑✔🌟⭐\ufe0f]*PRO\b[\s:|·•-]*(.*?)[\s🔥]*$", re.I | re.S)  # oddiy ismdagi "🌟 PRO … 🔥" soxta belgi
 
 
 def _now() -> datetime:
@@ -45,11 +45,15 @@ def name(uid: int, fallback: str) -> str:
     """Ko'rsatiladigan ism: PRO va nickname bo'lsa - nickname. Oddiy foydalanuvchi ismidagi "✅ PRO" olib tashlanadi."""
     if is_pro(uid):
         return CACHE[uid][1] or fallback
-    return _FAKE.sub("", fallback) or fallback
+    return _FAKE.sub(r"\1", fallback) or fallback
 
 
 def badge() -> str:
     return f'<tg-emoji emoji-id="{BADGE_ID}">{BADGE_FALLBACK}</tg-emoji>'
+
+
+def tail() -> str:
+    return f'<tg-emoji emoji-id="{TAIL_ID}">{TAIL_FALLBACK}</tg-emoji>'
 
 
 def label(uid: int, text: str) -> tuple[str, str | None]:

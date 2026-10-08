@@ -479,3 +479,51 @@ def test_score_penalties():
     assert g.get(1).score == g.get(3).score == 1
     vote(g, (1, 2), (3, 2), (4, 2))  # mafiya osildi: tinchlar +2, Don (sherigini osdi) -1
     assert g.get(3).score > 0 and g.get(1).score < g.get(3).score
+
+
+# ---------- tungi natija xabarlari ----------
+def _results(ev):
+    return {(e.uid, e.data["kind"]): e.data["ok"] for e in ev if e.kind == "result"}
+
+
+def test_night_results_for_every_actor():
+    g = mk("don", "doktor", "komissar", "kezuvchi", "daydi", "qotil", "tinch", "tinch", "tinch", "advokat")
+    ev = night(g, (1, "mafia_kill", 7), (2, "heal", 7), (3, "shoot", 8), (4, "block", 9), (5, "visit", 9),
+               (6, "kill", 3), (10, "disguise", 1))
+    r = _results(ev)
+    assert r[(2, "heal")] is True and g.get(7).alive  # doktor qutqardi
+    assert r[(3, "shoot")] is True and r[(6, "kill")] is True  # komissar tinchni otdi, qotil komissarni
+    assert r[(4, "block")] is True and r[(10, "disguise")] is True and r[(5, "visit")] is False
+    from mafia_zone import texts
+    _, priv = texts.morning(g, ev)
+    to = {}
+    for uid, t in priv:
+        to.setdefault(uid, []).append(t)
+    for uid in (2, 3, 4, 5, 6, 10):
+        assert uid in to, uid
+    assert any("qutqar" in t for t in to[2]) and any("omon" in t for t in to[7])  # hujum qilingan o'zi ham biladi
+
+
+def test_heal_without_attack_and_failed_attack():
+    g = mk("don", "doktor", "komissar", "sehrgar", "tinch", "tinch", "tinch")
+    ev = night(g, (2, "heal", 5), (3, "shoot", 4))  # sehrgar komissar o'qidan himoyalangan
+    r = _results(ev)
+    assert r[(2, "heal")] is False and r[(3, "shoot")] is False and g.get(4).alive
+
+
+def test_skip_feed_texts():
+    from mafia_zone import texts
+    assert "dam" in texts.skip_feed("doktor")
+    assert texts.skip_feed("don") is None  # ertalab "Don hech kimni tanlamadi" chiqadi
+    assert texts.skip_feed("qotil")
+
+
+def test_blocked_player_cannot_vote_next_day():
+    g = mk("don", "kezuvchi", "doktor", "tinch", "tinch", "tinch", "tinch")
+    night(g, (2, "block", 3), (3, "heal", 4))
+    g.start_voting()
+    assert not g.can_vote(3) and g.can_vote(4)  # uxlatilgan - ertangi ovozdan ham mahrum
+    g.resolve_vote()  # hech kim osilmaydi, o'yin davom etadi
+    night(g)
+    g.start_voting()
+    assert g.can_vote(3)  # faqat bir kun
