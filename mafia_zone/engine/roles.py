@@ -18,7 +18,7 @@ _ROLES = [
     Role("tinch", "👨 Tinch aholi", TOWN, (), "Kunduzi muhokama va ovoz berishda qatnashasiz. Mafiyani toping!"),
     Role("komissar", "🕵️‍♂️ Komissar Katani", TOWN, ("check", "shoot"), "Har tunda 1 kishini tekshirasiz yoki otasiz."),
     Role("serjant", "👮 Serjant", TOWN, (), "Komissar yordamchisi. Komissar o'lsa, uning o'rnini egallaysiz."),
-    Role("doktor", "👨‍⚕️ Doktor", TOWN, ("heal",), "Tunda 1 kishini o'limdan saqlaysiz. Bir kishini ketma-ket 2 marta davolay olmaysiz."),
+    Role("doktor", "👨‍⚕️ Doktor", TOWN, ("heal",), "Tunda 1 kishini o'limdan saqlaysiz. O'zingizni ketma-ket 2 tun davolay olmaysiz."),
     Role("daydi", "🍾 Daydi", TOWN, ("visit",), "Tunda bir uyga borasiz. U yerda qotillik bo'lsa, qotilni ko'rasiz."),
     Role("kezuvchi", "💃 Kezuvchi", TOWN, ("block",), "Nishonga uyqu dori berasiz: u shu tunda harakat qila olmaydi va ertasi kuni ovoz bera olmaydi."),
     Role("afsungar", "💣 Afsungar", TOWN, (), "Tunda o'ldirilsangiz, qotilingiz ham siz bilan halok bo'ladi."),

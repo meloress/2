@@ -10,6 +10,28 @@ from . import config, db, emoji, panel, runner
 from .handlers import pro_reminder, restore_giveaways, router, season_payouts
 
 
+GROUP_COMMANDS = [  # guruhdagi buyruqlar menyusi
+    BotCommand(command="game", description="🎮 Yangi o'yin"),
+    BotCommand(command="extend", description="⏳ Ro'yxatni uzaytirish: /extend yoki /extend 60"),
+    BotCommand(command="begin", description="▶️ Darhol boshlash (admin)"),
+    BotCommand(command="couplegame", description="💞 Paralar o'yini"),
+    BotCommand(command="couplestart", description="❤️ Paralar o'yinini boshlash"),
+    BotCommand(command="couplestop", description="💔 Paralar o'yinini to'xtatish (admin)"),
+    BotCommand(command="stop", description="🛑 O'yinni to'xtatish (admin)"),
+    BotCommand(command="leave", description="🚪 O'yindan chiqish"),
+    BotCommand(command="next", description="🔔 Keyingi o'yinda xabar berish"),
+    BotCommand(command="players", description="👥 Tiriklar va o'liklar"),
+    BotCommand(command="send", description="💸 Pul: /send 100 10 yoki reply + /send 100"),
+    BotCommand(command="give", description="💎 Olmos: /give 10 2 yoki reply + /give 5"),
+    BotCommand(command="couple", description="❤️ Para bo'lish: reply yoki /couple @username"),
+    BotCommand(command="uncouple", description="💔 Paradan chiqish"),
+    BotCommand(command="mycouple", description="💞 Mening param"),
+    BotCommand(command="settings", description="⚙️ Sozlamalar (admin)"),
+    BotCommand(command="top", description="🏆 Guruh reytingi"),
+    BotCommand(command="rules", description="📜 Rollar"),
+]
+
+
 async def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     if not config.BOT_TOKEN:
@@ -19,25 +41,7 @@ async def main() -> None:
     bot.session.middleware(emoji.PremiumEmoji())
     await emoji.load_pack(bot, config.EMOJI_PACK)
     runner.BOT_USERNAME = (await bot.me()).username
-    await bot.set_my_commands([
-        BotCommand(command="game", description="🎮 Yangi o'yin"),
-        BotCommand(command="extend", description="⏳ Ro'yxatni uzaytirish: /extend yoki /extend 60"),
-        BotCommand(command="begin", description="▶️ Darhol boshlash (admin)"),
-        BotCommand(command="couplegame", description="💞 Paralar o'yini"),
-        BotCommand(command="couplestart", description="❤️ Paralar o'yinini boshlash"),
-        BotCommand(command="stop", description="🛑 O'yinni to'xtatish (admin)"),
-        BotCommand(command="leave", description="🚪 O'yindan chiqish"),
-        BotCommand(command="next", description="🔔 Keyingi o'yinda xabar berish"),
-        BotCommand(command="players", description="👥 Tiriklar va o'liklar"),
-        BotCommand(command="send", description="💸 Pul: /send 100 10 yoki reply + /send 100"),
-        BotCommand(command="give", description="💎 Olmos: /give 10 2 yoki reply + /give 5"),
-        BotCommand(command="couple", description="❤️ Para bo'lish: reply yoki /couple @username"),
-        BotCommand(command="uncouple", description="💔 Paradan chiqish"),
-        BotCommand(command="mycouple", description="💞 Mening param"),
-        BotCommand(command="settings", description="⚙️ Sozlamalar (admin)"),
-        BotCommand(command="top", description="🏆 Guruh reytingi"),
-        BotCommand(command="rules", description="📜 Rollar"),
-    ], scope=BotCommandScopeAllGroupChats())
+    await bot.set_my_commands(GROUP_COMMANDS, scope=BotCommandScopeAllGroupChats())
     await bot.set_my_commands([
         BotCommand(command="profile", description="👤 Profil"),
         BotCommand(command="role", description="🎭 Mening rolim"),

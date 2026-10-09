@@ -112,9 +112,12 @@ async def cmd_begin(msg: Message, bot: Bot, command: CommandObject | None = None
         r.force_start()
 
 
-@router.message(Command("stop"), GROUPS)
-async def cmd_stop(msg: Message, bot: Bot):
+@router.message(Command("stop", "couplestop"), GROUPS)
+async def cmd_stop(msg: Message, bot: Bot, command: CommandObject | None = None):
+    """/stop - har qanday o'yin yoki ro'yxat; /couplestop - faqat 💞 paralar o'yini (oddiy o'yinni tasodifan to'xtatmasin)."""
     r = RUNNERS.get(msg.chat.id)
+    if r and getattr(command, "command", "") == "couplestop" and not r.couple:
+        return await msg.answer(texts.NOT_COUPLE_GAME)
     if r:
         if not await is_admin(bot, msg.chat.id, msg.from_user.id, msg):
             return await msg.answer(texts.ONLY_ADMIN)

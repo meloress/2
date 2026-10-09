@@ -715,3 +715,44 @@ def test_night_chat_is_explained_and_donishmand_is_told_to_listen():
         assert any(texts.NIGHT_CHAT_HINT in t for c, t in bot.sent if c == don)  # tungi tanlovda ham eslatma
         r.close()
     asyncio.run(go())
+
+
+def test_couplestop_stops_couple_game():
+    """💞 Paralar o'yini /couplestop (va /stop) bilan to'xtaydi; buyruq menyusida ham bor."""
+    from mafia_zone import config, handlers
+    from mafia_zone.__main__ import GROUP_COMMANDS
+
+    async def go():
+        await db.init()
+        owner = 1
+        old, config.ADMIN_IDS = config.ADMIN_IDS, {owner}
+        try:
+            r = runner.Runner(FakeBot(), -8803, {}, couple=True)
+            msg = SimpleNamespace(chat=SimpleNamespace(id=-8803), from_user=SimpleNamespace(id=owner),
+                                  sender_chat=None)
+            await handlers.cmd_stop(msg, FakeBot(), SimpleNamespace(command="couplestop"))
+            assert -8803 not in runner.RUNNERS
+        finally:
+            config.ADMIN_IDS = old
+    asyncio.run(go())
+    assert "couplestop" in [c.command for c in GROUP_COMMANDS]
+
+
+def test_couplestop_does_not_stop_normal_game():
+    from mafia_zone import config, handlers
+
+    async def go():
+        await db.init()
+        bot = FakeBot()
+        owner = 1
+        old, config.ADMIN_IDS = config.ADMIN_IDS, {owner}
+        try:
+            r = runner.Runner(bot, -8804, {})
+            msg = SimpleNamespace(chat=SimpleNamespace(id=-8804), from_user=SimpleNamespace(id=owner), sender_chat=None,
+                                  answer=lambda text: bot.send_message(-8804, text))
+            await handlers.cmd_stop(msg, bot, SimpleNamespace(command="couplestop"))
+            assert runner.RUNNERS.get(-8804) is r and texts.NOT_COUPLE_GAME in bot.sent[-1][1]
+            r.close()
+        finally:
+            config.ADMIN_IDS = old
+    asyncio.run(go())

@@ -63,7 +63,7 @@ class Player:
     alive: bool = True
     items: dict = field(default_factory=dict)  # shield / verbena / doc -> soni
     last_target: int | None = None  # Doktor, Kezuvchi, Qorovul: ketma-ket cheklovi
-    self_heal_used: bool = False
+    self_heal_used: bool = False  # eski saqlangan o'yinlar uchun qoldi; endi ishlatilmaydi (cheklov: last_target)
     kills: int = 0  # G'azabkor
     won: bool = False
     mute_day: int = 0  # shu kuni ovoz bera olmaydi (Qaroqchi o'g'irladi yoki Kezuvchi uxlatdi)
@@ -193,7 +193,7 @@ class Game:
         if kind in NO_TARGET:
             return []
         if kind == "heal":
-            return [x.uid for x in alive if x.uid != p.last_target and (x.uid != uid or not p.self_heal_used)]
+            return [x.uid for x in alive if x.uid != uid or p.last_target != uid]  # o'zini ketma-ket 2 tun - yo'q
         if kind == "guard":
             return [x.uid for x in alive if x.uid != p.last_target]
         if kind == "block":
@@ -333,8 +333,6 @@ class Game:
         for u, (k, t, _) in acts.items():
             if k == "heal":
                 healed.add(t)
-                if t == u:
-                    self.get(u).self_heal_used = True
             elif k == "guard":
                 self.guarded = t
                 ev.append(Event("result", u, t, {"kind": k, "ok": True}))
@@ -540,10 +538,11 @@ class Game:
         self.votes = {v: t for v, t in self.votes.items() if self._alive(v) and (t is None or self._alive(t))}
         tally: dict = {}
         for v, t in self.votes.items():
-            tally[t] = tally.get(t, 0) + (2 if self.get(v).role == "janob" else 1)
+            if t is not None:  # "hech kimga" - ovoz bermagan bilan teng, nomzodlar bilan raqobat qilmaydi
+                tally[t] = tally.get(t, 0) + (2 if self.get(v).role == "janob" else 1)
         top = max(tally.values(), default=0)
         leaders = [t for t, c in tally.items() if c == top]
-        if len(leaders) != 1 or leaders[0] is None:
+        if len(leaders) != 1:  # hech kimga ovoz yo'q yoki eng ko'p ovozda teng - osilmaydi
             ev.append(Event("no_hang"))
         elif leaders[0] == self.guarded:
             ev.append(Event("guard_saved", target=leaders[0]))
@@ -577,7 +576,7 @@ class Game:
         t, self.candidate = self.candidate, None
         if not self._alive(t):  # nomzod o'yindan chiqib ketgan: osish yo'q, chiqqani allaqachon e'lon qilingan
             return self._end_day(ev)
-        if yes > no:
+        if yes >= no:  # 👎 ko'p bo'lsagina rahm; hech kim bosmasa yoki teng - ovoz berish natijasi kuchda
             if self._hang(t, {"votes": yes, "yes": yes, "no": no}, ev):
                 return ev
         else:

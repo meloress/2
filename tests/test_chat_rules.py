@@ -84,7 +84,7 @@ def test_bot_owner_writes_freely():
     """Bot egasi (ADMIN_IDS): xabari hech qachon o'chirilmaydi - ! yoki raqamsiz, tunda ham, o'yinda bo'lmasa ham."""
     from mafia_zone import config
     owner = 555_000_111
-    old, config.ADMIN_IDS = config.ADMIN_IDS, [*config.ADMIN_IDS, owner]
+    old, config.ADMIN_IDS = config.ADMIN_IDS, {*config.ADMIN_IDS, owner}
     try:
         for ph in (NIGHT, DAY, VOTING, CONFIRM):
             assert not run_handler(ph, owner, "salom hammaga")

@@ -67,10 +67,28 @@ def test_mafia_kill_and_doctor_save():
     assert not g.get(3).alive
 
 
-def test_doctor_cannot_heal_same_twice():
+def _next_night(g):
+    g.start_voting()
+    g.resolve_vote()
+
+
+def test_doctor_heals_others_on_consecutive_nights():
+    """Boshqalarni ketma-ket tunlarda ham davolay oladi."""
     g = mk("don", "doktor", "tinch", "tinch", "tinch")
     night(g, (2, "heal", 3))
-    assert not g.submit(2, "heal", 3)
+    _next_night(g)
+    assert 3 in g.targets(2, "heal") and g.submit(2, "heal", 3)
+
+
+def test_doctor_cannot_heal_self_two_nights_in_a_row():
+    """O'zini ketma-ket 2 tun davolay olmaydi; bir tun oralab - yana mumkin."""
+    g = mk("don", "doktor", "tinch", "tinch", "tinch")
+    night(g, (2, "heal", 2))
+    _next_night(g)
+    assert 2 not in g.targets(2, "heal") and not g.submit(2, "heal", 2)
+    night(g, (2, "heal", 3))
+    _next_night(g)
+    assert 2 in g.targets(2, "heal") and g.submit(2, "heal", 2)
 
 
 def test_kezuvchi_blocks_don():
@@ -422,8 +440,7 @@ def test_confirm_no_spares_and_janob_weight():
     night(g)
     nominate(g, (1, 3), (4, 3))
     g.cast_confirm(1, True)
-    g.cast_confirm(4, True)
-    g.cast_confirm(2, False)  # Janob: 2 ovoz -> 2:2, rahm
+    g.cast_confirm(2, False)  # Janob: 2 ovoz -> 1:2, 👎 ko'p - rahm
     ev = g.resolve_confirm()
     assert g.get(3).alive and "spared" in kinds(ev) and g.phase == "night" and g.day == 2
 
@@ -954,3 +971,34 @@ def test_death_pm_does_not_say_shot():
 def test_sehrgar_about_says_curse_kills():
     from mafia_zone.engine.roles import ROLES
     assert "o'ladi" in ROLES["sehrgar"].about
+
+
+# ---------- kunduzgi osish: eng ko'p ovoz olgan o'yinchi osiladi ----------
+def test_single_vote_hangs_even_if_others_skip():
+    """1 kishi X ga, qolganlar "hech kimga" bosdi: "hech kim" raqib emas - X osiladi."""
+    g = mk("don", "tinch", "tinch", "tinch", "tinch")
+    night(g)
+    ev = vote(g, (2, 3), (4, None), (5, None))
+    assert [e.target for e in ev if e.kind == "hanged"] == [3]
+
+
+def test_only_skips_or_no_votes_no_hang():
+    g = mk("don", "tinch", "tinch", "tinch", "tinch")
+    night(g)
+    assert "no_hang" in kinds(vote(g, (2, None), (4, None)))
+    night(g)
+    assert "no_hang" in kinds(vote(g))
+
+
+def test_confirm_silence_or_tie_hangs_only_more_no_spares():
+    """Tasdiq: 👎 ko'p bo'lsagina rahm qilinadi; hech kim bosmasa yoki teng bo'lsa - osiladi."""
+    for confirms, hanged in (([], True), ([(4, True), (5, False)], True), ([(4, False)], False),
+                             ([(4, True), (5, True), (1, False)], True)):
+        g = mk("don", "tinch", "tinch", "tinch", "tinch", "tinch")
+        g.confirm = True
+        night(g)
+        vote(g, (2, 3))
+        for u, yes in confirms:
+            assert g.cast_confirm(u, yes)
+        ev = g.resolve_confirm()
+        assert ("hanged" in kinds(ev)) is hanged, (confirms, kinds(ev))
