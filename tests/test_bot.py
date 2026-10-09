@@ -756,3 +756,32 @@ def test_couplestop_does_not_stop_normal_game():
         finally:
             config.ADMIN_IDS = old
     asyncio.run(go())
+
+
+def test_locked_couple_cannot_uncouple():
+    """config.LOCKED_COUPLE: bot egasi bergan ikki ID majburan para; /uncouple - egasining matni, para qoladi."""
+    from mafia_zone import config, handlers
+
+    async def go():
+        await db.init()
+        a, b, c = 8_805_001, 8_805_002, 8_805_003
+        for u in (a, b, c):
+            await db.upsert_user(u, f"u{u}", None)
+        await db.make_couple(b, c)  # b ning boshqa parasi bor edi
+        old = config.LOCKED_COUPLE, config.LOCKED_COUPLE_TEXT
+        config.LOCKED_COUPLE, config.LOCKED_COUPLE_TEXT = (a, b), "Qochib qutulolmaysan 😏"
+        try:
+            await db.ensure_locked_couple()
+            assert await db.partner(a) == b and await db.partner(b) == a and await db.partner(c) is None
+            for u in (a, b):
+                replies = []
+                msg = SimpleNamespace(from_user=SimpleNamespace(id=u, full_name="x", username=None),
+                                      reply=lambda t, **k: asyncio.sleep(0, replies.append(t)))
+                await handlers.cmd_uncouple(msg)
+                assert replies == ["Qochib qutulolmaysan 😏"] and await db.partner(u) is not None
+            config.LOCKED_COUPLE = None  # qulf olib tashlandi - oddiy holat
+            await db.ensure_locked_couple()
+            assert await db.break_couple(a) == b
+        finally:
+            config.LOCKED_COUPLE, config.LOCKED_COUPLE_TEXT = old
+    asyncio.run(go())

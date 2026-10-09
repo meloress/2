@@ -38,6 +38,7 @@ async def main() -> None:
         raise SystemExit("BOT_TOKEN env o'zgaruvchisi kerak")
     bot = Bot(config.BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     await db.init()
+    await db.ensure_locked_couple()
     bot.session.middleware(emoji.PremiumEmoji())
     await emoji.load_pack(bot, config.EMOJI_PACK)
     runner.BOT_USERNAME = (await bot.me()).username

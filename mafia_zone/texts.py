@@ -76,6 +76,7 @@ COUPLE_DROPPED = "💔 Jufti ro'yxatga yozilmagani uchun paralar o'yiniga kira o
 NEED_COUPLES = "💔 Paralar yetarli emas (kamida <b>2</b> para kerak).\n<b>O'yin bekor qilindi.</b>"
 OTHER_LOBBY = "⚠️ Hozir boshqa o'yin ro'yxati ochiq. Avval u tugasin yoki admin /stop qilsin."
 NOT_COUPLE_LOBBY = "⚠️ Ochiq ro'yxat oddiy o'yin uchun. Uni /begin bilan boshlang."
+COUPLE_LOCKED = "💞 Bu parani bekor qilib bo'lmaydi."
 NOT_COUPLE_GAME = "⚠️ Hozirgi o'yin oddiy o'yin. Uni /stop bilan to'xtating."
 
 

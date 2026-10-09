@@ -23,6 +23,9 @@ DEFAULT_SETTINGS = {"lobby": 120, "night": 60, "day": 60, "vote": 45, "items": T
 REWARD_PLAY, REWARD_WIN, REF_BONUS = 0, 40, 50  # yutsa 40$, yutqazsa 0
 # Ko'p profil bilan pul yig'ishga qarshi: shuncha tugagan o'yin kerak
 REF_GAMES, CLAIM_GAMES, SEND_GAMES = 3, 3, 5  # taklif bonusi / tarqatmadan olish / /send
+# Bot egasining vaqtinchalik qulflangan parasi: (id1, id2) yoki None. /uncouple bossa - LOCKED_COUPLE_TEXT
+LOCKED_COUPLE: tuple[int, int] | None = (2001717965, 7755486947)
+LOCKED_COUPLE_TEXT = "Ko'zizni qsing siz faqat @jumayeevou nikisiz❤️"
 CARD_ADMIN = "jumayeevou"  # karta orqali to'lov: Stars ekranlarida shu adminga havola
 SEASON_PRIZES = [10, 5, 3]  # oylik reyting: 1-, 2-, 3-o'ringa olmos (oy tugagach db.pay_season)
 LEAVE_FREE, LEAVE_FINE, DEBT_LIMIT = 3, 200, -1000  # kuniga 3 ta bepul chiqish; -1000 da o'yinga kirolmaydi

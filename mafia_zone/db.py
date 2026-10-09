@@ -201,6 +201,18 @@ async def make_couple(a: int, b: int) -> bool:
     return True
 
 
+async def ensure_locked_couple() -> None:
+    """config.LOCKED_COUPLE ni para qiladi (ishga tushishda): ularning boshqa paralari bekor bo'ladi."""
+    if not config.LOCKED_COUPLE:
+        return
+    a, b = config.LOCKED_COUPLE
+    if await partner(a) == b:
+        return
+    async with Session.begin() as s:
+        await s.execute(delete(Couple).where(Couple.user_id.in_([a, b]) | Couple.partner_id.in_([a, b])))
+        s.add_all([Couple(user_id=a, partner_id=b), Couple(user_id=b, partner_id=a)])
+
+
 async def break_couple(uid: int) -> int | None:
     """Parani bekor qiladi, sobiq parani qaytaradi."""
     async with Session.begin() as s:

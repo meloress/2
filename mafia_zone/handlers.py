@@ -419,6 +419,8 @@ async def cmd_uncouple(msg: Message):
     me = await _user(msg)
     if not me:
         return
+    if config.LOCKED_COUPLE and me.telegram_id in config.LOCKED_COUPLE:  # bot egasining qulflangan parasi
+        return await msg.reply(texts.escape(config.LOCKED_COUPLE_TEXT) or texts.COUPLE_LOCKED)
     p = await db.break_couple(me.telegram_id)
     await msg.reply(texts.couple_broken(me.telegram_id, me.full_name, p, await _name(p)) if p else texts.COUPLE_NONE)
 
