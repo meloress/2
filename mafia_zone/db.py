@@ -538,17 +538,85 @@ async def all_user_ids() -> list[int]:
         return list((await s.scalars(select(User.telegram_id).where(User.banned.is_(False)))).all())
 
 
-async def top(chat_id: int | None = None, limit: int = 10) -> list[tuple[int, str, int, int]]:
-    """[(telegram_id, ism, g'alabalar, o'yinlar)]"""
+TASHKENT = timedelta(hours=5)
+
+
+def month_key(t: datetime | None = None) -> str:
+    """Toshkent vaqtidagi oy: "2026-10" (oylik mavsum)."""
+    return f"{(t or now()) + TASHKENT:%Y-%m}"
+
+
+def prev_month(key: str) -> str:
+    y, m = map(int, key.split("-"))
+    return f"{y - 1}-12" if m == 1 else f"{y}-{m - 1:02d}"
+
+
+def month_range(key: str) -> tuple[datetime, datetime]:
+    """Mavsum chegaralari UTC da: [Toshkent oyi boshi, keyingi oy boshi)."""
+    y, m = map(int, key.split("-"))
+    nxt = (y + 1, 1) if m == 12 else (y, m + 1)
+    start = datetime(y, m, 1, tzinfo=timezone.utc) - TASHKENT
+    return start, datetime(*nxt, 1, tzinfo=timezone.utc) - TASHKENT
+
+
+def _board(chat_id: int | None, month: str | None):
+    """(uid, ism, g'alabalar, o'yinlar) so'rovi, reyting tartibida. Ban qilinganlar va 0 o'yinlilar kirmaydi.
+    Teng bo'lsa: kam o'yinda yutgan yuqorida, keyin uid (tartib har doim bir xil)."""
+    if chat_id is None and month is None:
+        wins, games = User.wins, User.games
+        q = select(User.telegram_id, User.full_name, wins, games).where(User.games > 0)
+    else:
+        wins, games = func.sum(func.cast(GamePlayer.won, Integer)), func.count()
+        q = (select(User.telegram_id, User.full_name, wins, games)
+             .join(User, User.telegram_id == GamePlayer.user_id).group_by(User.telegram_id, User.full_name))
+        if chat_id is not None:
+            q = q.where(GamePlayer.chat_id == chat_id)
+        if month is not None:
+            start, end = month_range(month)
+            q = q.join(GameRow, GameRow.id == GamePlayer.game_id).where(
+                GameRow.status == "finished", GameRow.finished_at >= start, GameRow.finished_at < end)
+    return q.where(User.banned.is_(False)).order_by(wins.desc(), games, User.telegram_id)
+
+
+async def top(chat_id: int | None = None, limit: int = 10, month: str | None = None) -> list[tuple[int, str, int, int]]:
+    """[(telegram_id, ism, g'alabalar, o'yinlar)]: umumiy, guruh (chat_id) yoki oylik mavsum (month="2026-10")."""
     async with Session() as s:
-        if chat_id is None:
-            q = select(User.telegram_id, User.full_name, User.wins, User.games).order_by(User.wins.desc(), User.games).limit(limit)
-        else:
-            wins = func.sum(func.cast(GamePlayer.won, Integer))
-            q = (select(User.telegram_id, User.full_name, wins, func.count()).join(User, User.telegram_id == GamePlayer.user_id)
-                 .where(GamePlayer.chat_id == chat_id).group_by(User.full_name, User.telegram_id)
-                 .order_by(wins.desc()).limit(limit))
-        return [tuple(r) for r in (await s.execute(q)).all()]
+        return [tuple(r) for r in (await s.execute(_board(chat_id, month).limit(limit))).all()]
+
+
+async def place(uid: int, month: str | None = None) -> tuple[int, int, int] | None:
+    """(o'rin, g'alabalar, o'yinlar) umumiy yoki oylik reytingda; reytingda yo'q bo'lsa None.
+    ponytail: hamma qatorni o'qiydi - o'yinchilar yuz minglab bo'lsa SQL window (rank()) ga o'tish kerak."""
+    async with Session() as s:
+        rows = (await s.execute(_board(None, month))).all()
+    return next(((i, w, g) for i, (u, _, w, g) in enumerate(rows, 1) if u == uid), None)
+
+
+class SeasonPayout(Base):
+    """Oylik mavsum mukofoti to'langan oylar: PK - bir oy ikki marta to'lanmaydi (ko'p marta ishga tushsa ham)."""
+    __tablename__ = "season_payouts"
+    month: Mapped[str] = mapped_column(String(7), primary_key=True)
+    paid_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+async def pay_season(month: str) -> list[tuple[int, int, int]]:
+    """Tugagan oy top-3 iga config.SEASON_PRIZES olmos. [(uid, o'rin, olmos)]; allaqachon to'langan bo'lsa []."""
+    from sqlalchemy.exc import IntegrityError
+    if month >= month_key():  # mavsum hali tugamagan
+        return []
+    try:
+        async with Session.begin() as s:
+            s.add(SeasonPayout(month=month))
+            await s.flush()  # PK: ikkinchi chaqiruv shu yerda IntegrityError
+            rows = (await s.execute(_board(None, month).limit(len(config.SEASON_PRIZES)))).all()
+            out = []
+            for i, ((uid, _, wins, _), prize) in enumerate(zip(rows, config.SEASON_PRIZES), 1):
+                if wins and prize:
+                    await s.execute(update(User).where(User.telegram_id == uid).values(diamonds=User.diamonds + prize))
+                    out.append((uid, i, prize))
+            return out
+    except IntegrityError:
+        return []
 
 
 async def stats() -> dict:

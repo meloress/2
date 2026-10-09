@@ -879,14 +879,42 @@ def top_groups(rows) -> str:
                                  f"└ 🎮 {f'{n:,}'.replace(',', ' ')} ta o'yin" for i, (t, n) in enumerate(rows)])
 
 
-def top(rows, title: str) -> str:
+def top(rows, title: str, me: tuple[int, int, int] | None = None, show_me: bool = False, head: str = "") -> str:
+    """me: (o'rin, g'alaba, o'yin) - so'ragan odamning o'rni (show_me: botdagi reytingda, guruhda emas)."""
     entries = []
     for i, (uid, name, w, gm) in enumerate(rows):
         w, gm = w or 0, gm or 0
         rate = round(100 * w / gm) if gm else 0
         entries.append(f"{_place(i)} {mention(uid, name or '?')}\n"
                        f"└ 🏆 {w} · 🎮 {gm} · {rate}% · {rank(w)}")
-    return _top(title, entries)
+    text = _top(title, entries)
+    if head:
+        text = text.replace("\n\n", f"\n{head}\n\n", 1)
+    if me:
+        text += f"\n\n📍 Siz: {me[0]}-o'rin · 🏆 {me[1]} · 🎮 {me[2]}"
+    elif show_me:
+        text += "\n\n📍 Siz hali reytingda yo'qsiz — o'ynang va yuqoriga chiqing!"
+    return text
+
+
+MONTHS = ["Yanvar", "Fevral", "Mart", "Aprel", "May", "Iyun", "Iyul", "Avgust", "Sentabr", "Oktabr", "Noyabr", "Dekabr"]
+TOP_MONTH_BTN, TOP_ALL_BTN = "📅 Oylik", "🏆 Umumiy"
+
+
+def month_name(key: str) -> str:
+    y, m = key.split("-")
+    return f"{MONTHS[int(m) - 1]} {y}"
+
+
+def season_head(key: str, days_left: int) -> str:
+    """Oylik reyting sarlavhasi ostida: qaysi oy, qancha qoldi, top-3 mukofoti."""
+    prizes = " ".join(f"{p}{n}💎" for p, n in zip(PLACES, config.SEASON_PRIZES) if n)
+    return f"📅 <i>{month_name(key)} mavsumi · tugashiga {days_left} kun</i>\n🎁 {prizes}"
+
+
+def season_won(key: str, place: int, prize: int) -> str:
+    return (f"🎉 <b>{month_name(key)} mavsumi yakunlandi!</b>\n"
+            f"Siz oylik reytingda {_place(place - 1)} <b>{place}-o'rinni</b> egalladingiz va <b>{prize} 💎</b> oldingiz!")
 
 
 def rules() -> str:

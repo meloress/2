@@ -512,8 +512,8 @@ async def cb_menu(cq: CallbackQuery):
         await show(cq, texts.rules(), back)
     elif what == "pro":
         await show(cq, texts.pro_info(cq.from_user.id), pro_kb())
-    elif what == "top":
-        await show(cq, texts.top(await db.top(), "Umumiy reyting"), back)
+    elif what in ("top", "topall"):  # oylik mavsum (standart) yoki umumiy
+        await show(cq, *await top_view(cq.from_user.id, monthly=what == "top"))
     elif what in ("buy", "gem") and config.DIAMONDS_OFF:
         return await cq.answer(texts.DIAMONDS_OFF, show_alert=True)
     elif what == "buy":
@@ -803,9 +803,38 @@ async def cmd_shop(msg: Message):
     await msg.answer(texts.shop(u.dollars, u.telegram_id, u.diamonds), reply_markup=shop_kb(u.telegram_id))
 
 
+async def top_view(uid: int, monthly: bool = True) -> tuple[str, Kb]:
+    """Botdagi reyting: oylik mavsum yoki umumiy, pastda so'ragan odamning o'rni; Oylik/Umumiy tugmalari."""
+    month = db.month_key() if monthly else None
+    if monthly:
+        end = db.month_range(month)[1]
+        head = texts.season_head(month, max(1, -(-int((end - db.now()).total_seconds()) // 86400)))
+        text = texts.top(await db.top(month=month), "Oylik reyting", await db.place(uid, month), True, head)
+    else:
+        text = texts.top(await db.top(), "Umumiy reyting", await db.place(uid), True)
+    mark = lambda on, label: ("✅ " + label) if on else label
+    kb = Kb(inline_keyboard=[[Btn(text=mark(monthly, texts.TOP_MONTH_BTN), callback_data="m:top"),
+                              Btn(text=mark(not monthly, texts.TOP_ALL_BTN), callback_data="m:topall")],
+                             [back_btn()]])
+    return text, kb
+
+
+async def season_payouts(bot: Bot) -> None:
+    """Soatiga bir marta: tugagan oy mukofotlanmagan bo'lsa - top-3 ga olmos va xabar (db.pay_season bir marta)."""
+    while True:
+        try:
+            month = db.prev_month(db.month_key())
+            for uid, place, prize in await db.pay_season(month):
+                await send(bot, uid, texts.season_won(month, place, prize))
+        except Exception:
+            log.exception("mavsum mukofoti")
+        await asyncio.sleep(3600)
+
+
 @router.message(Command("top"), PRIVATE)
 async def cmd_top(msg: Message):
-    await msg.answer(texts.top(await db.top(), "Umumiy reyting"))
+    text, kb = await top_view(msg.from_user.id)
+    await msg.answer(text, reply_markup=kb)
 
 
 @router.message(Command("help"))
