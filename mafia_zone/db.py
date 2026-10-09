@@ -146,9 +146,41 @@ async def transfer(src: int, dst: int, amount: int, currency: str = "dollars") -
             r = await s.execute(update(User).where(User.telegram_id == dst).values({col: col + amount}))
             if r.rowcount != 1:
                 raise _Rollback  # qabul qiluvchi yo'q: yechilgan pul qaytadi
+            s.add(Transfer(src=src, dst=dst, amount=amount, currency=currency))  # jurnal: shu tranzaksiyada
     except _Rollback:
         return False
     return True
+
+
+class Transfer(Base):
+    """To'g'ridan-to'g'ri o'tkazmalar jurnali (reply /send, /give, profildan yuborish) - panelda ko'rish uchun."""
+    __tablename__ = "transfers"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    src: Mapped[int] = mapped_column(BigInteger, index=True)
+    dst: Mapped[int] = mapped_column(BigInteger, index=True)
+    amount: Mapped[int] = mapped_column(Integer)
+    currency: Mapped[str] = mapped_column(String(16))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+async def user_transfers(uid: int, limit: int = 30) -> list[dict]:
+    """Kim kimga qachon qancha: o'tkazmalar (kind "send") va tarqatmadan olishlar ("giveaway"), yangisi birinchi."""
+    async with Session() as s:
+        sent = (await s.execute(select(Transfer.src, Transfer.dst, Transfer.amount, Transfer.currency, Transfer.created_at)
+                                .where((Transfer.src == uid) | (Transfer.dst == uid))
+                                .order_by(Transfer.id.desc()).limit(limit))).all()
+        took = (await s.execute(select(Giveaway.sender_id, Claim.user_id, Giveaway.per, Giveaway.currency,
+                                       Giveaway.created_at)
+                                .join(Giveaway, Giveaway.id == Claim.giveaway_id)
+                                .where((Giveaway.sender_id == uid) | (Claim.user_id == uid))
+                                .order_by(Giveaway.id.desc(), Claim.n.desc()).limit(limit))).all()
+        rows = [(r, "send") for r in sent] + [(r, "giveaway") for r in took]
+        ids = {x for (a, b, *_), _ in rows for x in (a, b)}
+        names = dict((await s.execute(select(User.telegram_id, User.full_name).where(User.telegram_id.in_(ids)))).all()) if ids else {}
+    rows.sort(key=lambda x: _aware(x[0][4]), reverse=True)  # sort barqaror: bir xil vaqtda - avvalgi tartib
+    who = lambda u: {"id": u, "name": names.get(u) or str(u)}
+    return [{"at": _aware(at).isoformat(), "kind": kind, "src": who(a), "dst": who(b), "amount": n, "currency": cur or "dollars"}
+            for (a, b, n, cur, at), kind in rows[:limit]]
 
 
 class _Rollback(Exception):

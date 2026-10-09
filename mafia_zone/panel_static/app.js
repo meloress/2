@@ -719,6 +719,20 @@
         h("div", { class: "stack", style: { gap: "2px", minWidth: "0" } }, h("span", { class: "ellipsis", text: roleName(g.role) }),
           h("span", { class: "small muted ellipsis", text: `${g.group} · ${fmtDate(g.at)}` })),
         chip(g.won ? "Yutdi" : "Yutqazdi", g.won ? "c-green" : "c-gray")))) : h("p", { class: "muted small", text: "Hali o'ynamagan." }));
+
+    // kim kimga qachon qancha: o'tkazmalar va tarqatmadan olishlar
+    const tr = u.transfers || [];
+    parts.push(h("div", { class: "divider" }), h("h3", { text: "O'tkazmalar" }),
+      tr.length ? h("div", { class: "stack gap-8" }, tr.map((t) => {
+        const out = t.src.id === u.id;
+        const other = out ? t.dst : t.src;
+        const sign = t.currency === "diamonds" ? "💎" : "💵";
+        return h("div", { class: "between" },
+          h("div", { class: "stack", style: { gap: "2px", minWidth: "0" } },
+            h("span", { class: "ellipsis", text: `${out ? "→" : "←"} ${other.name} (${other.id})` }),
+            h("span", { class: "small muted ellipsis", text: `${t.kind === "giveaway" ? "Tarqatma" : "O'tkazma"} · ${fmtDate(t.at)}` })),
+          chip(`${out ? "−" : "+"}${t.amount.toLocaleString("ru-RU")} ${sign}`, out ? "c-red" : "c-green"));
+      })) : h("p", { class: "muted small", text: "O'tkazmalar yo'q." }));
     clear(box).append(...parts);
   }
 

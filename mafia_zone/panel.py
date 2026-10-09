@@ -372,6 +372,7 @@ async def api_user(req: web.Request) -> web.Response:
                "items": [{"code": c, "name": n, "qty": inv[c].qty if c in inv else 0,
                           "enabled": inv[c].enabled if c in inv else True} for c, n in texts.ITEMS.items()],
                "history": await db.user_games(uid),
+               "transfers": await db.user_transfers(uid),
                "pro_until": iso(pro.until(uid)), "nickname": u.nickname})
 
 

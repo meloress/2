@@ -463,3 +463,23 @@ def test_give_command_diamonds():
         u = await db.get_user(a)
         assert u.diamonds == 1 and u.dollars == 100 and "6</b> 💎 ulashmoqda" in bot.sent[-1]
     run(t())
+
+
+def test_transfers_are_logged_with_giveaway_claims():
+    """Har o'tkazma yoziladi (panelda: kim kimga qachon qancha); tarqatmadan olish ham ko'rinadi."""
+    async def t():
+        a, b, c = BASE + 960, BASE + 961, BASE + 962
+        for u in (a, b, c):
+            await mkuser(u, 0)
+        await db.add_balance(a, 500, 3)
+        assert await db.transfer(a, b, 300)
+        assert await db.transfer(a, b, 2, "diamonds")
+        assert not await db.transfer(a, b, 10_000)  # yetmadi - yozilmaydi
+        gid = await db.create_giveaway(-1, b, 50, 2)
+        await db.claim(gid, c)
+        log_b = await db.user_transfers(b)
+        assert [(x["src"]["id"], x["dst"]["id"], x["amount"], x["currency"], x["kind"]) for x in log_b] == [
+            (b, c, 50, "dollars", "giveaway"), (a, b, 2, "diamonds", "send"), (a, b, 300, "dollars", "send")]
+        assert log_b[0]["at"] and log_b[1]["src"]["name"] == f"u{a}"
+        assert len(await db.user_transfers(a)) == 2 and len(await db.user_transfers(c)) == 1
+    run(t())

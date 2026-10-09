@@ -159,6 +159,7 @@ def test_balance_items_and_audit_log():
         assert (await c.post(f"/api/users/{USER}/item", json={"item": "bomb", "delta": 1}, headers=hdr)).status == 400
 
         detail = await (await c.get(f"/api/users/{USER}")).json()
+        assert isinstance(detail["transfers"], list)  # o'tkazmalar jurnali panelda
         assert detail["dollars"] == before + 500 and {"code": "shield", "name": detail["items"][0]["name"],
                                                        "qty": 2, "enabled": True} in detail["items"]
         log = await (await c.get("/api/log")).json()
