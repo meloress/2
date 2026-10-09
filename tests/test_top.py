@@ -16,5 +16,6 @@ def test_top_compact_two_lines_per_player():
 
 
 def test_top_groups_compact():
-    text = texts.top_groups([("Admiral guruh", 1234), ("<b>", 5)])
+    text = texts.top_groups([("Admiral guruh", 1234), ("<b>", 5), ("A, B", 1)])
     assert "🥇 <b>Admiral guruh</b>\n└ 🎮 1 234 ta o'yin" in text and "&lt;b&gt;" in text
+    assert "<b>A, B</b>" in text  # nomdagi vergul raqam ajratgichi bilan almashmaydi

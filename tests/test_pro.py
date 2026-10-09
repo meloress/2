@@ -275,3 +275,20 @@ def test_fix_paid_db_failure_refunds_and_paysupport():
         await handlers.cmd_paysupport(SimpleNamespace(answer=answer))
         assert "/paysupport" not in said[-1] and "To'lov" in said[-1]
     asyncio.run(t())
+
+
+def test_long_and_weird_names_are_shortened_everywhere():
+    """Juda uzun / g'alati belgili ismlar menyuni to'ldirmasin: bitta joyda (pro.name) qisqaradi."""
+    from mafia_zone import pro, texts
+    long = "𝓐𝓵𝓲" * 30
+    assert pro.short(long) == long[:pro.NAME_MAX - 1] + "…"
+    assert pro.short("Ali") == "Ali"
+    zalgo = "A" + "́" * 50 + "li"  # ustma-ust urg'u belgilari qatorni bo'yiga cho'zadi
+    assert pro.short(zalgo).count("́") <= 2
+    assert pro.short("Ali‮ilA​") == "AliilA"  # yo'nalish/ko'rinmas belgilar olib tashlanadi
+    assert pro.short("👨‍👩‍👧 Oila") == "👨‍👩‍👧 Oila"  # emoji (ZWJ) buzilmaydi
+    assert pro.short("​‮") == "?"
+    uid = 77_123_001
+    assert long not in texts.mention(uid, long) and "…" in texts.mention(uid, long)
+    assert pro.label(uid, long)[0] == pro.short(long)
+    assert long not in texts.ref_joined(long)

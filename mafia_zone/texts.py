@@ -770,12 +770,12 @@ def profile(u, inv) -> str:
 
 
 def ref_joined(name: str) -> str:
-    return (f"🤝 <b>{escape(name)}</b> sizning taklifingiz bilan qo'shildi!\n"
+    return (f"🤝 <b>{escape(pro.short(name))}</b> sizning taklifingiz bilan qo'shildi!\n"
             f"U <b>{config.REF_GAMES} ta</b> o'yin o'ynagach, sizga <b>+{config.REF_BONUS} 💵</b> beriladi.")
 
 
 def ref_bonus(name: str) -> str:
-    return (f"🎉 <b>{escape(name)}</b> {config.REF_GAMES} ta o'yin o'ynadi!\n"
+    return (f"🎉 <b>{escape(pro.short(name))}</b> {config.REF_GAMES} ta o'yin o'ynadi!\n"
             f"Taklif uchun hisobingizga <b>+{config.REF_BONUS} 💵</b> tushdi.")
 
 
@@ -861,15 +861,10 @@ def diamonds_paid(n: int, target: str | None = None) -> str:
 
 
 PLACES = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
-TOP_NAME = 20  # uzun ism qatorni buzmasin
 
 
 def _place(i: int) -> str:
     return PLACES[i] if i < len(PLACES) else f"{i + 1}."
-
-
-def _short(name: str) -> str:
-    return name if len(name) <= TOP_NAME else name[:TOP_NAME - 1] + "…"
 
 
 def _top(title: str, entries: list[str]) -> str:
@@ -879,8 +874,9 @@ def _top(title: str, entries: list[str]) -> str:
 
 
 def top_groups(rows) -> str:
-    return _top("Top guruhlar", [f"{_place(i)} <b>{escape(_short(t or '?'))}</b>\n└ 🎮 {n:,} ta o'yin".replace(",", " ")
-                                 for i, (t, n) in enumerate(rows)])
+    """Guruh nomi ham ism kabi qisqaradi (pro.short)."""
+    return _top("Top guruhlar", [f"{_place(i)} <b>{escape(pro.short(t or '?'))}</b>\n"
+                                 f"└ 🎮 {f'{n:,}'.replace(',', ' ')} ta o'yin" for i, (t, n) in enumerate(rows)])
 
 
 def top(rows, title: str) -> str:
@@ -888,7 +884,7 @@ def top(rows, title: str) -> str:
     for i, (uid, name, w, gm) in enumerate(rows):
         w, gm = w or 0, gm or 0
         rate = round(100 * w / gm) if gm else 0
-        entries.append(f"{_place(i)} {mention(uid, _short(name or '?'))}\n"
+        entries.append(f"{_place(i)} {mention(uid, name or '?')}\n"
                        f"└ 🏆 {w} · 🎮 {gm} · {rate}% · {rank(w)}")
     return _top(title, entries)
 

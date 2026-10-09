@@ -41,11 +41,31 @@ def is_pro(uid: int) -> bool:
     return until(uid) is not None
 
 
+NAME_MAX = 20  # botning hamma joyida ism shundan uzun bo'lsa "…" bilan qisqaradi (= nickname chegarasi)
+MARKS_MAX = 2  # bir harf ustidagi urg'u/belgilar ("zalgo" ismlar qatorni bo'yiga cho'zadi)
+
+
+def short(s: str) -> str:
+    """Ko'rinadigan ism: ko'rinmas/yo'nalish belgilarisiz (emoji ZWJ qoladi), ortiqcha ustma-ust belgilarsiz, qisqa."""
+    out, marks = [], 0
+    for c in s:
+        cat = unicodedata.category(c)
+        if cat == "Cc" or cat == "Cf" and c != "‍":
+            continue
+        marks = marks + 1 if cat in ("Mn", "Me") else 0
+        if marks <= MARKS_MAX:
+            out.append(c)
+    s = "".join(out).strip()
+    if len(s) > NAME_MAX:
+        s = s[:NAME_MAX - 1].rstrip() + "…"
+    return s or "?"
+
+
 def name(uid: int, fallback: str) -> str:
     """Ko'rsatiladigan ism: PRO va nickname bo'lsa - nickname. Oddiy foydalanuvchi ismidagi "✅ PRO" olib tashlanadi."""
     if is_pro(uid):
-        return CACHE[uid][1] or fallback
-    return _FAKE.sub(r"\1", fallback) or fallback
+        return short(CACHE[uid][1] or fallback)
+    return short(_FAKE.sub(r"\1", fallback) or fallback)
 
 
 def badge() -> str:
