@@ -562,10 +562,15 @@ def prof_back() -> Btn:
     return Btn(text=texts.BACK_BTN, callback_data="m:profile")
 
 
+def card_btn() -> Btn:
+    """Stars o'rniga karta bilan: adminning profili (texts.card_note bilan birga)."""
+    return Btn(text=texts.CARD_BTN, url=f"https://t.me/{config.CARD_ADMIN}", style="success")
+
+
 def stars_kb(target: int = 0) -> Kb:
     """target: 0 - o'zim uchun, aks holda sovg'a oluvchi."""
     btns = [Btn(text=f"💎 {n} = ⭐ {s}", callback_data=f"gs:{n}:{target}") for n, s in config.DIAMOND_STARS.items()]
-    return Kb(inline_keyboard=grid(btns, 2) + [[Btn(text=texts.BACK_BTN, callback_data="m:gem")]])
+    return Kb(inline_keyboard=grid(btns, 2) + [[card_btn()], [Btn(text=texts.BACK_BTN, callback_data="m:gem")]])
 
 
 @router.callback_query(F.data.startswith(("xd:", "gm:", "gs:")))
@@ -653,7 +658,7 @@ def pro_kb() -> Kb:
     rows = [[Btn(text=f"{d} kun — {dm} 💎", callback_data=f"pro:d:{d}"),
              Btn(text=f"{d} kun — {st} ⭐", callback_data=f"pro:s:{d}", style="primary")]
             for d, (dm, st) in pro.PACKS.items()]
-    return Kb(inline_keyboard=rows + [[back_btn()]])
+    return Kb(inline_keyboard=rows + [[card_btn()], [back_btn()]])
 
 
 @router.message(Command("pro"), PRIVATE)
@@ -1047,6 +1052,8 @@ async def on_group_message(msg: Message, bot: Bot):
     if not r or not r.game or r.game.phase == FINISHED:
         return  # lobbi va o'yindan tashqari - erkin
     uid = msg.from_user.id if msg.from_user else None
+    if uid in config.ADMIN_IDS and not msg.sender_chat:  # bot egasi: istagan payti, ! yoki raqamsiz yozadi
+        return
     anon_admin = bool(msg.sender_chat and msg.sender_chat.id == msg.chat.id)  # yashirin admin
     admin = anon_admin or (uid is not None and (uid in config.ADMIN_IDS or uid in await group_admins(bot, msg.chat.id)))
     if anon_admin:

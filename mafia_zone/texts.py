@@ -745,7 +745,7 @@ def pro_info(uid: int) -> str:
             "🛒 <b>Do'konda -25%</b> chegirma\n"
             f"🚪 <b>Kuniga 5 ta</b> bepul chiqish (oddiylarga {config.LEAVE_FREE} ta)\n"
             "✨ <b>Maxsus profil</b> — PRO sarlavha va muddat"
-            f"{have}\n\n🛒 <b>Sotib olish usulini tanlang:</b>")
+            f"{have}\n\n🛒 <b>Sotib olish usulini tanlang:</b>" + card_note())
 
 
 def pro_done(end) -> str:
@@ -830,8 +830,17 @@ WALLET_FORMAT = "❌ Format: <code>@username 100</code> yoki <code>123456789 100
 WALLET_SELF = "❌ O'zingizga yuborib bo'lmaydi."
 
 
+CARD_BTN = "💳 Karta orqali sotib olish"
+CARD_NOTE = "💳 <b>Karta orqali</b> to'lamoqchimisiz?"
+
+
+def card_note() -> str:
+    """Stars bilan sotiladigan har ekran oxirida (tugmasi: handlers.card_btn)."""
+    return f"\n\n{CARD_NOTE} Admin bilan bog'laning: @{config.CARD_ADMIN}"
+
+
 def stars_menu(target: str | None = None) -> str:
-    return "⭐ <b>STARS ORQALI TO'LOV</b>" + (f"\n\n🎁 Sovg'a: {target}" if target else "")
+    return "⭐ <b>STARS ORQALI TO'LOV</b>" + (f"\n\n🎁 Sovg'a: {target}" if target else "") + card_note()
 
 
 def ask_send(currency: str) -> str:

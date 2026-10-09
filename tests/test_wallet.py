@@ -199,3 +199,14 @@ def test_top_groups():
         assert any(title == "Admiral guruh" and n >= 1 for title, n in rows)
         assert "Admiral guruh" in texts.top_groups(rows)
     run(t())
+
+
+def test_stars_screens_offer_card_payment_via_admin():
+    """Stars bilan sotiladigan har ekranda pastda: karta orqali - admin bilan bog'lanish tugmasi."""
+    from mafia_zone import config, handlers, texts
+    url = f"https://t.me/{config.CARD_ADMIN}"
+    for kb, text in ((handlers.pro_kb(), texts.pro_info(1)), (handlers.stars_kb(), texts.stars_menu()),
+                     (handlers.stars_kb(5), texts.stars_menu("Ali"))):
+        rows = kb.inline_keyboard
+        assert rows[-2][0].url == url and rows[-2][0].text == texts.CARD_BTN  # orqaga tugmasidan oldin
+        assert texts.CARD_NOTE in text and "@" + config.CARD_ADMIN in text
