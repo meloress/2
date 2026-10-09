@@ -860,21 +860,37 @@ def diamonds_paid(n: int, target: str | None = None) -> str:
     return f"🎉 {target} ga <b>{n} 💎</b> sovg'a qilindi!" if target else f"🎉 Hisobingizga <b>{n} 💎</b> qo'shildi!"
 
 
+PLACES = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
+TOP_NAME = 20  # uzun ism qatorni buzmasin
+
+
+def _place(i: int) -> str:
+    return PLACES[i] if i < len(PLACES) else f"{i + 1}."
+
+
+def _short(name: str) -> str:
+    return name if len(name) <= TOP_NAME else name[:TOP_NAME - 1] + "…"
+
+
+def _top(title: str, entries: list[str]) -> str:
+    """Har o'rin 2 qator: ism, ostida └ raqamlar."""
+    head = f"🏆 <b>{bold(title)}</b>"
+    return f"{head}\n\n" + ("\n".join(entries) if entries else "— hali o'yinlar yo'q —")
+
+
 def top_groups(rows) -> str:
-    if not rows:
-        return "🏆 <b>Top guruhlar</b>\n\n— hali o'yinlar yo'q —"
-    medals = ["🥇", "🥈", "🥉"]
-    body = "\n".join(f"{medals[i] if i < 3 else f'{i + 1}.'} <b>{escape(t)}</b> — {n} 🎮" for i, (t, n) in enumerate(rows))
-    return f"🏆 <b>Top guruhlar</b>\n\n{body}"
+    return _top("Top guruhlar", [f"{_place(i)} <b>{escape(_short(t or '?'))}</b>\n└ 🎮 {n:,} ta o'yin".replace(",", " ")
+                                 for i, (t, n) in enumerate(rows)])
 
 
 def top(rows, title: str) -> str:
-    if not rows:
-        return f"🏆 <b>{title}</b>\n\n— hali o'yinlar yo'q —"
-    medals = ["🥇", "🥈", "🥉"]
-    body = "\n".join(f"{medals[i] if i < 3 else f'{i + 1}.'} {mention(uid, name or '?')} — {w} 🏆 / {gm} 🎮 · {rank(w or 0)}"
-                     for i, (uid, name, w, gm) in enumerate(rows))
-    return f"🏆 <b>{title}</b>\n\n{body}"
+    entries = []
+    for i, (uid, name, w, gm) in enumerate(rows):
+        w, gm = w or 0, gm or 0
+        rate = round(100 * w / gm) if gm else 0
+        entries.append(f"{_place(i)} {mention(uid, _short(name or '?'))}\n"
+                       f"└ 🏆 {w} · 🎮 {gm} · {rate}% · {rank(w)}")
+    return _top(title, entries)
 
 
 def rules() -> str:
