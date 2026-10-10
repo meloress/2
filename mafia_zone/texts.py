@@ -133,7 +133,8 @@ NO_LOBBY = "⚠️ Bu guruhda ro'yxatdan o'tish ketmayapti."
 LOBBY_FULL = ("⚠️ O'yin to'lgan (60 kishi). Sizni keyingi o'yin navbatiga yozdim — "
               "ro'yxat ochilishi bilan xabar beraman 🔔")
 BANNED = "⛔️ Siz botdan foydalanishdan chetlatilgansiz."
-LOBBY_LOST = "♻️ Bot yangilandi va ro'yxatdan o'tish bekor bo'ldi.\nYangi o'yin uchun /game ni qayta bosing."
+LOBBY_LOST = ("🙏 <b>Uzr so'raymiz!</b>\nBot qisqa yangilanishdan o'tmoqda, shu bois ro'yxat bekor qilindi.\n"
+              "⏳ <b>2 daqiqadan</b> so'ng /game yozing va o'yinni davom ettiramiz! 🎮")
 GIVEAWAY_TTL_MIN = 60  # tarqatma shuncha daqiqadan keyin yopiladi
 
 
