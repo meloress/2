@@ -294,17 +294,21 @@ class Game:
                 if self.get(t).team != self.get(u).team:
                     self.get(u).score += 2
         blocked = {t for k, t, _ in acts.values() if k == "block"}
+        don_blocked = bool(m) and m[0] in blocked  # mafiya natijasida sababi aytiladi
         for t in blocked:
             acts.pop(t, None)
             self.get(t).mute_day = self.day  # ertangi kunduzgi ovoz berishda ham qatnasha olmaydi
             ev.append(Event("blocked", t))
 
         # 1b. Aferist
+        mafia_stolen = False
         peeked: list[tuple[int, int]] = []  # o'g'irlaydigan harakat yo'q: rolini ko'radi (3-bosqichda, niqobdan keyin)
         for u in [u for u, a in acts.items() if a[0] == "steal"]:
             _, t, _ = acts.pop(u)
             stolen = acts.get(t)
             if stolen and stolen[0] not in ("steal", "sacrifice", "block"):  # uxlatish 1a da bajarilib bo'lgan
+                if m and t == m[0] and stolen[0] == "mafia_kill":
+                    mafia_stolen = True
                 del acts[t]
                 acts[u] = stolen
                 ev.append(Event("stolen", u, t, {"kind": stolen[0]}))
@@ -390,12 +394,17 @@ class Game:
 
         deaths: dict[int, list[tuple[int, str, str]]] = {}
         heal_saved: set[int] = set()
+        why: dict[int, str] = {}  # nishon omon qolgani sababi: heal / shield / verbena / transformed / gone
         for t, alist in attacks.items():
             v = self.get(t)
             alist = [a for a in alist if not self._immune(v, a[1], a[2])]
-            if not alist or not v.alive:
+            if not alist:
+                continue
+            if not v.alive:  # G'azabkor shu tun o'zini qurbon qildi
+                why[t] = "gone"
                 continue
             if t in healed:
+                why[t] = "heal"
                 heal_saved.add(t)
                 for u, (k, x, _) in acts.items():
                     if k == "heal" and x == t:
@@ -405,14 +414,28 @@ class Game:
             if v.role == "voris" and all(a[1] == "mafia_kill" or (a[1] == "shoot" and a[2] == "komissar") for a in alist):
                 v.role = "mafiya" if any(a[1] == "mafia_kill" for a in alist) else "serjant"
                 ev.append(Event("transformed", t, data={"role": v.role}))
+                why[t] = "transformed"
                 continue
             only_bites = all(a[1] == "bite" for a in alist)
             # Suitsid mafiya qo'lida o'lib yutadi: unga qalqon/verbena zarar - ishlatilmaydi
             wants = v.role == "suitsid" and any(a[1] == "mafia_kill" for a in alist)
-            if not wants and ((only_bites and self._use(v, "verbena", ev)) or self._use(v, "shield", ev)):
-                ev.append(Event("saved", target=t))
+            if not wants and only_bites and self._use(v, "verbena", ev):
+                why[t] = "verbena"
+            elif not wants and self._use(v, "shield", ev):
+                why[t] = "shield"
+            else:
+                deaths[t] = alist
                 continue
-            deaths[t] = alist
+            ev.append(Event("saved", target=t))
+
+        def reason(u: int, t: int) -> str | None:
+            """u ning t ga hujumi nega o'tmadi (o'tgan bo'lsa None)."""
+            if any(a[0] == u for a in deaths.get(t, ())):
+                return None
+            mine = [a for a in attacks.get(t, ()) if a[0] == u]
+            if mine and all(self._immune(self.get(t), a[1], a[2]) for a in mine):
+                return "immune"
+            return why.get(t)
 
         def killer_roles(alist) -> list[str]:
             return list(dict.fromkeys(roles0[u] for u in sorted({a[0] for a in alist})))
@@ -452,13 +475,13 @@ class Game:
         for u, (k, t, _) in acts.items():
             if k == "heal":
                 ev.append(Event("result", u, t, {"kind": k, "ok": t in heal_saved}))
-            elif k == "visit" and t not in deaths:
-                ev.append(Event("result", u, t, {"kind": k, "ok": False}))
+            elif k == "visit" and t not in deaths:  # hujum bo'lib, nishon omon qolgan bo'lsa - shuni ko'radi
+                ev.append(Event("result", u, t, {"kind": k, "ok": False, "attacked": t in why}))
         for t, alist in attacks.items():  # ta'sir qilmagan (immunitet) hujum - nishon boshqa sababdan o'lsa ham "omon"
             for u, k, _ in alist:
                 if k != "mafia_kill":
-                    ok = any(a[0] == u for a in deaths.get(t, ()))
-                    ev.append(Event("result", u, t, {"kind": k, "ok": ok}))
+                    r = reason(u, t)
+                    ev.append(Event("result", u, t, {"kind": k, "ok": r is None and t in deaths, "why": r}))
 
         # Mafiya ovozining natijasi (sheriklarga) yoki Don umuman tanlamagani (guruhga)
         if m:
@@ -466,7 +489,10 @@ class Game:
                 for u, x in self.mafia_votes.items():
                     if x == m[1] and u != m[0]:
                         self.get(u).score += 2
-            ev.append(Event("mafia_result", m[0], m[1], {"killed": not self.get(m[1]).alive}))
+            # "killed" - aynan mafiya o'ldirgan bo'lsa (Don uxlab qolgan tunda boshqa birov o'ldirsa - mafiyaniki emas)
+            r = "blocked" if don_blocked else "stolen" if mafia_stolen else reason(m[0], m[1])
+            killed = r is None and any(a[0] == m[0] for a in deaths.get(m[1], ()))
+            ev.append(Event("mafia_result", m[0], m[1], {"killed": killed, "why": None if killed else r}))
         elif self.by_role("don"):
             ev.append(Event("mafia_idle"))
 
@@ -576,7 +602,7 @@ class Game:
         t, self.candidate = self.candidate, None
         if not self._alive(t):  # nomzod o'yindan chiqib ketgan: osish yo'q, chiqqani allaqachon e'lon qilingan
             return self._end_day(ev)
-        if yes >= no:  # 👎 ko'p bo'lsagina rahm; hech kim bosmasa yoki teng - ovoz berish natijasi kuchda
+        if yes > no:  # faqat 👍 ko'p bo'lsa osiladi; teng (0:0 ham) yoki 👎 ko'p - rahm
             if self._hang(t, {"votes": yes, "yes": yes, "no": no}, ev):
                 return ev
         else:

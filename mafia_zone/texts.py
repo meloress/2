@@ -12,12 +12,18 @@ TEAM = {TOWN: "👨 Tinch aholi", MAFIA: "🤵 Mafiya", NEUTRAL: "🎭 Neytral"}
 ITEMS = {"shield": "🛡 Qalqon", "verbena": "🧄 Verbena", "doc": "📄 Hujjat", "mask": "🎭 Maska",
          "votesave": "⚖️ Ovoz himoyasi", "ticket": "🎟 Faol rol"}
 ITEM_ABOUT = {
-    "shield": "tungi o'limdan 1 marta saqlaydi",
-    "verbena": "Vampir tishlashidan 1 marta saqlaydi",
+    "shield": "tunda hujumdan 1 marta saqlaydi (osilishdan emas — buning uchun ⚖️ Ovoz himoyasi)",
+    "verbena": "faqat Vampir tishlashidan 1 marta saqlaydi (Vampir 12+ kishilik o'yinlarda chiqadi)",
     "doc": "mafiya yoki yakka rol bo'lsangiz, tekshiruvda 1 marta \"Tinch\" ko'rsatadi",
     "mask": "bir o'yin davomida rolingiz guruhga ochilmaydi — o'lganingizda ham",
     "votesave": "kunduzi osilishdan 1 marta saqlaydi (bir o'yinda bir marta)",
     "ticket": "keyingi o'yinda oddiy Tinch o'rniga maxsus rol kafolatlanadi",
+}
+ITEM_USED = {  # o'yinda ishlaganda shaxsiy xabar: "🛡 Qalqon sizni qutqardi: ..."
+    "shield": "tunda sizga qilingan hujum qaytarildi",
+    "verbena": "Vampir tishlay olmadi",
+    "doc": "tekshiruvda «Tinch aholi» bo'lib ko'rindingiz",
+    "votesave": "dordan omon qoldingiz",
 }
 for _c in config.ROLE_PICKS:  # "r_komissar": "🕵️‍♂️ Komissar Katani roli"
     ITEMS[f"r_{_c}"] = f"{ROLES[_c].name} roli"
@@ -316,6 +322,23 @@ RESULT = {  # (harakat, muvaffaqiyat) -> shaxsiy xabar; {t} - nishon
 CHECKED_YOU = "🔍 Kimdir rolingizga juda ham qiziqdi..."
 ATTACK_OK = "🎯 Nishoningiz {t} halok bo'ldi."
 ATTACK_FAIL = "😤 {t} omon qoldi — kimdir uni himoya qildi yoki unga kuchingiz yetmadi."
+WHY = {  # hujum nega o'tmadi (Event data "why"): hujumchiga va mafiyaga aytiladi
+    "heal": "👨‍⚕️ uni Doktor davolab qo'ydi",
+    "shield": "🛡 uning Qalqoni bor ekan",
+    "verbena": "🧄 uning Verbenasi bor ekan",
+    "immune": "💪 unga sizning kuchingiz yetmaydi",
+    "transformed": "🧬 u Voris ekan — taqdiri o'zgarib, boshqa rolga aylandi",
+    "gone": "🔥 u shu tun o'zini qurbon qilib bo'lgan edi",
+    "blocked": "💤 Donga uyqu dori berishdi — mafiya bu tun hujum qila olmadi",
+    "stolen": "🤹 Aferist mafiyaning hujumini o'g'irlab ketdi",
+}
+IMMUNE_YOU = "💪 Tunda sizga hujum qilishdi, lekin bu hujum sizga ta'sir qilmadi!"
+VISIT_ATTACKED ="🍾 {t}ning uyiga tunda kimdir hujum qildi, lekin u omon qoldi — qotillik bo'lmadi."
+
+
+def attack_fail(why: str | None) -> str:
+    """Hujumchiga: nishon omon qoldi + sababi (bilinsa)."""
+    return f"😤 {{t}} omon qoldi: {WHY[why]}." if why in WHY else ATTACK_FAIL
 ATTACKED_SAVED = "🩹 Tunda sizga hujum qilishdi, lekin omon qoldingiz!"
 PATIENT = {True: "👨‍⚕️ Tunda sizga hujum qilishdi, lekin <b>Doktor</b> sizni qutqarib qoldi!",
            False: "👨‍⚕️ Tunda <b>Doktor</b> sizni ko'rgani keldi. Bu tun sizga hech kim hujum qilmadi."}
@@ -422,6 +445,8 @@ def morning(g: Game, ev: list[Event]) -> tuple[list[str], list[tuple[int, str]]]
     pub, priv = [], []
     n = lambda uid: pm(g, uid)  # ismlar bosilsa Telegram profili ochiladi
     healed = {e.target for e in ev if e.kind == "result" and e.data["kind"] == "heal" and e.data["ok"]}
+    immune: set[int] = set()  # hujum ta'sir qilmagan nishonlar (Sehrgar, Qotil) - o'ziga bir marta aytiladi
+    masks = {e.target: e.uid for e in ev if e.kind == "result" and e.data["kind"] == "disguise"}  # nishon -> Advokat
     w = lambda uid: who(g, uid)
     for e in ev:
         k = e.kind
@@ -440,16 +465,24 @@ def morning(g: Game, ev: list[Event]) -> tuple[list[str], list[tuple[int, str]]]
             if e.target not in healed:  # Doktor qutqargan bo'lsa - unga alohida (PATIENT)
                 priv.append((e.target, ATTACKED_SAVED))
         elif k == "result":
-            t = RESULT.get((e.data["kind"], e.data["ok"])) or (ATTACK_OK if e.data["ok"] else ATTACK_FAIL)
+            if e.data["kind"] == "visit" and e.data.get("attacked"):
+                t = VISIT_ATTACKED
+            else:
+                t = RESULT.get((e.data["kind"], e.data["ok"])) or (ATTACK_OK if e.data["ok"] else attack_fail(e.data.get("why")))
             priv.append((e.uid, t.format(t=f"<b>{n(e.target)}</b>")))
+            if e.data.get("why") == "immune":
+                immune.add(e.target)
             if e.data["kind"] == "heal" and e.target != e.uid:  # bemorga ham
                 priv.append((e.target, PATIENT[e.data["ok"]]))
         elif k == "mafia_idle":
             pub.append(f"🤵 Mafialar kelisha olishmadi va {role('don')} hech kimni tanlamadi!\n"
                        "Mafiya bu tun hech kimga tegmadi..")
         elif k == "mafia_result":
-            text = (f"Mafiyaning ovoz berish jarayonida <b>{n(e.target)}</b> vahshiylarcha o'ldirildi."
-                    if e.data["killed"] else f"Mafiyaning nishoni <b>{n(e.target)}</b> bu tun omon qoldi...")
+            if e.data.get("why") == "immune":
+                immune.add(e.target)
+            why = WHY.get(e.data.get("why"))
+            text = (f"Mafiyaning ovoz berish jarayonida <b>{n(e.target)}</b> vahshiylarcha o'ldirildi." if e.data["killed"]
+                    else f"Mafiyaning nishoni <b>{n(e.target)}</b> bu tun omon qoldi" + (f": {why}." if why else "..."))
             priv += [(p.uid, text) for p in g.players if p.alive and p.team == MAFIA]
         elif k == "revenge":
             pub.append(f"💥 {w(e.uid)} yolg'iz ketmadi — {w(e.target)} ham u bilan birga halok bo'ldi!")
@@ -480,6 +513,8 @@ def morning(g: Game, ev: list[Event]) -> tuple[list[str], list[tuple[int, str]]]
         elif k == "guard_saved":
             pub.append(f"👨‍🦳 Arqon tortilay deganda {role('qorovul')} yetib keldi va <b>{pm(g, e.target)}</b>ni "
                        "dordan qutqarib qoldi!")
+            if q := g.by_role("qorovul"):  # Qorovulning o'ziga ham: himoyasi ishladi
+                priv.append((q.uid, f"👨‍🦳 Siz himoyalagan <b>{n(e.target)}</b>ni dordan qutqardingiz!"))
         elif k == "tulki":
             pub.append(f"🦊 {w(e.uid)} ayyorlik qildi: unga birinchi ovoz bergan {w(e.target)} ham u bilan ketdi!")
         elif k == "blocked":
@@ -495,6 +530,9 @@ def morning(g: Game, ev: list[Event]) -> tuple[list[str], list[tuple[int, str]]]
             text = f"🔍 Tekshiruv natijasi: {n(e.target)} — {role(e.data['result'])}"
             priv.append((e.uid, text))
             priv.append((e.target, CHECKED_YOU))  # kim tekshirgani aytilmaydi
+            if e.target in masks and e.data["result"] == "tinch":  # Advokatga: niqob ishladi
+                priv.append((masks[e.target], f"🎭 Niqobingiz ishladi: kimdir <b>{n(e.target)}</b>ni tekshirdi "
+                                              "va u Tinch aholi bo'lib ko'rindi!"))
             if g.get(e.uid).role == "komissar":  # sherigi (Serjant yoki shu tun Komissar bo'lgan Serjant) ham biladi
                 priv += [(m.uid, f"🕵️‍♂️ Komissardan xabar: {text}") for m in g.teammates(e.uid) if m.alive]
         elif k == "interview":
@@ -510,8 +548,7 @@ def morning(g: Game, ev: list[Event]) -> tuple[list[str], list[tuple[int, str]]]
             priv.append((e.uid, f"{head}⛏ Tunnel qazib <b>{d} 💵</b>{extra} topdingiz!"))
             pub.append(f"{role('konchi')} bugun tunda <b>{d} 💵</b> dollar{extra} topdi!")
         elif k == "item_used":
-            used = ("tekshiruvda «Tinch aholi» bo'lib ko'rindingiz" if e.data["item"] == "doc"
-                    else ITEM_ABOUT[e.data["item"]])
+            used = ITEM_USED.get(e.data["item"]) or ITEM_ABOUT[e.data["item"]]
             priv.append((e.uid, f"{ITEMS[e.data['item']]} sizni qutqardi: {used}."))
         elif k == "robbed":
             what = {"dollars": f"💵 {e.data.get('amount', 0)} dollar", "vote": "🗳 ertangi ovoz huquqi",
@@ -534,6 +571,7 @@ def morning(g: Game, ev: list[Event]) -> tuple[list[str], list[tuple[int, str]]]
                     priv.append((m.uid, f"⭐️ {n(e.uid)} endi {role(e.data['role'])}!"))
         elif k == "penalty":
             priv.append((e.uid, "🏹 O'qingiz begunoh odamga tegdi! Vijdon azobi sizni qurolsiz qoldirdi."))
+    priv += [(uid, IMMUNE_YOU) for uid in sorted(immune)]
     return pub, priv
 
 

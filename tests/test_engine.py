@@ -990,11 +990,12 @@ def test_only_skips_or_no_votes_no_hang():
     assert "no_hang" in kinds(vote(g))
 
 
-def test_confirm_silence_or_tie_hangs_only_more_no_spares():
-    """Tasdiq: 👎 ko'p bo'lsagina rahm qilinadi; hech kim bosmasa yoki teng bo'lsa - osiladi."""
-    for confirms, hanged in (([], True), ([(4, True), (5, False)], True), ([(4, False)], False),
-                             ([(4, True), (5, True), (1, False)], True)):
-        g = mk("don", "tinch", "tinch", "tinch", "tinch", "tinch")
+def test_confirm_more_yes_hangs_tie_spares():
+    """Tasdiq: faqat 👍 ko'p bo'lsa osiladi; teng (0:0, 1:1, 3:3) yoki 👎 ko'p - rahm."""
+    for confirms, hanged in (([], False), ([(4, True), (5, False)], False), ([(4, False)], False),
+                             ([(4, True), (5, True), (1, False)], True),
+                             ([(1, True), (4, True), (5, True), (6, False), (7, False), (8, False)], False)):
+        g = mk("don", "tinch", "tinch", "tinch", "tinch", "tinch", "tinch", "tinch")
         g.confirm = True
         night(g)
         vote(g, (2, 3))
@@ -1002,3 +1003,112 @@ def test_confirm_silence_or_tie_hangs_only_more_no_spares():
             assert g.cast_confirm(u, yes)
         ev = g.resolve_confirm()
         assert ("hanged" in kinds(ev)) is hanged, (confirms, kinds(ev))
+
+
+def test_confirm_decision_matches_shown_tally_fuzz():
+    """Tugmada/guruhda ko'ringan 👍/👎 (confirm_tally) bilan qaror bir xil: osish faqat 👍 > 👎."""
+    import random as _r
+    rng = _r.Random(7)
+    for _ in range(3000):
+        roles = ["don"] + [rng.choice(["tinch", "janob", "tinch", "doktor"]) for _ in range(rng.randint(5, 14))]
+        g = mk(*roles)
+        g.confirm = True
+        night(g)
+        alive = [p.uid for p in g.alive()]
+        cand = rng.choice(alive)
+        g.start_voting()
+        g.cast_vote(next(u for u in alive if u != cand), cand)
+        g.resolve_vote()
+        if g.candidate != cand:
+            continue
+        for u in alive:
+            if u != cand and rng.random() < .8:
+                g.cast_confirm(u, rng.random() < .5)
+                if rng.random() < .2:
+                    g.cast_confirm(u, rng.random() < .5)  # fikrini o'zgartirdi - oxirgisi hisoblanadi
+        yes, no = g.confirm_tally()
+        ev = g.resolve_confirm()
+        hanged = any(e.kind in ("hanged", "vote_saved") for e in ev)
+        assert hanged == (yes > no), (yes, no, kinds(ev))
+        for e in ev:
+            if e.kind in ("hanged", "spared") and "yes" in e.data:
+                assert (e.data["yes"], e.data["no"]) == (yes, no)  # e'londagi son = ko'ringan son
+        assert not g.cast_confirm(alive[0], True)  # tasdiq tugagach bosish hisoblanmaydi
+
+
+# ---------- hujum natijasida sabab aytiladi ----------
+def _why(ev, uid):
+    return [e.data.get("why") for e in ev if e.kind == "result" and e.uid == uid]
+
+
+def _mafia_why(ev):
+    return [(e.data["killed"], e.data.get("why")) for e in ev if e.kind == "mafia_result"]
+
+
+def test_failed_attack_says_why():
+    from mafia_zone import texts
+    g = mk("don", "doktor", "tinch", "tinch", "tinch", "tinch")  # Doktor davoladi
+    ev = g.resolve_night() if not (g.submit(1, "mafia_kill", 3) and g.submit(2, "heal", 3)) else g.resolve_night()
+    assert _mafia_why(ev) == [(False, "heal")]
+    _, priv = texts.morning(g, ev)
+    assert any(u == 1 and "Doktor" in t for u, t in priv)
+
+    g = mk("don", "tinch", "tinch", "tinch", "tinch", "tinch", p3={"shield": 1})  # Qalqon
+    g.submit(1, "mafia_kill", 3)
+    assert _mafia_why(g.resolve_night()) == [(False, "shield")]
+
+    g = mk("don", "kezuvchi", "tinch", "tinch", "tinch", "tinch")  # Don uxlatildi
+    g.submit(1, "mafia_kill", 3), g.submit(2, "block", 1)
+    assert _mafia_why(g.resolve_night()) == [(False, "blocked")]
+
+    g = mk("don", "aferist", "tinch", "tinch", "tinch", "tinch")  # Aferist o'g'irladi (nishonni u o'ldirdi)
+    g.submit(1, "mafia_kill", 3), g.submit(2, "steal", 1)
+    assert _mafia_why(g.resolve_night()) == [(False, "stolen")]
+
+    g = mk("don", "komissar", "sehrgar", "voris", "qotil", *["tinch"] * 8, p6={"verbena": 1})
+    g.submit(2, "shoot", 3)  # Sehrgarga Komissar o'qi ta'sir qilmaydi
+    g.submit(5, "kill", 4)   # Qotil Vorisni o'ldirdi - oddiy o'lim
+    assert _why(g.resolve_night(), 2) == ["immune"]
+
+    g = mk("don", "komissar", "voris", "tinch", "tinch", "tinch", "tinch")
+    g.submit(2, "shoot", 3)  # Voris Serjantga aylandi
+    assert _why(g.resolve_night(), 2) == ["transformed"]
+
+    g = mk("don", "vampir", *["tinch"] * 10, p3={"verbena": 1})
+    g.submit(2, "bite", 3)
+    assert _why(g.resolve_night(), 2) == ["verbena"]
+
+
+def test_mafia_result_only_counts_mafia_kill():
+    """Don uxlatildi, nishonni boshqa birov o'ldirdi: mafiyaga "siz o'ldirdingiz" deyilmaydi."""
+    g = mk("don", "kezuvchi", "qotil", *["tinch"] * 10)
+    g.submit(1, "mafia_kill", 4), g.submit(2, "block", 1), g.submit(3, "kill", 4)
+    ev = g.resolve_night()
+    assert not g.get(4).alive and _mafia_why(ev) == [(False, "blocked")]
+
+
+def test_daydi_told_about_failed_attack_and_qorovul_about_save():
+    from mafia_zone import texts
+    g = mk("don", "daydi", "doktor", "tinch", "tinch", "tinch")
+    g.submit(1, "mafia_kill", 4), g.submit(2, "visit", 4), g.submit(3, "heal", 4)
+    ev = g.resolve_night()
+    assert [e.data.get("attacked") for e in ev if e.kind == "result" and e.uid == 2] == [True]
+    _, priv = texts.morning(g, ev)
+    assert any(u == 2 and "hujum" in t for u, t in priv)
+    g = mk("don", "qorovul", "tinch", "tinch", "tinch", "tinch")
+    night(g, (2, "guard", 3))
+    ev = vote(g, (1, 3), (4, 3))
+    _, priv = texts.morning(g, ev)
+    assert any(u == 2 and "qutqardingiz" in t for u, t in priv)
+
+
+def test_immune_target_told_and_advokat_told_disguise_worked():
+    from mafia_zone import texts
+    g = mk("don", "komissar", "sehrgar", *["tinch"] * 10)
+    g.submit(1, "mafia_kill", 3), g.submit(2, "shoot", 3)
+    _, priv = texts.morning(g, g.resolve_night())
+    assert sum(1 for u, t in priv if u == 3 and t == texts.IMMUNE_YOU) == 1  # bir marta, ikki hujum bo'lsa ham
+    g = mk("don", "advokat", "komissar", "tinch", "tinch", "tinch", "tinch")
+    g.submit(2, "disguise", 1), g.submit(3, "check", 1)
+    _, priv = texts.morning(g, g.resolve_night())
+    assert any(u == 2 and "Niqob" in t and "ishladi" in t for u, t in priv)

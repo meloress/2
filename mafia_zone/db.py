@@ -710,6 +710,8 @@ async def buy(uid: int, item: str) -> bool:
         if r.rowcount != 1:
             return False
         await _add_item(s, uid, item, 1)
+        # sotib oldi - demak ishlatmoqchi: oldin OFF qilingan bo'lsa ham ON (aks holda "buyum ishlamayapti")
+        await s.execute(update(Inventory).where(Inventory.user_id == uid, Inventory.item == item).values(enabled=True))
         return True
 
 

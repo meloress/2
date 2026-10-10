@@ -104,3 +104,20 @@ def test_shop_menu_buttons():
     assert {"b:r_komissar", "b:r_don", "shop"} <= set(rcbs)
     text = texts.shop(500, U, 3)
     assert "💎" in text and "Maska" in text
+
+
+def test_buying_turns_item_on():
+    """OFF qilingan buyumni yana sotib olsa - ON bo'ladi va keyingi o'yinga olinadi."""
+    async def t():
+        await db.init()
+        u = U + 500
+        await db.upsert_user(u, "Vali", None)
+        await db.add_balance(u, 1000)
+        assert await db.buy(u, "shield")
+        await db.toggle_item(u, "shield")
+        assert (await db.game_items([u])).get(u, {}).get("shield") is None  # OFF - o'yinga olinmaydi
+        assert await db.buy(u, "shield")
+        inv = {i.item: i for i in await db.inventory(u)}
+        assert inv["shield"].enabled and inv["shield"].qty == 2
+        assert (await db.game_items([u]))[u]["shield"] == 2
+    asyncio.run(t())
