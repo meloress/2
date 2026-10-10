@@ -110,6 +110,18 @@ def test_afsungar_takes_don_and_mafiya_promoted():
     assert g.get(2).role == "don" and "promoted" in kinds(ev)
 
 
+def test_afsungar_wins_with_town_after_revenge():
+    g = mk("don", "afsungar", "tinch", "tinch")
+    night(g, (1, "mafia_kill", 2))
+    assert g.winner == TOWN and g.get(2).won  # Donni olib ketdi - o'lgan bo'lsa ham yutadi
+
+
+def test_afsungar_loses_when_mafia_wins():
+    g = mk("don", "mafiya", "afsungar", "tinch")
+    night(g, (1, "mafia_kill", 3))
+    assert g.winner == MAFIA and not g.get(3).won
+
+
 def test_suitsid():
     g = mk("don", "mafiya", "suitsid", "tinch", "tinch", "tinch", "tinch")
     night(g, (1, "mafia_kill", 3))
@@ -348,6 +360,22 @@ def test_qotil_solo():
     assert g.winner == "qotil" and g.get(2).won
 
 
+def test_gazabkor_blocks_town_win_and_wins_last_two():
+    g = mk("don", "gazabkor", "komissar", "tinch", "tinch")
+    night(g, (3, "shoot", 1))
+    assert g.phase != FINISHED  # mafiya yo'q, lekin G'azabkor tirik - tinch aholi hali yutmadi
+    g.start_voting()
+    g.resolve_vote()
+    night(g, (2, "rage", 3), (3, "shoot", 4))
+    assert g.winner == "gazabkor" and g.get(2).won
+
+
+def test_qaroqchi_wins_if_alive():
+    g = mk("don", "qaroqchi", "komissar", "tinch", "tinch")
+    night(g, (3, "shoot", 1))
+    assert g.winner == TOWN and g.get(2).won
+
+
 # ---------- saqlash ----------
 def test_roundtrip_json():
     g = mk("don", "doktor", "tinch", "tinch", "tinch")
@@ -393,7 +421,8 @@ def test_simulate_many():
         assert g.winner is not None
         assert g.day <= g.max_days + 1
         # o'lgan o'yinchi faqat o'limi bilan yutadigan rollarda g'olib bo'ladi
-        assert all(p.alive or p.role in ("suitsid", "tulki", "gazabkor") for p in g.players if p.won), seed
+        assert all(p.alive or p.role in ("suitsid", "tulki", "gazabkor") or (p.avenged and g.winner == TOWN)
+                   for p in g.players if p.won), seed
         if g.winner in (TOWN, MAFIA):
             assert all(p.won for p in g.alive() if p.team == g.winner), seed
 

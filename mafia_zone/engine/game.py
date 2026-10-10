@@ -66,6 +66,7 @@ class Player:
     self_heal_used: bool = False  # eski saqlangan o'yinlar uchun qoldi; endi ishlatilmaydi (cheklov: last_target)
     kills: int = 0  # G'azabkor
     won: bool = False
+    avenged: bool = False  # Afsungar dushmanni o'zi bilan olib ketdi - tinch aholi yutsa, o'lgan bo'lsa ham yutadi
     mute_day: int = 0  # shu kuni ovoz bera olmaydi (Qaroqchi o'g'irladi yoki Kezuvchi uxlatdi)
     idle: int = 0  # AFK hisoblagich
     score: int = 0  # yashirin hissa balli: faqat o'yin oxirida g'oliblarni tartiblash uchun, hech qayerda ko'rsatilmaydi
@@ -470,6 +471,8 @@ class Game:
                 if self.get(u).alive:
                     self.get(u).alive = False
                     ev.append(Event("revenge", t, u))
+                    if v.role == "afsungar" and ROLES[roles0[u]].team != TOWN:
+                        v.avenged = True
 
         # Shaxsiy natijalar: Doktor, Daydi (qotillik bo'lmasa), hujum qilganlar (mafiya ovozi - quyida, jamoaga)
         for u, (k, t, _) in acts.items():
@@ -670,7 +673,7 @@ class Game:
         if self.phase == FINISHED:
             return
         alive = self.alive()
-        killers = [p for p in alive if p.role in ("qotil", "vampir")]
+        killers = [p for p in alive if p.role in ("qotil", "vampir", "gazabkor")]  # tirik ekan tinch aholi yutmaydi
         mafia = [p for p in alive if p.team == MAFIA]
         if self.couple_mode:  # faqat juftlar: hamma tirik - bitta juft bo'lsa, o'sha yutadi
             if not alive:
@@ -710,6 +713,7 @@ class Game:
             return
         for p in self.players:
             if not p.alive:
+                p.won = p.won or (w == TOWN and p.avenged)
                 continue
             p.score += 2  # oxirigacha tirik
             if w == COUPLE:
@@ -720,6 +724,6 @@ class Game:
                 p.won = True
             elif p.role == w:
                 p.won = True
-            if p.role in ("konchi", "sehrgar", "aferist"):
+            if p.role in ("konchi", "sehrgar", "aferist", "qaroqchi"):
                 p.won = True
         ev.append(Event("game_over", data={"winner": w, "winners": [p.uid for p in self.players if p.won]}))

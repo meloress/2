@@ -122,12 +122,12 @@ Har tundan va har osishdan keyin quyidagi tartibda tekshiriladi:
 
 1. Podshoh qoidasi (osishda) → mafiya va tirik neytrallar yutadi.
 2. Tirik qolganlar 0 ta → durang.
-3. Tirik qolganlar ≤ 2 ta va ular orasida Qotil yoki Vampir bor → o'sha rol yakka yutadi.
-4. Mafiya 0 ta, Qotil va Vampir o'lgan → **Tinch aholi yutadi**.
-5. Mafiya soni ≥ qolgan tiriklar soni, Qotil va Vampir o'lgan → **Mafiya yutadi** (Sotqin tirik bo'lsa, u ham).
+3. Tirik qolganlar ≤ 2 ta va ular orasida Qotil, Vampir yoki G'azabkor bor → o'sha rol yakka yutadi.
+4. Mafiya 0 ta, Qotil, Vampir va G'azabkor o'lgan → **Tinch aholi yutadi**.
+5. Mafiya soni ≥ qolgan tiriklar soni, Qotil, Vampir va G'azabkor o'lgan → **Mafiya yutadi** (Sotqin tirik bo'lsa, u ham).
 6. Kun limiti → durang.
 
-**Qo'shimcha g'oliblar** (asosiy g'olibdan qat'i nazar): Konchi, Sehrgar va Aferist (tirik bo'lsa), Suitsid, Tulki, G'azabkor (shartini bajargan bo'lsa).
+**Qo'shimcha g'oliblar** (asosiy g'olibdan qat'i nazar): Konchi, Sehrgar, Aferist va Qaroqchi (tirik bo'lsa), Suitsid, Tulki, G'azabkor (shartini bajargan bo'lsa).
 
 ## 6. Rol taqsimoti (`setup.py`)
 

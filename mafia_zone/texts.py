@@ -46,6 +46,7 @@ def rank(wins: int) -> str:
     return [title for need, title in RANKS if wins >= need][-1]
 WINNER = {TOWN: "👨 Tinch aholi g'alaba qildi!", MAFIA: "🤵 Mafiya g'alaba qildi!",
           "qotil": "🔪 Qotil yakka g'alaba qildi!", "vampir": "🧛 Vampir yakka g'alaba qildi!",
+          "gazabkor": "🧟 G'azabkor yakka g'alaba qildi!",
           DRAW: "🤝 Durang!", "couple": "💞 Sevishganlar g'alaba qildi!"}
 
 
@@ -191,9 +192,22 @@ NIGHT_CHAT_HINT = "💬 <i>Tunda shu yerga yozgan xabaringiz sheriklaringizga ye
 DONISHMAND_NIGHT = "👂 Devorga qulog'ingizni tuting... Mafiya yoki Komissar shivirlashsa, bu yerda eshitasiz."
 
 
+TEAM_DOT = {TOWN: "🔵", MAFIA: "🔴", NEUTRAL: "⚪️"}
+RULE = {  # rol kartasida ⚠️ qatori: tavsifda yozilmagan cheklovlar
+    "kezuvchi": "Bir odamni ketma-ket 2 tun uxlata olmaysiz, o'zingizni ham.",
+    "qorovul": "Bir odamni ketma-ket 2 tun himoyalay olmaysiz.",
+    "don": "Mafiyadoshlaringiz ovoz beradi, lekin yakuniy so'z sizniki.",
+    "mafiya": "Nishonni Don hal qiladi, siz unga ovozingiz bilan yordam berasiz.",
+}
+
+
 def role_card(g: Game, uid: int) -> str:
     p = g.get(uid)
-    text = f"Siz - {role(p.role)} siz!\n{ROLES[p.role].about}"
+    team = ROLES[p.role].team
+    text = (f"Siz — {role(p.role)} siz!\n{TEAM_DOT[team]} Jamoa: <b>{TEAM[team].split(' ', 1)[1]}</b>\n"
+            f"🎯 Vazifa: {ROLES[p.role].about}")
+    if p.role in RULE:
+        text += f"\n⚠️ {RULE[p.role]}"
     mates = g.teammates(uid)
     if mates:
         text += "\n\n🤝 <b>Sheriklaringizni eslab qoling!</b>\n" + "\n".join(
@@ -375,6 +389,9 @@ SKIPPED_NIGHT = "😶 Siz bu tun hech narsa qilmaslikka qaror qildingiz"
 DON_SKIPPED = "🤵🏻 Don bu tun hech kimga tegmaslikka qaror qildi."
 
 
+CHOSEN = {"dig": "👷‍♂️ Tunnel qazilmoqda...", "sacrifice": "🔥 Siz o'zingizni olovga tashlashga qaror qildingiz..."}
+
+
 def chosen(name: str | None) -> str:
     return f"Siz <b>{escape(name)}</b>ni tanladingiz" if name else "✅ Tanlovingiz qabul qilindi"
 
@@ -545,7 +562,7 @@ def morning(g: Game, ev: list[Event]) -> tuple[list[str], list[tuple[int, str]]]
             d, gems = e.data["dollars"], e.data["diamonds"]
             extra = f" va <b>{gems} 💎</b> olmos" if gems else ""
             head = ("💎 <b>Olmos koni!</b> " if gems >= 2 else "") + ("💰 <b>Oltin tomir!</b> " if d > 500 else "")
-            priv.append((e.uid, f"{head}⛏ Tunnel qazib <b>{d} 💵</b>{extra} topdingiz!"))
+            priv.append((e.uid, f"{head}👷‍♂️ <b>Tabriklaymiz!</b>\nTuneldan <b>{d} 💵</b> dollar{extra} topdingiz!"))
             pub.append(f"{role('konchi')} bugun tunda <b>{d} 💵</b> dollar{extra} topdi!")
         elif k == "item_used":
             used = ITEM_USED.get(e.data["item"]) or ITEM_ABOUT[e.data["item"]]
@@ -688,6 +705,7 @@ WINNER_STORY = {
     MAFIA: "Shahar endi Mafiya qo'lida. Don sigarasini tutatib, jilmaydi... 🚬",
     "qotil": "Shahar huvullab qoldi. Faqat Qotil qon izlarini artib, yo'lida davom etdi... 🔪",
     "vampir": "Tun abadiy bo'ldi. Vampir taxtga o'tirdi... 🦇",
+    "gazabkor": "G'azab shaharni yutib yubordi. Kul ustida faqat G'azabkor qoldi... 🔥",
     DRAW: "Hech kim g'olib bo'lmadi. Shahar xarobaga aylandi... 🌫",
     "couple": "Shaharda faqat ikki yurak qoldi. Ular qo'l ushlashib, tongni birga kutib olishdi... 💞",
 }
