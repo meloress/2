@@ -55,7 +55,7 @@ async def cmd_game(msg: Message, bot: Bot, command: CommandObject | None = None)
     me = await bot.get_chat_member(msg.chat.id, bot.id)
     if me.status != "administrator":
         await msg.answer(texts.NOT_ADMIN_WARN)
-    settings = await db.group_settings(msg.chat.id, msg.chat.title or "")
+    settings = await db.group_settings(msg.chat.id, msg.chat.title or "", msg.chat.username or "")
     if msg.chat.id in RUNNERS:  # await paytida boshqasi ochgan bo'lishi mumkin
         return
     r = Runner(bot, msg.chat.id, settings, msg.chat.title or "", couple=couple)
@@ -488,14 +488,16 @@ async def cmd_start(msg: Message, bot: Bot, command: CommandObject):
                 return await msg.answer(texts.NO_COUPLE_JOIN)
             r.partners[msg.from_user.id] = p
         return await msg.answer(r.join(msg.from_user.id, msg.from_user.full_name) if r else texts.NO_LOBBY)
-    await msg.answer(texts.welcome(), reply_markup=start_kb(msg.from_user.id))
+    await msg.answer(texts.welcome(), reply_markup=start_kb(msg.from_user.id, await db.public_groups()))
 
 
-def start_kb(uid: int | None = None) -> Kb:
+def start_kb(uid: int | None = None, groups=()) -> Kb:
     # admin=...: guruhga qo'shishda kerakli huquqlar so'raladi (xabar o'chirish, cheklash, pin)
     add = bot_link() + "?startgroup=true&admin=delete_messages+restrict_members+pin_messages"
     rows = [[Btn(text="🎮 O'yinni guruhingizga qo'shing", url=add)],
             [Btn(text="🏆 Reyting", callback_data="m:top", style="danger")]]
+    # guruh topolmaganlar uchun: eng faol ochiq guruhlar, faqat nomi (bosilsa guruh ochiladi)
+    rows += [[Btn(text=f"{texts.PLACES[i]} {pro.short(t)}", url=f"https://t.me/{u}")] for i, (t, u) in enumerate(groups)]
     if config.NEWS_URL:
         rows.append([Btn(text="📰 Yangiliklar", url=config.NEWS_URL)])
     rows += [[Btn(text="🎭 Rollar", callback_data="m:rules"), Btn(text="🛒 Do'kon", callback_data="m:shop")],
@@ -512,7 +514,7 @@ async def cb_menu(cq: CallbackQuery):
     back = Kb(inline_keyboard=[[back_btn()]])
     ASK.pop(cq.from_user.id, None)  # boshqa bo'limga o'tdi - kutilayotgan javob bekor
     if what == "home":
-        await show(cq, texts.welcome(), start_kb(cq.from_user.id))
+        await show(cq, texts.welcome(), start_kb(cq.from_user.id, await db.public_groups()))
     elif what == "rules":
         await show(cq, texts.rules(), back)
     elif what == "pro":

@@ -201,6 +201,21 @@ def test_top_groups():
     run(t())
 
 
+def test_start_menu_shows_top_public_groups():
+    async def t():
+        await db.group_settings(-100881, "Ochiq guruh", "ochiq_mafia")
+        await db.group_settings(-100882, "Yopiq guruh")  # username yo'q - havola berib bo'lmaydi
+        for chat in (-100881, -100882):
+            gid = await db.create_game(chat, {})
+            await db.finish_game(gid, chat, "finished", "town", [])
+        groups = await db.public_groups()
+        assert ("Ochiq guruh", "ochiq_mafia") in groups and all(u for _, u in groups) and len(groups) <= 5
+        kb = handlers.start_kb(U, groups)
+        btn = next(b for row in kb.inline_keyboard for b in row if b.url and "ochiq_mafia" in b.url)
+        assert btn.url == "https://t.me/ochiq_mafia" and "Ochiq guruh" in btn.text
+    run(t())
+
+
 def test_stars_screens_offer_card_payment_via_admin():
     """Stars bilan sotiladigan har ekranda pastda: karta orqali - admin bilan bog'lanish tugmasi."""
     from mafia_zone import config, handlers, texts

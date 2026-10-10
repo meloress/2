@@ -65,6 +65,7 @@ class Group(Base):
     __tablename__ = "groups"
     chat_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     title: Mapped[str] = mapped_column(String(256), default="")
+    username: Mapped[str] = mapped_column(String(64), default="")  # ochiq guruh: t.me/<username> (bosh menyudagi top)
     settings: Mapped[dict] = mapped_column(Json, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
@@ -425,7 +426,8 @@ COLUMNS = [("users", "last_seen", "TIMESTAMP WITH TIME ZONE"), ("users", "leave_
            ("users", "ref_paid", "BOOLEAN NOT NULL DEFAULT FALSE"), ("giveaways", "msg_id", "BIGINT"),
            ("users", "pro_until", "TIMESTAMP WITH TIME ZONE"), ("users", "nickname", "VARCHAR(32)"),
            ("users", "pro_reminded", "BOOLEAN NOT NULL DEFAULT FALSE"),
-           ("giveaways", "currency", "VARCHAR(16) NOT NULL DEFAULT 'dollars'")]
+           ("giveaways", "currency", "VARCHAR(16) NOT NULL DEFAULT 'dollars'"),
+           ("groups", "username", "VARCHAR(64) NOT NULL DEFAULT ''")]
 
 
 def _migrate(conn) -> None:
@@ -556,6 +558,17 @@ async def top_groups(limit: int = 10) -> list[tuple[str, int]]:
                                 .where(GameRow.status == "finished").group_by(Group.chat_id, Group.title)
                                 .order_by(n.desc()).limit(limit))).all()
     return [(t or "?", int(c)) for t, c in rows]
+
+
+async def public_groups(limit: int = 5) -> list[tuple[str, str]]:
+    """[(nomi, username)] - eng ko'p o'ynalgan ochiq guruhlar (bosh menyu uchun)."""
+    n = func.count(GameRow.id)
+    async with Session() as s:
+        rows = (await s.execute(select(Group.title, Group.username).join(GameRow, GameRow.chat_id == Group.chat_id)
+                                .where(GameRow.status == "finished", Group.username != "")
+                                .group_by(Group.chat_id, Group.title, Group.username)
+                                .order_by(n.desc()).limit(limit))).all()
+    return [(t or "?", u) for t, u in rows]
 
 
 async def rob_dollars(victim: int, thief: int) -> int:
@@ -738,17 +751,20 @@ async def game_items(uids: list[int]) -> dict[int, dict[str, int]]:
 
 
 # ---------- guruhlar ----------
-async def group_settings(chat_id: int, title: str = "") -> dict:
+async def group_settings(chat_id: int, title: str = "", username: str | None = None) -> dict:
     from sqlalchemy.exc import IntegrityError
     for _ in range(2):
         try:
             async with Session.begin() as s:
                 g = await s.get(Group, chat_id)
                 if not g:
-                    g = Group(chat_id=chat_id, title=title[:256], settings={})
+                    g = Group(chat_id=chat_id, title=title[:256], username=(username or "")[:64], settings={})
                     s.add(g)
-                elif title and g.title != title:
-                    g.title = title[:256]
+                else:
+                    if title and g.title != title:
+                        g.title = title[:256]
+                    if username is not None and g.username != username[:64]:  # yopilsa "" bo'ladi
+                        g.username = username[:64]
                 return {**config.DEFAULT_SETTINGS, **(g.settings or {})}
         except IntegrityError:
             continue
