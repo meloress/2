@@ -79,6 +79,14 @@ def iconize(kb):
     return InlineKeyboardMarkup(inline_keyboard=[[_icon_button(b) for b in row] for row in kb.inline_keyboard])
 
 
+def unmark(kb):
+    """Tugma matnlaridan USER belgilari (ismlar) olib tashlanadi - Telegramga bormasin."""
+    if not isinstance(kb, InlineKeyboardMarkup) or not any(USER in b.text for r in kb.inline_keyboard for b in r):
+        return kb
+    return InlineKeyboardMarkup(inline_keyboard=[[b.model_copy(update={"text": b.text.replace(USER, "")}) for b in row]
+                                                 for row in kb.inline_keyboard])
+
+
 TG_EMOJI = re.compile(r'<tg-emoji emoji-id="\d+">(.*?)</tg-emoji>', re.S)
 DISABLED = False  # Telegram bir marta rad etgach: custom emoji'siz yuboriladi (qayta ishga tushguncha)
 METHODS = (SendMessage, EditMessageText, EditMessageReplyMarkup, SendAnimation)
@@ -112,12 +120,14 @@ class PremiumEmoji(BaseRequestMiddleware):
         global DISABLED
         if not isinstance(method, METHODS):
             return await make_request(bot, method)
-        text = getattr(method, _field(method), None)
+        text, kb = getattr(method, _field(method), None), method.reply_markup
+        upd = {"reply_markup": unmark(kb)} if kb is not None else {}
         if text and USER in text:  # belgilar Telegramga bormasin
-            method = method.model_copy(update={_field(method): text.replace(USER, "")})
+            upd[_field(method)] = text.replace(USER, "")
+        method = method.model_copy(update=upd) if upd else method
         if DISABLED:
             return await make_request(bot, plain(method))
-        new = method.model_copy(update={"reply_markup": iconize(method.reply_markup)}
+        new = method.model_copy(update={"reply_markup": unmark(iconize(kb))}  # ism bilan boshlangan tugma ikonka olmaydi
                                 | ({_field(method): premiumize(text)} if text is not None else {}))
         if not _has_custom(new):
             return await make_request(bot, method)

@@ -11,6 +11,8 @@ from urllib.parse import quote
 from aiogram import Bot
 from aiogram.exceptions import (TelegramBadRequest, TelegramForbiddenError, TelegramNetworkError,
                                 TelegramRetryAfter, TelegramServerError)
+from aiogram.client.session.middlewares.base import BaseRequestMiddleware
+from aiogram.methods import EditMessageReplyMarkup, EditMessageText, SendAnimation, SendMessage
 from aiogram.types import FSInputFile, InlineKeyboardButton as Btn, InlineKeyboardMarkup as Kb
 
 from . import config, db, pro, texts
@@ -125,6 +127,36 @@ async def send(bot: Bot, chat_id: int, text: str, kb: Kb | None = None, effect: 
     return await _call(bot.send_message, chat_id, text, reply_markup=kb, disable_web_page_preview=True, **kw)
 
 
+LAST_MSG: dict[int, int] = {}  # guruh -> botning oxirgi xabari ("Guruhga qaytish" shu yerga olib boradi)
+
+
+def back_url(chat_id: int) -> str | None:
+    """Superguruh a'zolari uchun havola (ochiq va yopiq guruhda ham ishlaydi); oddiy guruhda - yo'q."""
+    s = str(chat_id)
+    return f"https://t.me/c/{s[4:]}/{LAST_MSG[chat_id]}" if s.startswith("-100") and chat_id in LAST_MSG else None
+
+
+class BackToGroup(BaseRequestMiddleware):
+    """O'yin (va ro'yxat) paytida o'yinchiga botdagi har xabar oxirida "Guruhga qaytish" tugmasi."""
+
+    async def __call__(self, make_request, bot, method):
+        chat = getattr(method, "chat_id", None)
+        if not isinstance(chat, int):
+            return await make_request(bot, method)
+        if chat < 0 and isinstance(method, (SendMessage, SendAnimation)):
+            res = await make_request(bot, method)
+            if isinstance(getattr(res, "message_id", None), int):
+                LAST_MSG[chat] = res.message_id
+            return res
+        kb = getattr(method, "reply_markup", None)
+        if (isinstance(method, (SendMessage, EditMessageText, EditMessageReplyMarkup)) and (r := PLAYING.get(chat))
+                and (url := back_url(r.chat_id)) and (kb is None or isinstance(kb, Kb))):
+            rows = [row for row in (kb.inline_keyboard if kb else []) if not any(b.text == texts.BACK_TO_GROUP for b in row)]
+            method = method.model_copy(update={"reply_markup": Kb(inline_keyboard=rows + [[
+                Btn(text=texts.BACK_TO_GROUP, url=url)]])})
+        return await make_request(bot, method)
+
+
 async def edit(bot: Bot, chat_id: int, msg_id: int, text: str, kb: Kb | None = None):
     await _group_slot(chat_id)
     return await _call(bot.edit_message_text, text=text, chat_id=chat_id, message_id=msg_id, reply_markup=kb,
@@ -218,6 +250,7 @@ class Runner:
         self.live_lines: list[str] = []  # tungi harakatlar va ovozlar: har biri alohida xabar
         self.confirm_dirty = False
         self.lock = asyncio.Lock()
+        self.post_lock = asyncio.Lock()  # ro'yxat xabarini chiqarish: /game ikki marta bosilsa ikkita ro'yxat bo'lmasin
         self.confirm_shown: tuple[int, int] | None = None  # guruh xabaridagi 👍/👎 sonlari (keraksiz tahrir bo'lmasin)
         self.task: asyncio.Task | None = None
         self.last_words: dict[int, float] = {}
@@ -226,17 +259,24 @@ class Runner:
     # ---------- lobby ----------
     async def open_lobby(self) -> None:
         self.lobby_deadline = time.time() + self.s["lobby"]
-        m = await send(self.bot, self.chat_id, self._lobby_text(), self._lobby_kb())
-        self.lobby_msg = m.message_id if m else None
-        self.task = asyncio.create_task(self._lobby_loop())
-        if self.lobby_msg:
-            await _call(self.bot.pin_chat_message, self.chat_id, self.lobby_msg, disable_notification=True)
-            await db.save_lobby(self.chat_id, self.lobby_msg)
+        async with self.post_lock:
+            m = await send(self.bot, self.chat_id, self._lobby_text(), self._lobby_kb())
+            self.lobby_msg = m.message_id if m else None
+            self.task = asyncio.create_task(self._lobby_loop())
+            if self.lobby_msg:
+                await _call(self.bot.pin_chat_message, self.chat_id, self.lobby_msg, disable_notification=True)
+                await db.save_lobby(self.chat_id, self.lobby_msg)
         for uid in NEXT.pop(self.chat_id, set()):
             await send(self.bot, uid, texts.next_game(self.title), self._lobby_kb())
 
     async def repost_lobby(self) -> None:
         """Ro'yxat yozishmalar orasida tepada qolib ketganda: o'sha ro'yxat bilan pastda qayta chiqadi."""
+        if self.post_lock.locked():  # ro'yxat hozir chiqarilmoqda (bir vaqtda bosilgan /game) - u baribir pastda bo'ladi
+            return
+        async with self.post_lock:
+            await self._repost_lobby()
+
+    async def _repost_lobby(self) -> None:
         old = self.lobby_msg
         m = await send(self.bot, self.chat_id, self._lobby_text(), self._lobby_kb())
         if not m:
@@ -370,8 +410,10 @@ class Runner:
         g, ph = self.game, self.game.phase
         if "deadline" not in self.meta:
             secs = self.s[{NIGHT: "night", DAY: "day", VOTING: "vote", CONFIRM: "vote"}[ph]]
-            self.meta["deadline"] = time.time() + secs
             await self._intro(ph, secs)
+            # vaqt tugmalar chiqqandan keyin boshlanadi: guruh limiti navbatida kutish (ko'p ovoz lentasidan keyin
+            # 60 s gacha) ovoz vaqtini yeb qo'ymasin - aks holda 👍/👎 chiqishi bilan natija e'lon qilinardi
+            self.meta["deadline"] = time.time() + secs
             await self.save()
         done = {NIGHT: g.all_acted, VOTING: self._all_voted, CONFIRM: self._all_confirmed}.get(ph, lambda: False)
         last_edit = 0.0

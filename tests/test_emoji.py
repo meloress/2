@@ -66,6 +66,27 @@ def test_load_pack_failure_is_quiet():
     assert emoji.IDS  # fixture mosligi o'zgarmadi
 
 
+def test_names_keep_plain_emoji_in_text_and_buttons():
+    """Niknamedagi oddiy emoji premium emojiga almashtirilmaydi: matnda ham, tugmada ham."""
+    from mafia_zone import pro, texts
+    calls = []
+
+    async def make_request(bot, method):
+        calls.append(method)
+        return "ok"
+
+    name = pro.short("💣 Ali 💼")
+    m = SendMessage(chat_id=1, text=f"💣 <b>{texts.escape(name)}</b>",
+                    reply_markup=Kb(inline_keyboard=[[Btn(text=name, callback_data="v"),
+                                                      Btn(text=f"3. {name}", callback_data="w")]]))
+    asyncio.run(emoji.PremiumEmoji()(make_request, None, m))
+    sent = calls[-1]
+    assert sent.text == '<tg-emoji emoji-id="777">💣</tg-emoji> <b>💣 Ali 💼</b>'  # botniki - almashadi, ism - yo'q
+    a, b = sent.reply_markup.inline_keyboard[0]
+    assert (a.text, a.icon_custom_emoji_id) == ("💣 Ali 💼", None) and b.text == "3. 💣 Ali 💼"
+    assert pro.short(name) == name  # ikki marta o'ralmaydi
+
+
 def test_user_text_kept_as_sent():
     """O'yinchi yozgani (so'nggi so'z, o'liklar chati...): premium emoji saqlanadi, oddiy emoji almashtirilmaydi."""
     from aiogram.types import MessageEntity

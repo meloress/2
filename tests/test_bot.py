@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///" + os.path.join(tempfile.mkdtemp(), "t.db")
 
-from mafia_zone import db, runner, texts  # noqa: E402
+from mafia_zone import db, pro, runner, texts  # noqa: E402
 from mafia_zone.engine.game import CONFIRM, FINISHED, NIGHT, VOTING  # noqa: E402
 
 from test_engine import play_random  # noqa: E402
@@ -335,6 +335,76 @@ def test_game_again_reposts_lobby_with_same_players():
     asyncio.run(t())
 
 
+def test_back_to_group_button_on_game_pms():
+    """O'yin paytida botdagi har xabar oxirida "Guruhga qaytish" (guruhdagi oxirgi bot xabariga)."""
+    from aiogram.methods import EditMessageText, SendMessage
+    from aiogram.types import InlineKeyboardButton as Btn, InlineKeyboardMarkup as Kb
+    from mafia_zone.engine.game import Game
+
+    async def go():
+        chat = -1001234567890
+        r = runner.Runner(FakeBot(), chat, {})
+        r.game = Game.create(chat, [(i, f"p{i}") for i in range(1, 5)], 3)
+        runner.PLAYING[1] = r
+        calls = []
+
+        async def make_request(bot, method):
+            calls.append(method)
+            return SimpleNamespace(message_id=41)
+        mw = runner.BackToGroup()
+        try:
+            await mw(make_request, None, SendMessage(chat_id=chat, text="guruhga"))  # guruh xabari: tugmasiz
+            assert calls[-1].reply_markup is None
+            url = "https://t.me/c/1234567890/41"
+            await mw(make_request, None, SendMessage(chat_id=1, text="rol"))
+            assert [[b.url for b in row] for row in calls[-1].reply_markup.inline_keyboard] == [[url]]
+            assert calls[-1].reply_markup.inline_keyboard[0][0].text == texts.BACK_TO_GROUP
+            kb = Kb(inline_keyboard=[[Btn(text="1. Ali", callback_data="a")]])
+            await mw(make_request, None, EditMessageText(chat_id=1, message_id=3, text="x", reply_markup=kb))
+            rows = calls[-1].reply_markup.inline_keyboard
+            assert rows[0][0].callback_data == "a" and rows[-1][0].url == url
+            await mw(make_request, None, EditMessageText(chat_id=1, message_id=3, text="x",
+                                                         reply_markup=calls[-1].reply_markup))
+            assert len(calls[-1].reply_markup.inline_keyboard) == 2  # ikki marta qo'shilmaydi
+            await mw(make_request, None, SendMessage(chat_id=2, text="o'yinda emas"))
+            assert calls[-1].reply_markup is None
+        finally:
+            runner.PLAYING.pop(1, None)
+            r.close()
+
+    asyncio.run(go())
+
+
+def test_double_game_press_leaves_one_lobby():
+    """/game ni ikki kishi bir vaqtda bossa: guruhda bitta ro'yxat qoladi."""
+    async def t():
+        bot = FakeBot()
+        deleted = []
+        slow = bot.send_message
+
+        async def send_message(chat_id, text, **kw):
+            await asyncio.sleep(0.05)  # Telegram javobi kechikadi - shu orada ikkinchi /game keladi
+            return await slow(chat_id, text, **kw)
+
+        async def delete_message(chat_id, message_id):
+            deleted.append(message_id)
+
+        async def pin_chat_message(*a, **kw):
+            pass
+        bot.send_message, bot.delete_message, bot.pin_chat_message = send_message, delete_message, pin_chat_message
+        await db.init()
+        r = runner.Runner(bot, -992, dict(runner.config.DEFAULT_SETTINGS, lobby=600))
+        try:
+            await asyncio.gather(r.open_lobby(), r.repost_lobby(), r.repost_lobby())
+            lobbies = [i + 1 for i, (c, _) in enumerate(bot.sent) if c == -992]
+            assert [m for m in lobbies if m not in deleted] == [r.lobby_msg]
+        finally:
+            if r.task:
+                r.task.cancel()
+            r.close()
+    asyncio.run(t())
+
+
 def test_cancelled_lobby_is_unpinned_and_deleted():
     async def t():
         bot = FakeBot()
@@ -396,7 +466,7 @@ def test_last_words_timeout_notifies_and_vote_kb_marks_mates():
                                  Player(4, "d", "tinch", alive=False)], phase="voting")
         rows = r.vote_kb(1).inline_keyboard
         assert all(len(row) == 1 for row in rows)  # bir ustun
-        assert rows[0][0].text == "2. 🤵🏼 b" and rows[1][0].text == "3. c"
+        assert [rows[0][0].text, rows[1][0].text] == ["2. 🤵🏼 " + pro.short("b"), "3. " + pro.short("c")]
         r.last_words = {4: _t.time() + 0.05}
         await r._last_words_timeout(4, r.last_words[4])
         assert bot.sent[-1] == (4, texts.LAST_WORDS_TIMEOUT) and 4 not in r.last_words
@@ -489,6 +559,33 @@ def test_bot_removed_aborts_game():
         await handlers.on_bot_removed(upd)
         assert -998 not in runner.RUNNERS
     asyncio.run(t())
+
+
+def test_phase_timer_starts_after_buttons_are_sent():
+    """Guruh limiti to'lib 👍/👎 xabari kechiksa ham, vaqt tugmalar chiqqandan keyin boshlanadi."""
+    from mafia_zone.engine.game import Game
+
+    async def go():
+        await db.init()
+        r = runner.Runner(FakeBot(), -4445, {"vote": 10})
+        r.game, r.game_id = Game.create(-4445, [(i, f"p{i}") for i in range(1, 7)], 3), 56
+        g = r.game
+        g.phase, g.candidate = CONFIRM, 1
+        seen = []
+
+        async def slow_intro(ph, secs):  # guruh limiti: xabar navbatda kutdi
+            seen.append("deadline" in r.meta)
+            for p in g.alive():
+                if g.can_confirm(p.uid):
+                    g.cast_confirm(p.uid, False)
+        r._intro = slow_intro
+        try:
+            await r._step()
+            assert seen == [False]
+        finally:
+            r.close()
+
+    asyncio.run(go())
 
 
 def test_confirm_cannot_be_killed_by_deleting_group_message():
@@ -649,7 +746,7 @@ def test_player_numbers_stay_the_same():
     r.game, r.game_id = g, 1
     g.start_voting()
     texts_ = [b.text for row in r.vote_kb(1).inline_keyboard for b in row]
-    assert texts_[:4] == ["3. p3", "4. p4", "6. p6", "7. p7"]
+    assert [t.replace(texts.USER_MARK, "") for t in texts_[:4]] == ["3. p3", "4. p4", "6. p6", "7. p7"]
     r.close()
 
 

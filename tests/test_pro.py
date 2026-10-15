@@ -9,6 +9,8 @@ from aiogram.types import InlineKeyboardButton as Btn, InlineKeyboardMarkup as K
 
 from mafia_zone import config, db, emoji, pro, texts
 
+U = lambda s: s.replace(emoji.USER, "")  # ismlar USER belgisi bilan o'ralgan (premium emojiga almashmasin)
+
 
 def setup_function():
     pro.CACHE.clear()
@@ -17,13 +19,13 @@ def setup_function():
 
 def test_badge_name_and_expiry():
     pro.set_user(1, db.now() + timedelta(days=3), "Shoh<b>")
-    assert pro.is_pro(1) and pro.name(1, "Ali") == "Shoh<b>"
+    assert pro.is_pro(1) and U(pro.name(1, "Ali")) == "Shoh<b>"
     m = texts.mention(1, "Ali")
     assert pro.BADGE_ID in m and "<b>PRO</b>" in m and "Shoh&lt;b&gt;" in m and "tg://user?id=1" in m
     # 🌟 PRO <nickname> 🔥
     assert m.index("5226766493886225846") < m.index("<b>PRO</b>") < m.index("Shoh") < m.index("5220136481720409403")
     pro.set_user(1, db.now() - timedelta(seconds=1), "Shoh")
-    assert not pro.is_pro(1) and texts.mention(1, "Ali") == '<a href="tg://user?id=1">Ali</a>'
+    assert not pro.is_pro(1) and U(texts.mention(1, "Ali")) == '<a href="tg://user?id=1">Ali</a>'
 
 
 def test_perks_numbers():
@@ -31,7 +33,7 @@ def test_perks_numbers():
     assert pro.price(2, 100) == 75 and pro.price(3, 100) == 100
     assert pro.leave_free(2) == 5 and pro.leave_free(3) == config.LEAVE_FREE
     assert pro.win_reward(2) == config.REWARD_WIN * 3 // 2 and pro.win_reward(3) == config.REWARD_WIN
-    assert pro.label(2, "Ali") == ("PRO Ali", pro.BADGE_ID) and pro.label(3, "Ali") == ("Ali", None)
+    assert [(U(t), i) for t, i in (pro.label(2, "Ali"), pro.label(3, "Ali"))] == [("PRO Ali", pro.BADGE_ID), ("Ali", None)]
 
 
 def test_check_nick():
@@ -77,12 +79,12 @@ def test_pro_purchase_db():
         await db.set_nickname(u, "Shoh")
         pro.CACHE.clear()
         await db.load_pro()
-        assert pro.name(u, "Ali") == "Shoh"
+        assert U(pro.name(u, "Ali")) == "Shoh"
         assert await db.pro_expiring(24 * 30) == [u] and await db.pro_expiring(24 * 30) == []  # bir marta
         await db.set_pro(u, 0)
         assert not pro.is_pro(u) and (await db.get_user(u)).pro_until is None
         await db.set_pro(u, 3)
-        assert pro.is_pro(u) and pro.name(u, "Ali") == "Shoh"
+        assert pro.is_pro(u) and U(pro.name(u, "Ali")) == "Shoh"
     asyncio.run(t())
 
 
@@ -133,8 +135,8 @@ def test_pro_buttons_profile_and_lobby_name():
     r.game_id = 3
     rows = r.vote_kb(4).inline_keyboard
     b = rows[0][0]
-    assert b.text == "2. 🤵🏼 PRO Shoh" and b.icon_custom_emoji_id == pro.BADGE_ID
-    assert rows[1][0].text == "3. Hasan" and rows[1][0].icon_custom_emoji_id is None
+    assert U(b.text) == "2. 🤵🏼 PRO Shoh" and b.icon_custom_emoji_id == pro.BADGE_ID
+    assert U(rows[1][0].text) == "3. Hasan" and rows[1][0].icon_custom_emoji_id is None
     r.close()
     u = SimpleNamespace(telegram_id=5, full_name="Ali", wins=0, dollars=0, diamonds=0, games=0)
     card = texts.profile_card(u, [])
@@ -205,11 +207,11 @@ def test_pro_menu_diamonds_and_nickname():
             SimpleNamespace(from_user=SimpleNamespace(id=u, full_name="Ali", username=None), answer=answer),
             SimpleNamespace(args=args))
         await nick("@shoh")
-        assert "❌" in said[-1] and pro.name(u, "Ali") == "Ali"
+        assert "❌" in said[-1] and U(pro.name(u, "Ali")) == "Ali"
         await nick("Shoh")
-        assert pro.name(u, "Ali") == "Shoh" and (await db.get_user(u)).nickname == "Shoh"
+        assert U(pro.name(u, "Ali")) == "Shoh" and (await db.get_user(u)).nickname == "Shoh"
         await nick(None)
-        assert pro.name(u, "Ali") == "Ali"
+        assert U(pro.name(u, "Ali")) == "Ali"
         await db.set_pro(u, 0)
         await nick("Shoh")
         assert said[-1] == texts.NICK_ONLY_PRO
@@ -225,17 +227,17 @@ def test_fix_nickname_not_frozen_into_game():
     assert r.members[-1] == (9, "Ali")  # haqiqiy ism saqlanadi, nickname ko'rsatishda qo'yiladi
     r.close()
     g = Game(-1, 1, [Player(9, "Ali", "don"), Player(10, "Vali", "mafiya")])
-    assert texts.nm(g, 9) == "Shoh" and "Shoh" in texts.role_card(g, 10)
+    assert U(texts.nm(g, 9)) == "Shoh" and "Shoh" in texts.role_card(g, 10)
     pro.set_user(9, db.now() - timedelta(seconds=1), "Shoh")  # PRO tugadi
-    assert texts.nm(g, 9) == "Ali" and "Shoh" not in texts.role_card(g, 10)
+    assert U(texts.nm(g, 9)) == "Ali" and "Shoh" not in texts.role_card(g, 10)
     assert "Shoh" not in texts.role_alert(g, 10)
 
 
 def test_fix_non_pro_cannot_fake_badge():
-    assert texts.mention(11, "✅ PRO Ali") == '<a href="tg://user?id=11">Ali</a>'
-    assert pro.label(11, "PRO Ali") == ("Ali", None)
-    assert texts.mention(11, "PRO") == '<a href="tg://user?id=11">PRO</a>'  # faqat "PRO" bo'lsa - qoladi
-    assert texts.mention(11, "Prohor") == '<a href="tg://user?id=11">Prohor</a>'
+    assert U(texts.mention(11, "✅ PRO Ali")) == '<a href="tg://user?id=11">Ali</a>'
+    assert pro.label(11, "PRO Ali") == (pro.short("Ali"), None)
+    assert U(texts.mention(11, "PRO")) == '<a href="tg://user?id=11">PRO</a>'  # faqat "PRO" bo'lsa - qoladi
+    assert U(texts.mention(11, "Prohor")) == '<a href="tg://user?id=11">Prohor</a>'
 
 
 def test_fix_nick_filter_words_and_control_chars():
@@ -281,13 +283,13 @@ def test_long_and_weird_names_are_shortened_everywhere():
     """Juda uzun / g'alati belgili ismlar menyuni to'ldirmasin: bitta joyda (pro.name) qisqaradi."""
     from mafia_zone import pro, texts
     long = "𝓐𝓵𝓲" * 30
-    assert pro.short(long) == long[:pro.NAME_MAX - 1] + "…"
-    assert pro.short("Ali") == "Ali"
+    assert U(pro.short(long)) == long[:pro.NAME_MAX - 1] + "…"
+    assert U(pro.short("Ali")) == "Ali"
     zalgo = "A" + "́" * 50 + "li"  # ustma-ust urg'u belgilari qatorni bo'yiga cho'zadi
     assert pro.short(zalgo).count("́") <= 2
-    assert pro.short("Ali‮ilA​") == "AliilA"  # yo'nalish/ko'rinmas belgilar olib tashlanadi
-    assert pro.short("👨‍👩‍👧 Oila") == "👨‍👩‍👧 Oila"  # emoji (ZWJ) buzilmaydi
-    assert pro.short("​‮") == "?"
+    assert U(pro.short("Ali‮ilA​")) == "AliilA"  # yo'nalish/ko'rinmas belgilar olib tashlanadi
+    assert U(pro.short("👨‍👩‍👧 Oila")) == "👨‍👩‍👧 Oila"  # emoji (ZWJ) buzilmaydi
+    assert U(pro.short("​‮")) == "?"
     uid = 77_123_001
     assert long not in texts.mention(uid, long) and "…" in texts.mention(uid, long)
     assert pro.label(uid, long)[0] == pro.short(long)

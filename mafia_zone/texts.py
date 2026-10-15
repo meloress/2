@@ -224,6 +224,7 @@ def role_card(g: Game, uid: int) -> str:
 
 
 ROLE_BTN = "🎭 Sizning rolingiz"
+BACK_TO_GROUP = "Guruhga qaytish"
 GAME_STARTED = "🎮 <b>O'YIN BOSHLANDI!</b>"
 NOT_IN_GAME = "Siz bu o'yinda ishtirok etmayapsiz."
 

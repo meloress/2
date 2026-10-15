@@ -4,6 +4,7 @@ import unicodedata
 from datetime import datetime
 
 from . import config
+from .emoji import USER
 
 BADGE_ID, BADGE_FALLBACK = "5226766493886225846", "🌟"  # ismdan oldin (thecamelot to'plami)
 TAIL_ID, TAIL_FALLBACK = "5220136481720409403", "🔥"  # ismdan keyin
@@ -46,7 +47,9 @@ MARKS_MAX = 2  # bir harf ustidagi urg'u/belgilar ("zalgo" ismlar qatorni bo'yig
 
 
 def short(s: str) -> str:
-    """Ko'rinadigan ism: ko'rinmas/yo'nalish belgilarisiz (emoji ZWJ qoladi), ortiqcha ustma-ust belgilarsiz, qisqa."""
+    """Ko'rinadigan ism: ko'rinmas/yo'nalish belgilarisiz (emoji ZWJ qoladi), ortiqcha ustma-ust belgilarsiz, qisqa.
+    USER belgisi bilan o'ralgan: ismdagi oddiy emoji premium emojiga almashtirilmaydi (emoji.py, matnda ham, tugmada ham);
+    belgilar Telegramga yuborishdan oldin olib tashlanadi."""
     out, marks = [], 0
     for c in s:
         cat = unicodedata.category(c)
@@ -58,7 +61,7 @@ def short(s: str) -> str:
     s = "".join(out).strip()
     if len(s) > NAME_MAX:
         s = s[:NAME_MAX - 1].rstrip() + "…"
-    return s or "?"
+    return f"{USER}{s or '?'}{USER}"
 
 
 def name(uid: int, fallback: str) -> str:
