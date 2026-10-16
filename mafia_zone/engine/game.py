@@ -96,6 +96,7 @@ class Game:
     confirms: dict = field(default_factory=dict)  # uid -> True (osish) / False (rahm)
     pairs: dict = field(default_factory=dict)  # 💞 paralar o'yini: uid -> jufti (ikki tomonlama)
     couple_mode: bool = False  # 💞 tomonlar yo'q: oxirgi tirik juft yutadi
+    bros: list = field(default_factory=list)  # Aka va Uka uid'lari: biri Don bo'lsa ham bog'lanish qoladi
     bomb: int | None = None  # kunduzi osilgan Afsungar: keyingi tunda tong otguncha 1 kishini olib ketadi
 
     # ---------- yaratish va saqlash ----------
@@ -542,7 +543,9 @@ class Game:
         changed = True
         while changed:  # Aka/Uka va juftlar zanjiri: bittasining o'limi boshqasini ham olib ketishi mumkin
             changed = False
-            bros = [p for p in self.players if p.role in ("aka", "uka")]
+            if not self.bros:  # birinchi o'limdan oldin (rol tanlash/almashishdan keyin) eslab qolinadi
+                self.bros = [p.uid for p in self.players if p.role in ("aka", "uka")]
+            bros = [self.get(u) for u in self.bros]
             if len(bros) == 2 and bros[0].alive != bros[1].alive:
                 b = bros[0] if bros[0].alive else bros[1]
                 b.alive, changed = False, True

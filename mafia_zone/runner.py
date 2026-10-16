@@ -741,7 +741,7 @@ class Runner:
         else:
             await db.drop_lobby(old)
 
-    async def leave(self, uid: int) -> None:
+    async def leave(self, uid: int, kicked: bool = False) -> None:
         if not self.game:
             self.members = [(u, n) for u, n in self.members if u != uid]
             PLAYING.pop(uid, None)
@@ -753,6 +753,9 @@ class Runner:
             ev = self.game.kill_player(uid)
             if not ev:
                 return
+            for e in ev:
+                if e.kind == "left":
+                    e.data["kicked"] = kicked  # bot egasi /kick qildi
             await self.save()
         await self._announce(DAY, ev)
 

@@ -208,6 +208,17 @@ def test_aka_uka_pair_and_link():
     assert not g.get(2).alive and not g.get(3).alive
 
 
+def test_aka_uka_link_survives_promotion_to_don():
+    """Aka Don bo'lsa ham bog'lanish qoladi: Uka o'lsa, u ham o'ladi (va aksincha)."""
+    g = mk("don", "aka", "uka", "komissar", "tinch", "tinch", "tinch", "tinch", "tinch")
+    night(g, (4, "shoot", 1))
+    assert g.get(2).role == "don"
+    night(g, (4, "shoot", 3))
+    assert not g.get(3).alive and not g.get(2).alive
+    g = Game.from_dict(json.loads(json.dumps(g.to_dict())))  # saqlanib qayta yuklansa ham
+    assert g.bros == [2, 3]
+
+
 def test_vampir_and_verbena():
     g = mk("don", "vampir", "tinch", "tinch", "tinch", "tinch", p3={"verbena": 1})
     night(g, (2, "bite", 3))

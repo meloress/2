@@ -152,6 +152,27 @@ async def cmd_leave(msg: Message):
     await msg.answer(texts.leave_warn(u.id, u.full_name, limit), reply_markup=kb)
 
 
+@router.message(Command("kick"), GROUPS)
+async def cmd_kick(msg: Message, command: CommandObject):
+    """Faqat bot egasi (ADMIN_IDS, guruh adminlari emas): o'yinchini o'yindan/ro'yxatdan jarimasiz chiqarish.
+    O'yinchi xabariga reply qilib /kick yoki /kick <raqam> (o'yin boshidagi / ro'yxatdagi raqam)."""
+    if msg.from_user.id not in config.ADMIN_IDS or not (r := RUNNERS.get(msg.chat.id)):
+        return
+    arg, uid = (command.args or "").strip(), None
+    if msg.reply_to_message and msg.reply_to_message.from_user:
+        uid = msg.reply_to_message.from_user.id
+    elif arg.isdigit():
+        people = [p.uid for p in r.game.players] if r.game else [u for u, _ in r.members]
+        uid = people[int(arg) - 1] if 1 <= int(arg) <= len(people) else None
+    if uid is None or PLAYING.get(uid) is not r:
+        return await msg.answer(texts.KICK_HOW)
+    if r.game:
+        return await r.leave(uid, kicked=True)  # guruhga e'lon - ertalabki "left" matni orqali
+    name = dict(r.members).get(uid, "?")
+    await r.leave(uid)
+    await msg.answer(texts.kicked(uid, name))
+
+
 @router.callback_query(F.data.startswith("lv:"))
 async def cb_leave(cq: CallbackQuery):
     _, gid, uid, yes = cq.data.split(":")

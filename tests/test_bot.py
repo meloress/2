@@ -836,6 +836,51 @@ def test_night_chat_is_explained_and_donishmand_is_told_to_listen():
     asyncio.run(go())
 
 
+def test_owner_kicks_player():
+    """/kick - faqat bot egasi (ADMIN_IDS): reply yoki raqam bilan; guruh admini/oddiy o'yinchi chiqara olmaydi."""
+    from mafia_zone import config, handlers
+    from mafia_zone.engine.game import Game
+
+    async def go():
+        await db.init()
+        owner, chat = 1, -8810
+        old, config.ADMIN_IDS = config.ADMIN_IDS, {owner}
+        bot = FakeBot()
+        r = runner.Runner(bot, chat, {})
+        r.game, r.game_id = Game.create(chat, [(i, f"p{i}") for i in range(2, 9)], 3), 58
+        for p in r.game.players:
+            runner.PLAYING[p.uid] = r
+        said = []
+
+        async def answer(text, **kw):
+            said.append(text)
+
+        def msg(uid, reply_to=None):
+            rep = SimpleNamespace(from_user=SimpleNamespace(id=reply_to)) if reply_to else None
+            return SimpleNamespace(chat=SimpleNamespace(id=chat), from_user=SimpleNamespace(id=uid),
+                                   reply_to_message=rep, answer=answer, sender_chat=None)
+        try:
+            await handlers.cmd_kick(msg(2, reply_to=3), SimpleNamespace(args=None))  # o'yinchi - yo'q
+            assert r.game.get(3).alive and not said
+            await handlers.cmd_kick(msg(owner, reply_to=3), SimpleNamespace(args=None))
+            assert not r.game.get(3).alive and 3 not in runner.PLAYING
+            assert any("o'yindan chiqarildi" in t for _, t in bot.sent if t)
+            await handlers.cmd_kick(msg(owner), SimpleNamespace(args="5"))  # o'yin boshidagi raqam: 5 -> uid 6
+            assert not r.game.get(6).alive
+            lobby = runner.Runner(bot, chat - 1, {})
+            lobby.members = [(20, "a"), (21, "b")]
+            runner.PLAYING[21] = lobby
+            m = msg(owner, reply_to=21)
+            m.chat.id = chat - 1
+            await handlers.cmd_kick(m, SimpleNamespace(args=None))
+            assert lobby.members == [(20, "a")] and "o'yindan chiqarildi" in said[-1]
+            lobby.close()
+        finally:
+            config.ADMIN_IDS = old
+            r.close()
+    asyncio.run(go())
+
+
 def test_couplestop_stops_couple_game():
     """💞 Paralar o'yini /couplestop (va /stop) bilan to'xtaydi; buyruq menyusida ham bor."""
     from mafia_zone import config, handlers

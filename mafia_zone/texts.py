@@ -180,6 +180,13 @@ def leave_yes_btn() -> str:
     return f"🚪 Chiqish (-{config.LEAVE_FINE} 💵)"
 
 
+KICK_HOW = "❌ O'yinchining xabariga reply qilib /kick yozing yoki raqamini bering: <code>/kick 5</code>"
+
+
+def kicked(uid: int, name: str) -> str:
+    return f"🚫 {mention(uid, name)} o'yindan chiqarildi."
+
+
 LEAVE_NO_BTN = "🎮 O'yinni davom ettirish"
 LEAVE_STAY = "🎮 O'yinda qoldingiz. Omad!"
 NOT_YOUR_BTN = "❌ Bu tugma siz uchun emas"
@@ -517,7 +524,8 @@ def morning(g: Game, ev: list[Event]) -> tuple[list[str], list[tuple[int, str]]]
             pub.append(f"😴 Aholidan kimdir {w(e.target)} o'limidan oldin:\n"
                        "<i>«Men o'yin paytida boshqa uxlamayma-a-a-a-an!»</i> deb qichqirganini eshitgan.")
         elif k == "left":
-            pub.append(f"🚪 {w(e.target)} shaharni tashlab qochdi...")
+            pub.append(f"🚫 {w(e.target)} o'yindan chiqarildi." if e.data.get("kicked")
+                       else f"🚪 {w(e.target)} shaharni tashlab qochdi...")
         elif k == "hanged":
             score = (f"📊 <b>Tasdiqlash natijalari:</b>\n{e.data['yes']} 👍 | {e.data['no']} 👎\n\n"
                      if "yes" in e.data else "")
