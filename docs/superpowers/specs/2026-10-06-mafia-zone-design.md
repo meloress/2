@@ -133,7 +133,7 @@ Har tundan va har osishdan keyin quyidagi tartibda tekshiriladi:
 
 `n` o'yinchilar soni, guruh sozlamalarida o'chirilgan rollar hisobga olinmaydi.
 
-- **Mafiya soni:** `max(1, n // 4)`. Don har doim bor. Qolgan o'rinlar mafiya hovuzidan tasodifiy to'ldiriladi: Mafiya, Advokat, Jurnalist, Yollanma qotil, Aka/Uka (juftlik).
+- **Mafiya soni:** `max(1, (n + 2) // 4)` (2026-10: `n // 4` da tinch aholi ~60% yutardi). Don har doim bor. Qolgan o'rinlar mafiya hovuzidan tasodifiy to'ldiriladi: Mafiya, Advokat, Jurnalist, Yollanma qotil, Aka/Uka (juftlik).
 - **Neytrallar:** n ≥ 8 → 1, n ≥ 14 → 2, n ≥ 20 → 3, n ≥ 26 → 4 ta. Neytral hovuzdan tasodifiy, takrorlanmaydi.
 - **Tinch aholi:** Komissar har doim. Doktor n ≥ 5 dan. Serjant n ≥ 8 dan. Qolgan joylarning taxminan 70% ga tinch hovuzidan maxsus rollar, kamida 1 ta oddiy Tinch aholi qoladi. Podshoh faqat Qorovul bilan birga chiqadi.
 

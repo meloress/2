@@ -20,6 +20,23 @@ GROUPS = F.chat.type.in_({"group", "supergroup"})
 PRIVATE = F.chat.type == "private"
 
 
+TAP_GAP = 1.5  # shu soniya ichida bir xil tugmani qayta bosish e'tiborsiz (ikki marta xarid, ovoz, PRO...)
+_TAPS: dict[tuple[int, str], float] = {}
+
+
+@router.callback_query.outer_middleware()
+async def drop_double_taps(handler, cq: CallbackQuery, data):
+    now = time.monotonic()
+    key = (cq.from_user.id, cq.data or "")
+    if now - _TAPS.get(key, -TAP_GAP) < TAP_GAP:
+        return await cq.answer()
+    _TAPS[key] = now
+    if len(_TAPS) > 5000:  # eskilarini tozalash
+        for k in [k for k, t in _TAPS.items() if now - t >= TAP_GAP]:
+            del _TAPS[k]
+    return await handler(cq, data)
+
+
 @router.message.outer_middleware()
 async def drop_commands(handler, msg: Message, data):
     """Guruhda botga yozilgan /buyruq ishlangandan keyin o'chiriladi (chat toza tursin)."""
@@ -473,6 +490,8 @@ async def cb_vote(cq: CallbackQuery):
     if not r or r.game_id != int(gid):
         return await cq.answer("⌛️ Bu ovoz berish tugagan.")
     if not await r.on_vote(cq.from_user.id, int(day), int(target)):
+        if r.game and r.game.day == int(day) and cq.from_user.id in r.game.votes:
+            return await cq.answer("✅ Ovozingiz allaqachon qabul qilingan")
         return await cq.answer("❌ Ovoz bera olmaysiz yoki vaqt tugadi")
     t = r.game.get(int(target)) if int(target) else None
     await cq.message.edit_text(texts.vote_chosen(texts.dn(t) if t else None))

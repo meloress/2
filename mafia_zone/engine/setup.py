@@ -22,7 +22,7 @@ def deal(n: int, rng: random.Random, disabled: frozenset = frozenset()) -> list[
     pool = lambda xs: [x for x in xs if x not in off and not (x == "aka_uka" and {"aka", "uka"} & off)]
 
     # Mafiya
-    m = 2 if n == SMALL_GAME else max(1, n // 4)
+    m = max(1, (n + 2) // 4)  # 6 kishida 2, 10 da 3, 14 da 4 (n // 4 da tinch aholi ~60% yutardi)
     roles = ["don"]
     for r in rng.sample(pool(MAFIA_POOL), len(pool(MAFIA_POOL))):
         free = m - len(roles)

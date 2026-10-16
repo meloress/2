@@ -35,13 +35,15 @@ def vote(g, *pairs):
 
 
 # ---------- taqsimot ----------
+# balans (2026-10): tinch aholi 60% yutardi - mafiya ~1/4 dan biroz ko'p
+MAFIA_COUNT = {4: 1, 5: 1, 6: 2, 7: 2, 8: 2, 9: 2, 10: 3, 11: 3, 12: 3, 13: 3, 14: 4, 17: 4, 18: 5, 21: 5, 60: 15}
 @pytest.mark.parametrize("n", range(4, 61))
 def test_deal(n):
     for seed in range(30):
         r = deal(n, random.Random(seed))
         assert len(r) == n
         assert r.count("don") == 1 and r.count("komissar") == 1
-        assert sum(ROLES[x].team == MAFIA for x in r) == (2 if n == 7 else max(1, n // 4))
+        assert sum(ROLES[x].team == MAFIA for x in r) == MAFIA_COUNT.get(n, max(1, (n + 2) // 4))
         assert ("podshoh" not in r) or "qorovul" in r
         assert ("aka" in r) == ("uka" in r)
         assert all(x in ROLES for x in r)
@@ -208,13 +210,16 @@ def test_aka_uka_pair_and_link():
     assert not g.get(2).alive and not g.get(3).alive
 
 
-def test_aka_uka_link_survives_promotion_to_don():
-    """Aka Don bo'lsa ham bog'lanish qoladi: Uka o'lsa, u ham o'ladi (va aksincha)."""
+def test_aka_uka_never_become_don_and_keep_pair_attack():
+    """Aka-Uka bir butun: Don o'lib, mafiyadan faqat ular qolsa - Don bo'lmaydi, birga hujum qilishda davom etadi."""
     g = mk("don", "aka", "uka", "komissar", "tinch", "tinch", "tinch", "tinch", "tinch")
     night(g, (4, "shoot", 1))
-    assert g.get(2).role == "don"
+    assert g.get(2).role == "aka" and g.get(3).role == "uka" and not g.by_role("don")
+    assert g.phase != FINISHED  # mafiya tugamadi
+    night(g, (2, "pair", 5), (3, "pair", 5))  # keyingi tunda birga hujum
+    assert not g.get(5).alive
     night(g, (4, "shoot", 3))
-    assert not g.get(3).alive and not g.get(2).alive
+    assert not g.get(3).alive and not g.get(2).alive  # bog'lanish qoladi
     g = Game.from_dict(json.loads(json.dumps(g.to_dict())))  # saqlanib qayta yuklansa ham
     assert g.bros == [2, 3]
 

@@ -558,8 +558,9 @@ class Game:
             s.role = "komissar"
             ev.append(Event("promoted", s.uid, data={"role": "komissar"}))
         if not self.by_role("don"):
-            mafia = sorted((p for p in self.alive() if p.team == MAFIA),
-                           key=lambda p: (p.role != "mafiya", p.role in ("aka", "uka")))
+            # Aka-Uka bir butun - Don bo'lmaydi: mafiyadan faqat ular qolsa, birgalikdagi hujum bilan davom etadi
+            mafia = sorted((p for p in self.alive() if p.team == MAFIA and p.role not in ("aka", "uka")),
+                           key=lambda p: p.role != "mafiya")
             if mafia:
                 mafia[0].role = "don"
                 ev.append(Event("promoted", mafia[0].uid, data={"role": "don"}))

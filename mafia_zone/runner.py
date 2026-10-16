@@ -658,6 +658,7 @@ class Runner:
         async with self.lock:
             g = self.game
             again = g is not None and (uid in g.actions or uid in g.mafia_votes)  # tanlovni almashtirdi
+            prev = g.mafia_votes.get(uid, "-") if g else "-"
             if not g or g.phase != NIGHT or g.day != day or not g.submit(uid, kind, target or None):
                 return False
             await self.save()
@@ -665,6 +666,8 @@ class Runner:
                 line = texts.skip_feed(g.get(uid).role) if kind == SKIP else texts.act_feed(g.get(uid).role, kind)
                 if line:
                     self.live_lines.append(line)
+        if again and prev == (target or None):  # xuddi o'sha tanlov - sheriklarga qayta yozilmaydi
+            return True
         if kind == SKIP and g.get(uid).role == "don":
             for m in g.teammates(uid):
                 if m.alive:
@@ -679,8 +682,8 @@ class Runner:
     async def on_vote(self, uid: int, day: int, target: int) -> bool:
         async with self.lock:
             g = self.game
-            if not g or g.day != day or not g.cast_vote(uid, target or None):
-                return False
+            if not g or g.day != day or uid in g.votes or not g.cast_vote(uid, target or None):
+                return False  # ovoz bir marta: tez ikki bosishda lenta takrorlanmasin
             await self.save()
             self.live_lines.append(texts.vote_feed(g, uid, target or None))
         return True

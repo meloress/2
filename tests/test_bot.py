@@ -836,6 +836,49 @@ def test_night_chat_is_explained_and_donishmand_is_told_to_listen():
     asyncio.run(go())
 
 
+def test_double_taps_do_nothing_twice():
+    """Tugma ikki marta bosilsa: ikkinchisi e'tiborsiz (xarid, PRO, ovoz...); ovoz va mafiya xabari takrorlanmaydi."""
+    from mafia_zone import handlers
+    from mafia_zone.engine.game import Game
+
+    async def go():
+        calls, answered = [], []
+
+        async def handler(cq, data):
+            calls.append(cq.data)
+
+        async def answer(*a, **kw):
+            answered.append(a)
+        cq = lambda d, u=1: SimpleNamespace(data=d, from_user=SimpleNamespace(id=u), answer=answer)
+        await handlers.drop_double_taps(handler, cq("pro:d:30"), {})
+        await handlers.drop_double_taps(handler, cq("pro:d:30"), {})  # darhol ikkinchi bosish
+        await handlers.drop_double_taps(handler, cq("pro:d:30", u=2), {})  # boshqa odam - o'tadi
+        await handlers.drop_double_taps(handler, cq("b:shield"), {})  # boshqa tugma - o'tadi
+        assert calls == ["pro:d:30", "pro:d:30", "b:shield"] and len(answered) == 1
+
+        await db.init()
+        bot = FakeBot()
+        r = runner.Runner(bot, -8811, {})
+        r.game, r.game_id = Game.create(-8811, [(i, f"p{i}") for i in range(1, 9)], 3), 59
+        g = r.game
+        try:
+            g.start_voting()
+            assert await r.on_vote(1, g.day, 2)
+            assert not await r.on_vote(1, g.day, 3)  # ovoz qabul qilingan - o'zgarmaydi, lenta takrorlanmaydi
+            assert g.votes[1] == 2 and len(r.live_lines) == 1
+            g.phase, r.live_lines = runner.NIGHT, []
+            don = g.by_role("don")
+            mates = [m.uid for m in g.teammates(don.uid) if m.alive]
+            target = next(t for t in g.targets(don.uid, "mafia_kill"))
+            n = len(bot.sent)
+            assert await r.on_action(don.uid, g.day, "mafia_kill", target)
+            assert await r.on_action(don.uid, g.day, "mafia_kill", target)
+            assert len([c for c, _ in bot.sent[n:] if c in mates]) == len(mates)  # sheriklarga bir marta
+        finally:
+            r.close()
+    asyncio.run(go())
+
+
 def test_owner_kicks_player():
     """/kick - faqat bot egasi (ADMIN_IDS): reply yoki raqam bilan; guruh admini/oddiy o'yinchi chiqara olmaydi."""
     from mafia_zone import config, handlers

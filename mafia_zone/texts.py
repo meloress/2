@@ -206,6 +206,8 @@ RULE = {  # rol kartasida ⚠️ qatori: tavsifda yozilmagan cheklovlar
     "qorovul": "Bir odamni ketma-ket 2 tun himoyalay olmaysiz.",
     "don": "Mafiyadoshlaringiz ovoz beradi, lekin yakuniy so'z sizniki.",
     "mafiya": "Nishonni Don hal qiladi, siz unga ovozingiz bilan yordam berasiz.",
+    "aka": "Don bo'la olmaysiz: Don o'lib, mafiyadan faqat siz ikkovingiz qolsangiz, birgalikdagi hujumingiz bilan davom etasiz.",
+    "uka": "Don bo'la olmaysiz: Don o'lib, mafiyadan faqat siz ikkovingiz qolsangiz, birgalikdagi hujumingiz bilan davom etasiz.",
 }
 
 
