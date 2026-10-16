@@ -274,6 +274,7 @@ ROLE_PROMPT = {
     "qaroqchi": "🦹‍♂️ Qaroqchi, kimning cho'ntagini yengillatamiz?",
     "konchi": "👷‍♂️ Konchi, kirka tayyor. Qazishni boshlaymizmi?",
     "aferist": "🤹 Aferist, bu tun kimning harakatini o'g'irlaymiz?",
+    "afsungar": "💣 Sizni osishdi, lekin yolg'iz ketmaysiz! Tong otguncha kimni o'zingiz bilan olib ketasiz?",
 }
 
 
@@ -334,6 +335,7 @@ RESULT = {  # (harakat, muvaffaqiyat) -> shaxsiy xabar; {t} - nishon
     ("disguise", True): "🎭 {t}ni niqobladingiz: bu tun tekshiruvda u Tinch bo'lib ko'rinadi.",
     ("visit", False): "🍾 {t}ning uyi oldida tun tinch o'tdi — qotillik bo'lmadi.",
     ("pair", False): "👊 Sherigingiz boshqa nishonni tanladi — {t}ga hujum bo'lmadi.",
+    ("blast", True): "💥 Siz {t}ni o'zingiz bilan olib ketdingiz!",
 }
 CHECKED_YOU = "🔍 Kimdir rolingizga juda ham qiziqdi..."
 ATTACK_OK = "🎯 Nishoningiz {t} halok bo'ldi."

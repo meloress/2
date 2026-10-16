@@ -116,6 +116,37 @@ def test_afsungar_wins_with_town_after_revenge():
     assert g.winner == TOWN and g.get(2).won  # Donni olib ketdi - o'lgan bo'lsa ham yutadi
 
 
+def test_afsungar_wins_when_killer_also_dies_same_night():
+    g = mk("don", "afsungar", "komissar", "tinch", "tinch")
+    night(g, (1, "mafia_kill", 2), (3, "shoot", 1))  # Don Afsungarni o'ldirdi, Komissar Donni otdi - bir tunda
+    assert g.winner == TOWN and g.get(2).won
+
+
+def test_hanged_afsungar_takes_chosen_one_next_night():
+    g = mk("don", "mafiya", "afsungar", "doktor", "tinch", "tinch", "tinch")
+    night(g)
+    vote(g, (1, 3), (2, 3), (5, 3))
+    assert not g.get(3).alive and g.phase != FINISHED
+    assert g.available_actions(3) == ["blast"] and 3 not in g.targets(3, "blast") and 1 in g.targets(3, "blast")
+    assert g.submit(4, "heal", 4) and not g.all_acted()  # o'lgan Afsungar ham kutiladi
+    ev = night(g, (3, "blast", 2), (4, "heal", 2))  # Doktor ham saqlay olmaydi
+    assert not g.get(2).alive and any(e.kind == "revenge" and e.uid == 3 and e.target == 2 for e in ev)
+    assert g.get(3).avenged and g.available_actions(3) == []  # faqat bitta tun
+
+
+def test_hanged_afsungar_may_skip_and_wins_with_town():
+    g = mk("don", "afsungar", "tinch", "tinch", "tinch")
+    night(g)
+    vote(g, (1, 2), (3, 2))
+    night(g, (2, "skip", None))
+    assert all(p.alive for p in g.players if p.uid != 2) and g.available_actions(2) == []
+    g = mk("don", "afsungar", "tinch", "tinch", "tinch")
+    night(g)
+    vote(g, (3, 2), (4, 2))
+    night(g, (2, "blast", 1))
+    assert g.winner == TOWN and g.get(2).won
+
+
 def test_afsungar_loses_when_mafia_wins():
     g = mk("don", "mafiya", "afsungar", "tinch")
     night(g, (1, "mafia_kill", 3))

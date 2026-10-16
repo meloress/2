@@ -96,6 +96,7 @@ class Game:
     confirms: dict = field(default_factory=dict)  # uid -> True (osish) / False (rahm)
     pairs: dict = field(default_factory=dict)  # 💞 paralar o'yini: uid -> jufti (ikki tomonlama)
     couple_mode: bool = False  # 💞 tomonlar yo'q: oxirgi tirik juft yutadi
+    bomb: int | None = None  # kunduzi osilgan Afsungar: keyingi tunda tong otguncha 1 kishini olib ketadi
 
     # ---------- yaratish va saqlash ----------
     @classmethod
@@ -180,8 +181,14 @@ class Game:
         return []
 
     # ---------- tun ----------
+    def night_actors(self) -> list[Player]:
+        """Tunda harakat qila oladiganlar: tiriklar + osilgan Afsungar (o'lgan bo'lsa ham)."""
+        return self.alive() + ([self.get(self.bomb)] if self.bomb is not None and not self._alive(self.bomb) else [])
+
     def available_actions(self, uid: int) -> list[str]:
         p = self.get(uid)
+        if p and not p.alive and uid == self.bomb and self.phase == NIGHT:
+            return ["blast"]
         if not p or not p.alive or self.phase != NIGHT:
             return []
         if p.role == "gazabkor" and p.kills < GAZAB_KILLS:
@@ -228,7 +235,7 @@ class Game:
         return True
 
     def all_acted(self) -> bool:
-        for p in self.alive():
+        for p in self.night_actors():
             acts = self.available_actions(p.uid)
             if not acts:
                 continue
@@ -280,6 +287,8 @@ class Game:
                 p.score -= 2  # tunda harakat qilmadi
         # Tun boshidagi rollar: matnlarda shu ko'rsatiladi (Ovchi jarimasi, Voris o'zgarishidan oldingi holat)
         roles0 = {p.uid: p.role for p in self.players}
+        bomb, blast = self.bomb, self.actions.get(self.bomb) if self.bomb is not None else None
+        self.bomb = None  # faqat bitta tun
         # acts: actor -> (kind, target, harakat egasining roli)
         acts = {u: (k, t, self.get(u).role) for u, (k, t) in self.actions.items()
                 if self.get(u).alive and k != SKIP and (t is None or self._alive(t))}
@@ -467,12 +476,21 @@ class Game:
                 v.won = True
             else:
                 continue
+            # qotil dushman bo'lsa - Afsungar yutish shartini bajardi (qotil shu tun boshqa sababdan o'lgan bo'lsa ham)
+            if v.role == "afsungar" and any(ROLES[roles0[u]].team != TOWN for u in avengers):
+                v.avenged = True
             for u in sorted(avengers):
                 if self.get(u).alive:
                     self.get(u).alive = False
                     ev.append(Event("revenge", t, u))
-                    if v.role == "afsungar" and ROLES[roles0[u]].team != TOWN:
-                        v.avenged = True
+        if blast and blast[0] == "blast" and blast[1] is not None:  # osilgan Afsungar tanlagani - himoya yordam bermaydi
+            t = blast[1]
+            if ROLES[roles0[t]].team != TOWN:
+                self.get(bomb).avenged = True
+            ev.append(Event("result", bomb, t, {"kind": "blast", "ok": True}))
+            if self.get(t).alive:
+                self.get(t).alive = False
+                ev.append(Event("revenge", bomb, t))
 
         # Shaxsiy natijalar: Doktor, Daydi (qotillik bo'lmasa), hujum qilganlar (mafiya ovozi - quyida, jamoaga)
         for u, (k, t, _) in acts.items():
@@ -619,6 +637,8 @@ class Game:
             ev.append(Event("vote_saved", target=t))
             return False
         v.alive = False
+        if v.role == "afsungar":  # keyingi tunda tong otguncha bir kishini olib ketadi
+            self.bomb = t
         for u, x in self.votes.items():  # dushmanni osishga ovoz +2, jamoadoshni -1
             if x == t:
                 self.get(u).score += 2 if self.get(u).team != v.team else -1

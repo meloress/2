@@ -335,6 +335,28 @@ def test_game_again_reposts_lobby_with_same_players():
     asyncio.run(t())
 
 
+def test_hanged_afsungar_gets_night_buttons():
+    from mafia_zone.engine.game import Game, Player
+
+    async def go():
+        await db.init()
+        bot = FakeBot()
+        r = runner.Runner(bot, -4446, {"night": 10})
+        r.game, r.game_id = Game(-4446, 1, [Player(1, "a", "don"), Player(2, "b", "afsungar", alive=False),
+                                            Player(3, "c", "tinch"), Player(4, "d", "tinch")]), 57
+        r.game.bomb = 2
+        try:
+            await r._intro(NIGHT, 10)
+            pm = [t for c, t in bot.sent if c == 2]
+            assert pm and texts.ROLE_PROMPT["afsungar"] in pm[0]
+            assert r.night_kb(2).inline_keyboard[0][0].callback_data.startswith("a:57:1:blast:")
+            assert await r.on_action(2, 1, "blast", 1) and r.live_lines == []  # guruhga yozilmaydi
+        finally:
+            r.close()
+
+    asyncio.run(go())
+
+
 def test_back_to_group_button_on_game_pms():
     """O'yin paytida botdagi har xabar oxirida "Guruhga qaytish" (guruhdagi oxirgi bot xabariga)."""
     from aiogram.methods import EditMessageText, SendMessage

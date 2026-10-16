@@ -21,7 +21,7 @@ _ROLES = [
     Role("doktor", "👨‍⚕️ Doktor", TOWN, ("heal",), "Tunda 1 kishini o'limdan saqlaysiz. O'zingizni ketma-ket 2 tun davolay olmaysiz."),
     Role("daydi", "🍾 Daydi", TOWN, ("visit",), "Tunda bir uyga borasiz. U yerda qotillik bo'lsa, qotilni ko'rasiz."),
     Role("kezuvchi", "💃 Kezuvchi", TOWN, ("block",), "Nishonga uyqu dori berasiz: u shu tunda harakat qila olmaydi va ertasi kuni ovoz bera olmaydi."),
-    Role("afsungar", "💣 Afsungar", TOWN, (), "Tunda o'ldirilsangiz, qotilingiz ham siz bilan halok bo'ladi. Dushmanni olib ketsangiz, tinch aholi yutganda siz ham yutasiz."),
+    Role("afsungar", "💣 Afsungar", TOWN, (), "Tunda o'ldirilsangiz, qotilingiz ham siz bilan halok bo'ladi. Kunduzi osilsangiz, o'sha tunda tong otguncha xohlagan 1 kishini o'zingiz bilan olib ketasiz. Dushmanni olib ketsangiz, tinch aholi yutganda siz ham yutasiz."),
     Role("voris", "🧬 Voris", TOWN, (), "Mafiya o'ldirsa - Mafiyaga, Komissar otsa - Serjantga aylanasiz."),
     Role("janob", "🎖 Janob", TOWN, (), "Kunduzgi ovoz berishda ovozingiz 2 ta hisoblanadi."),
     Role("ovchi", "🏹 Ovchi", TOWN, ("check", "shoot"), "Har tunda 1 kishini tekshirasiz yoki otasiz. Tinchni otsangiz, qobiliyatingizni yo'qotasiz."),
@@ -75,4 +75,5 @@ ACTION_LABELS = {
     "rob": "💰 O'g'irlash",
     "dig": "⛏ Qazish",
     "steal": "🃏 Harakatni o'g'irlash",
+    "blast": "💥 Olib ketish",
 }

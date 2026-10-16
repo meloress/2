@@ -164,7 +164,7 @@ async def edit(bot: Bot, chat_id: int, msg_id: int, text: str, kb: Kb | None = N
 
 
 # Tugma ranglari: hujum - qizil, himoya - yashil, axborot - ko'k
-DANGER_KINDS = {"mafia_kill", "hit", "kill", "bite", "shoot", "curse", "rage", "pair", "sacrifice", "rob", "steal"}
+DANGER_KINDS = {"blast", "mafia_kill", "hit", "kill", "bite", "shoot", "curse", "rage", "pair", "sacrifice", "rob", "steal"}
 SAFE_KINDS = {"heal", "guard", "disguise"}
 
 
@@ -449,7 +449,7 @@ class Runner:
         if ph == NIGHT:
             await send_gif(self.bot, self.chat_id, "tun.mp4", texts.night_start(g, secs),
                            Kb(inline_keyboard=[[Btn(text="🌙 Botga o'tish", url=bot_link(), style="primary")]]))
-            for p in g.alive():
+            for p in g.night_actors():
                 if kb := self.night_kb(p.uid):
                     await send(self.bot, p.uid, texts.night_prompt(g, p.uid), kb)
                 elif p.role == "donishmand":  # tungi tugmasi yo'q: eshitish ishlayotganini bilsin
@@ -484,7 +484,7 @@ class Runner:
 
     async def _bots_act(self, ph: str) -> None:
         g = self.game
-        for p in [p for p in g.alive() if p.uid >= FAKE_BASE]:
+        for p in [p for p in (g.night_actors() if ph == NIGHT else g.alive()) if p.uid >= FAKE_BASE]:
             if ph == NIGHT and (acts := g.available_actions(p.uid)):
                 k = random.choice(acts)
                 ts = g.targets(p.uid, k)
@@ -661,7 +661,7 @@ class Runner:
             if not g or g.phase != NIGHT or g.day != day or not g.submit(uid, kind, target or None):
                 return False
             await self.save()
-            if not again:  # qayta tanlov guruhga yozilmaydi
+            if not again and g.get(uid).alive:  # qayta tanlov va o'lgan Afsungar guruhga yozilmaydi (maska sir qolsin)
                 line = texts.skip_feed(g.get(uid).role) if kind == SKIP else texts.act_feed(g.get(uid).role, kind)
                 if line:
                     self.live_lines.append(line)
