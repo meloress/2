@@ -342,3 +342,11 @@ def test_pro_grant_remove_and_nickname():
         actions = [e["action"] for e in (await (await c.get("/api/log")).json())["items"]]
         assert "pro" in actions and "nickname" in actions
     run(s)
+
+
+def test_panel_js_never_appends_raw_arrays():
+    """el.append(arr) massivni "[object HTMLElement]" matniga aylantiradi - faqat append(...arr)."""
+    import re
+    from pathlib import Path
+    js = (Path(__file__).resolve().parent.parent / "mafia_zone" / "panel_static" / "app.js").read_text(encoding="utf-8")
+    assert not re.findall(r"\.append\((?!\.\.\.)[\w.]+\.(?:map|filter)\(", js)

@@ -816,7 +816,7 @@
       wrap(`<a href="${c.value.replace(/"/g, "%22")}">`, "</a>");
     }
     function drawAud() {
-      clear(audBox).append(AUD.map(([k, label]) => h("label", { class: "radio-card" },
+      clear(audBox).append(...AUD.map(([k, label]) => h("label", { class: "radio-card" },
         h("input", { type: "radio", name: "aud", value: k, checked: st.audience === k, onChange: () => { st.audience = k; update(); } }),
         h("span", { class: "stack", style: { gap: "4px" } }, h("b", { text: label }),
           h("span", { class: "small muted num", text: `${fmt(st.counts[k])} ${k === "groups" ? "guruh" : "kishi"}` })))));
@@ -837,7 +837,7 @@
       drawPhoto(); update();
     });
     function drawButtons() {
-      clear(btnBox).append(st.buttons.map((b, i) => {
+      clear(btnBox).append(...st.buttons.map((b, i) => {
         const t = h("input", { class: "input", id: `bt-${i}`, maxlength: 64, value: b.text, placeholder: "O'yinni guruhga qo'shish" });
         const u = h("input", { class: "input mono", id: `bu-${i}`, maxlength: 512, value: b.url, placeholder: "https://t.me/..." });
         t.addEventListener("input", () => { b.text = t.value; update(); });
