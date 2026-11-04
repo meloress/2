@@ -267,7 +267,7 @@ def test_last_words_for_every_death_kind():
     ev = [Event("killed", target=1), Event("hanged", target=2), Event("revenge", 5, 3), Event("linked", target=4),
           Event("tulki", 2, 6), Event("afk", target=7), Event("left", target=8), Event("killed", target=1)]
     assert texts.victims(ev) == [1, 2, 3, 4, 6]  # AFK/chiqib ketgan yo'q, takror yo'q
-    assert "<b>60</b> sekund" in texts.death_pm(False) and "osib" in texts.death_pm(True)
+    assert "<b>60</b> soniya" in texts.death_pm(False) and "osib" in texts.death_pm(True)
 
 
 def test_late_confirm_click_does_not_crash_next_phase():
@@ -607,6 +607,37 @@ def test_phase_timer_starts_after_buttons_are_sent():
         finally:
             r.close()
 
+    asyncio.run(go())
+
+
+def test_late_button_answers_and_deletes_private_prompt():
+    """Vaqt o'tgan ovoz/tun tugmasi: tepada "kechikdingiz", shaxsiy chatdagi so'rov o'chadi, guruhdagisi qoladi."""
+    from mafia_zone import handlers
+    from mafia_zone.engine.game import Game
+
+    async def go():
+        r = runner.Runner(FakeBot(), -4545, {})
+        r.game, r.game_id = Game.create(-4545, [(i, f"p{i}") for i in range(1, 7)], 3), 77
+        handlers.PLAYING[1] = r
+        try:
+            for data, chat, late in [(f"v:77:{r.game.day}:2", 1, texts.LATE_VOTE),  # tun: ovoz eski
+                                     (f"a:77:{r.game.day - 1}:kill:2", 1, texts.LATE_NIGHT),  # o'tgan tun
+                                     (f"v:76:{r.game.day}:2", 1, texts.LATE_VOTE),  # eski o'yin
+                                     (f"c:77:{r.game.day}:1", -4545, texts.LATE_VOTE)]:  # guruh: o'chirilmaydi
+                said, deleted = [], []
+
+                async def answer(text=None, **kw):
+                    said.append(text)
+
+                async def delete():
+                    deleted.append(1)
+                cq = SimpleNamespace(data=data, from_user=SimpleNamespace(id=1), answer=answer,
+                                     message=SimpleNamespace(chat=SimpleNamespace(id=chat), delete=delete))
+                cb = {"v": handlers.cb_vote, "a": handlers.cb_action, "c": handlers.cb_confirm}[data[0]]
+                await cb(cq)
+                assert said == [late] and deleted == ([1] if chat > 0 else []), data
+        finally:
+            handlers.PLAYING.pop(1, None)
     asyncio.run(go())
 
 

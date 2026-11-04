@@ -288,12 +288,25 @@ async def cb_settings(cq: CallbackQuery, bot: Bot):
 
 
 # ---------- ovoz berish ----------
+def _stale(r, gid: str, day: str, phase: str) -> bool:
+    """Tugma eski: o'yin tugagan/boshqa o'yin, boshqa kun yoki bu faza o'tib ketgan."""
+    return not r or r.game_id != int(gid) or not r.game or r.game.day != int(day) or r.game.phase != phase
+
+
+async def _late(cq: CallbackQuery, text: str) -> None:
+    """Kechikib bosildi: tepada xabar, shaxsiy chatdagi eski so'rov o'chadi - chat toza qoladi."""
+    await cq.answer(text)
+    delete = getattr(cq.message, "delete", None)  # 48 soatdan eski (InaccessibleMessage) - o'chirib bo'lmaydi
+    if delete and cq.message.chat.id > 0:  # faqat shaxsiy chat: guruh xabarlariga tegilmaydi
+        await _call(delete)
+
+
 @router.callback_query(F.data.startswith("c:"))
 async def cb_confirm(cq: CallbackQuery):
     _, gid, day, yes = cq.data.split(":")
     r = RUNNERS.get(cq.message.chat.id) or PLAYING.get(cq.from_user.id)  # guruhdan yoki botning shaxsiy chatidan
-    if not r or r.game_id != int(gid):
-        return await cq.answer("⌛️ Bu ovoz berish tugagan.")
+    if _stale(r, gid, day, CONFIRM):
+        return await _late(cq, texts.LATE_VOTE)
     ok = await r.on_confirm(cq.from_user.id, int(day), yes == "1")
     await cq.answer(("👍 Osishga rozi bo'ldingiz" if yes == "1" else "👎 Rahm so'radingiz") if ok
                     else "❌ Siz ovoz bera olmaysiz")
@@ -495,12 +508,12 @@ async def cb_vote(cq: CallbackQuery):
     """Ovoz berish botning shaxsiy chatida."""
     _, gid, day, target = cq.data.split(":")
     r = PLAYING.get(cq.from_user.id)
-    if not r or r.game_id != int(gid):
-        return await cq.answer("⌛️ Bu ovoz berish tugagan.")
+    if _stale(r, gid, day, VOTING):
+        return await _late(cq, texts.LATE_VOTE)
     if not await r.on_vote(cq.from_user.id, int(day), int(target)):
         if r.game and r.game.day == int(day) and cq.from_user.id in r.game.votes:
             return await cq.answer("✅ Ovozingiz allaqachon qabul qilingan")
-        return await cq.answer("❌ Ovoz bera olmaysiz yoki vaqt tugadi")
+        return await cq.answer("❌ Ovoz bera olmaysiz")
     t = r.game.get(int(target)) if int(target) else None
     await cq.message.edit_text(texts.vote_chosen(texts.dn(t) if t else None))
     await cq.answer()
@@ -945,8 +958,8 @@ async def cb_role(cq: CallbackQuery):
 async def cb_kind(cq: CallbackQuery):
     _, gid, day, kind = cq.data.split(":")
     r = PLAYING.get(cq.from_user.id)
-    if not r or r.game_id != int(gid) or not r.game or r.game.day != int(day):
-        return await cq.answer("⌛️ Kech qoldingiz")
+    if _stale(r, gid, day, NIGHT):
+        return await _late(cq, texts.LATE_NIGHT)
     kb = r.night_kb(cq.from_user.id, kind)
     if kb:
         await cq.message.edit_reply_markup(reply_markup=kb)
@@ -957,10 +970,10 @@ async def cb_kind(cq: CallbackQuery):
 async def cb_action(cq: CallbackQuery):
     _, gid, day, kind, target = cq.data.split(":")
     r = PLAYING.get(cq.from_user.id)
-    if not r or r.game_id != int(gid):
-        return await cq.answer("⌛️ Kech qoldingiz")
+    if _stale(r, gid, day, NIGHT):
+        return await _late(cq, texts.LATE_NIGHT)
     if not await r.on_action(cq.from_user.id, int(day), kind, int(target)):
-        return await cq.answer("❌ Bu harakat mumkin emas yoki vaqt tugadi")
+        return await cq.answer("❌ Bu harakat mumkin emas")
     t = r.game.get(int(target)) if int(target) else None
     await cq.message.edit_text(texts.SKIPPED_NIGHT if kind == "skip" else texts.CHOSEN.get(kind) or texts.chosen(texts.dn(t) if t else None))
     await cq.answer()

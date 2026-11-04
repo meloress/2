@@ -220,10 +220,10 @@ def role_card(g: Game, uid: int) -> str:
     mates = g.teammates(uid)
     if mates:
         text += "\n\n🤝 <b>Sheriklaringizni eslab qoling!</b>\n" + "\n".join(
-            f"<b>{escape(dn(m))}</b> - {role(m.role)}" + ("" if m.alive else " 💀") for m in mates)
+            f"<b>{escape(dn(m))}</b> — {role(m.role)}" + ("" if m.alive else " 💀") for m in mates)
         text += "\n\n" + NIGHT_CHAT_HINT
     if q := g.partner(uid):
-        text += (f"\n\n💞 <b>Sizning juftingiz:</b> {escape(dn(q))} - {role(q.role)}" + ("" if q.alive else " 💀")
+        text += (f"\n\n💞 <b>Sizning juftingiz:</b> {escape(dn(q))} — {role(q.role)}" + ("" if q.alive else " 💀")
                  + "\n<i>U o'lsa, siz ham o'yindan chiqasiz. Unga yozish: xabarni <b>+</b> bilan boshlang.</i>")
     own = [f"{ITEMS[i]} ×{q}" for i, q in p.items.items() if q > 0 and i in ITEMS and not i.startswith("r_")]
     if own:
@@ -241,7 +241,7 @@ def role_alert(g: Game, uid: int) -> str:
     """Guruhdagi tugma uchun qalqib chiquvchi oyna: faqat o'z roli va vazifasi (sheriklar - botda).
     Oddiy matn, Telegram limiti 200 belgi."""
     p = g.get(uid)
-    text = f"Siz - {ROLES[p.role].name} siz!\n{ROLES[p.role].about}"
+    text = f"Siz — {ROLES[p.role].name} siz!\n{ROLES[p.role].about}"
     return text if len(text) <= 200 else text[:199] + "…"
 
 
@@ -297,7 +297,7 @@ ACT_FEED = {
     "mafiya": "{r} nishonga ishora qildi...",
     "doktor": "{r} tungi navbatchilikka chiqdi...",
     "daydi": "{r} kimningdir eshigi oldida tunab qoldi...",
-    "kezuvchi": "{r}ning bu tun qandaydir mehmoni bor ekan...",
+    "kezuvchi": "{r} kimningdir uyiga mehmonga ketdi...",
     "qorovul": "{r} tungi xizmatda...",
     "jurnalist": "{r} intervyu olishga ketdi...",
     "yollanma": "{r} buyurtmani qabul qildi...",
@@ -315,7 +315,7 @@ ACT_FEED = {
 
 
 SKIP_FEED = {
-    "doktor": "{r} bugun dam olarkan...",
+    "doktor": "{r} bu tun dam olishga qaror qildi...",
     "komissar": "{r} bu tun ishdan dam oldi...",
     "ovchi": "{r} bu tun ovga chiqmadi...",
     "kezuvchi": "{r} bu tun hech kimning oldiga bormadi...",
@@ -345,7 +345,7 @@ RESULT = {  # (harakat, muvaffaqiyat) -> shaxsiy xabar; {t} - nishon
     ("pair", False): "👊 Sherigingiz boshqa nishonni tanladi — {t}ga hujum bo'lmadi.",
     ("blast", True): "💥 Siz {t}ni o'zingiz bilan olib ketdingiz!",
 }
-CHECKED_YOU = "🔍 Kimdir rolingizga juda ham qiziqdi..."
+CHECKED_YOU = "🔍 Tunda kimdir sizni tekshirdi..."
 ATTACK_OK = "🎯 Nishoningiz {t} halok bo'ldi."
 ATTACK_FAIL = "😤 {t} omon qoldi — kimdir uni himoya qildi yoki unga kuchingiz yetmadi."
 WHY = {  # hujum nega o'tmadi (Event data "why"): hujumchiga va mafiyaga aytiladi
@@ -359,7 +359,7 @@ WHY = {  # hujum nega o'tmadi (Event data "why"): hujumchiga va mafiyaga aytilad
     "stolen": "🤹 Aferist mafiyaning hujumini o'g'irlab ketdi",
 }
 IMMUNE_YOU = "💪 Tunda sizga hujum qilishdi, lekin bu hujum sizga ta'sir qilmadi!"
-VISIT_ATTACKED ="🍾 {t}ning uyiga tunda kimdir hujum qildi, lekin u omon qoldi — qotillik bo'lmadi."
+VISIT_ATTACKED = "🍾 {t}ning uyiga tunda kimdir hujum qildi, lekin u omon qoldi — qotillik bo'lmadi."
 
 
 def attack_fail(why: str | None) -> str:
@@ -378,12 +378,12 @@ def act_feed(role_code: str, kind: str = "") -> str:
 def vote_feed(g: Game, voter: int, target: int | None) -> str:
     if target is None:
         return f"{pm(g, voter)} hech kimga ovoz bermadi"
-    return f"{pm(g, voter)} - {pm(g, target)} ga ovoz berdi"
+    return f"{pm(g, voter)} → {pm(g, target)} ga ovoz berdi"
 
 
-NIGHT_CAPTION = ("🌚🌃 <b>Tun</b>\nKo'chaga faqat jasur va qo'rqmas odamlar chiqishdi.\n"
+NIGHT_CAPTION = ("🌃 <b>Tun</b>\nKo'chaga faqat jasur va qo'rqmas odamlar chiqdi.\n"
                  "Ertalab tirik qolganlarni sanaymiz...")
-DAY_CAPTION = "🌝 <b>Xayrli tong</b>\n🌄 <b>Kun</b>\nShamollar tundagi mish-mishlarni butun shaharga yetkazmoqda..."
+DAY_CAPTION = "🌄 <b>Xayrli tong!</b>\nShamollar tundagi mish-mishlarni butun shaharga yetkazmoqda..."
 
 
 def night_start(g: Game, secs: int) -> str:
@@ -405,11 +405,11 @@ CHOSEN = {"dig": "👷‍♂️ Tunnel qazilmoqda...", "sacrifice": "🔥 Siz o'
 
 
 def chosen(name: str | None) -> str:
-    return f"Siz <b>{escape(name)}</b>ni tanladingiz" if name else "✅ Tanlovingiz qabul qilindi"
+    return f"✅ Siz <b>{escape(name)}</b>ni tanladingiz" if name else "✅ Tanlovingiz qabul qilindi"
 
 
 def mafia_voted(voter: str, target: str) -> str:
-    return f"{escape(voter)} - {escape(target)} ga ovoz berdi"
+    return f"🤵 {escape(voter)} → <b>{escape(target)}</b> ga ovoz berdi"
 
 
 USER_MARK = "\u2063"  # = emoji.USER: o'yinchi yozgan qism animatsion emoji'ga almashtirilmaydi
@@ -458,7 +458,7 @@ def victims(ev: list[Event]) -> list[int]:
 
 
 def last_words(g: Game, uid: int, text: str) -> str:
-    return f"🕯 O'limidan oldin kimdir <b>{nm(g, uid)}</b> ning qichqirganini eshitdi:\n<i>{text}</i>"
+    return f"🕯 <b>{nm(g, uid)}</b>ning so'nggi so'zlari:\n<i>«{text}»</i>"
 
 
 SAVED = ["💉 Kimdir bu tun o'lim yoqasidan qaytdi! Ajal bu safar quruq ketdi.",
@@ -481,14 +481,14 @@ def morning(g: Game, ev: list[Event]) -> tuple[list[str], list[tuple[int, str]]]
         k = e.kind
         if k == "killed":
             # rollar tun boshidagi holatda (masalan, jarimadan oldingi Ovchi)
-            victim = f"{shown_role(g, e.target, e.data.get('role'))} - <b>{n(e.target)}</b>"
+            victim = f"{shown_role(g, e.target, e.data.get('role'))} — <b>{n(e.target)}</b>"
             if e.data["by"] == ["curse"]:
                 pub.append(f"🔮 {victim} la'natlangan insonga duch keldi va shafqatsiz o'lim topdi.\n"
-                           f"Aytishlaricha, bu ishni {role('sehrgar')} qilgan")
+                           f"Aytishlaricha, bu ishni {role('sehrgar')} qilgan.")
             else:
                 codes = e.data.get("killer_roles") or [g.get(u).role for u in e.data.get("killers", [])]
                 killers = ", ".join(role(c) for c in dict.fromkeys(codes)) or "noma'lum kimdir"
-                pub.append(f"Tunda {victim}...\n{choice(VERBS)}\nAytishlaricha unikiga {killers} kelgan")
+                pub.append(f"☠️ Tunda {victim} {choice(VERBS)}\nAytishlaricha, unikiga {killers} kelgan.")
         elif k == "saved":
             pub.append(choice(SAVED))
             if e.target not in healed:  # Doktor qutqargan bo'lsa - unga alohida (PATIENT)
@@ -504,14 +504,13 @@ def morning(g: Game, ev: list[Event]) -> tuple[list[str], list[tuple[int, str]]]
             if e.data["kind"] == "heal" and e.target != e.uid:  # bemorga ham
                 priv.append((e.target, PATIENT[e.data["ok"]]))
         elif k == "mafia_idle":
-            pub.append(f"🤵 Mafialar kelisha olishmadi va {role('don')} hech kimni tanlamadi!\n"
-                       "Mafiya bu tun hech kimga tegmadi..")
+            pub.append(f"🤵 Bu tun mafiya hech kimga tegmadi: {role('don')} nishon tanlamadi.")
         elif k == "mafia_result":
             if e.data.get("why") == "immune":
                 immune.add(e.target)
             why = WHY.get(e.data.get("why"))
-            text = (f"Mafiyaning ovoz berish jarayonida <b>{n(e.target)}</b> vahshiylarcha o'ldirildi." if e.data["killed"]
-                    else f"Mafiyaning nishoni <b>{n(e.target)}</b> bu tun omon qoldi" + (f": {why}." if why else "..."))
+            text = (f"🎯 Mafiyaning nishoni <b>{n(e.target)}</b> o'ldirildi." if e.data["killed"]
+                    else f"😤 Mafiyaning nishoni <b>{n(e.target)}</b> bu tun omon qoldi" + (f": {why}." if why else "."))
             priv += [(p.uid, text) for p in g.players if p.alive and p.team == MAFIA]
         elif k == "revenge":
             pub.append(f"💥 {w(e.uid)} yolg'iz ketmadi — {w(e.target)} ham u bilan birga halok bo'ldi!")
@@ -522,24 +521,24 @@ def morning(g: Game, ev: list[Event]) -> tuple[list[str], list[tuple[int, str]]]
         elif k == "sacrificed":
             pub.append(f"🔥 {w(e.uid)} o'zini olovga tashladi va o'z g'alabasiga erishdi!")
         elif k == "afk":
-            pub.append(f"😴 Aholidan kimdir {w(e.target)} o'limidan oldin:\n"
-                       "<i>«Men o'yin paytida boshqa uxlamayma-a-a-a-an!»</i> deb qichqirganini eshitgan.")
+            pub.append(f"😴 {w(e.target)} bir necha tun harakat qilmadi va o'yindan chiqarildi.")
         elif k == "left":
             pub.append(f"🚫 {w(e.target)} o'yindan chiqarildi." if e.data.get("kicked")
                        else f"🚪 {w(e.target)} shaharni tashlab qochdi...")
         elif k == "hanged":
             score = (f"📊 <b>Tasdiqlash natijalari:</b>\n{e.data['yes']} 👍 | {e.data['no']} 👎\n\n"
                      if "yes" in e.data else "")
-            pub.append(score + f"<b>{pm(g, e.target)}</b> kunduzgi yig'ilishda osildi!\nU {shown_role(g, e.target, e.data['role'])} edi..")
+            pub.append(score + f"🪢 <b>{pm(g, e.target)}</b> kunduzgi yig'ilish qarori bilan osildi.\n"
+                               f"U {shown_role(g, e.target, e.data['role'])} edi.")
         elif k == "vote_saved":
             pub.append(f"⚖️ Arqon tortilay deganda <b>{pm(g, e.target)}</b> {ITEMS['votesave']}ni ko'rsatdi "
                        "va dordan omon qoldi!")
         elif k == "spared":
             pub.append(f"📊 <b>Tasdiqlash natijalari:</b>\n{e.data['yes']} 👍 | {e.data['no']} 👎\n\n"
-                       f"Aholi <b>{pm(g, e.target)}</b>ni osishga rozi bo'lmadi... Bu safar u omon qoldi.")
+                       f"Aholi <b>{pm(g, e.target)}</b>ni osishga rozi bo'lmadi — bu safar u omon qoldi.")
         elif k == "no_hang":
-            pub.append(choice(["<b>Ovoz berish yakunlandi:</b>\nAholi kelisha olmadi... Shu sababli bugun hech kim osilmadi...",
-                               "<b>Ovoz berish yakunlandi:</b>\nFikrlar ikkiga bo'lindi... Dor bugun bo'sh qoldi..."]))
+            pub.append(choice(["⚖️ <b>Ovoz berish yakunlandi</b>\nAholi bir qarorga kela olmadi — bugun hech kim osilmadi.",
+                               "⚖️ <b>Ovoz berish yakunlandi</b>\nFikrlar ikkiga bo'lindi — dor bugun bo'sh qoldi."]))
         elif k == "guard_saved":
             pub.append(f"👨‍🦳 Arqon tortilay deganda {role('qorovul')} yetib keldi va <b>{pm(g, e.target)}</b>ni "
                        "dordan qutqarib qoldi!")
@@ -575,7 +574,7 @@ def morning(g: Game, ev: list[Event]) -> tuple[list[str], list[tuple[int, str]]]
             d, gems = e.data["dollars"], e.data["diamonds"]
             extra = f" va <b>{gems} 💎</b> olmos" if gems else ""
             head = ("💎 <b>Olmos koni!</b> " if gems >= 2 else "") + ("💰 <b>Oltin tomir!</b> " if d > 500 else "")
-            priv.append((e.uid, f"{head}👷‍♂️ <b>Tabriklaymiz!</b>\nTuneldan <b>{d} 💵</b> dollar{extra} topdingiz!"))
+            priv.append((e.uid, f"{head}👷‍♂️ <b>Tabriklaymiz!</b>\nTunneldan <b>{d} 💵</b> dollar{extra} topdingiz!"))
             pub.append(f"{role('konchi')} bugun tunda <b>{d} 💵</b> dollar{extra} topdi!")
         elif k == "item_used":
             used = ITEM_USED.get(e.data["item"]) or ITEM_ABOUT[e.data["item"]]
@@ -608,20 +607,20 @@ def morning(g: Game, ev: list[Event]) -> tuple[list[str], list[tuple[int, str]]]
 def day_start(g: Game, secs: int) -> str:
     """Kunduzgi GIF'dan keyingi xabar: tiriklar, tarkib, muhokama vaqti."""
     return (f"☀️ <b>{g.day}-kun</b>\n\n{alive_list(g)}\n\n{alive_composition(g)}\n\n"
-            f"🗣 Muhokama uchun <b>{secs}</b> sekund")
+            f"🗣 Muhokama uchun <b>{secs}</b> soniya")
 
 
 def vote_prompt(g: Game, secs: int) -> str:
-    return (f"⚖️ <b>Aybdorlarni aniqlash va jazolash vaqti keldi!</b>\n"
-            f"Ovoz berish uchun <b>{secs}</b> sekund\nOvoz berish uchun botga o'ting!")
+    return (f"⚖️ <b>Aybdorni aniqlash va jazolash vaqti keldi!</b>\n"
+            f"🗳 Ovoz berish uchun botga o'ting.\n⏳ Vaqt: <b>{secs}</b> soniya")
 
 
 SKIP_BTN = "🤐 Hech kimga ovoz bermayman"
 
 
 def confirm_prompt(g: Game, secs: int) -> str:
-    return (f"Rostdan ham <b>{pm(g, g.candidate)}</b> ni osishni hohlaysizmi?\n\n"
-            f"⏰ Tasdiqlash uchun vaqt: <b>{secs}</b> sekund")
+    return (f"🪢 Rostdan ham <b>{pm(g, g.candidate)}</b> ni osishni xohlaysizmi?\n\n"
+            f"⏳ Tasdiqlash uchun vaqt: <b>{secs}</b> soniya")
 
 
 def confirm_pm(g: Game) -> str:
@@ -630,7 +629,7 @@ def confirm_pm(g: Game) -> str:
 
 def confirm_result(g: Game) -> str:
     yes, no = g.confirm_tally()
-    return f"Rostdan ham <b>{pm(g, g.candidate)}</b> ni osishni hohlaysizmi?\n\n<b>{yes} 👍 | {no} 👎</b> — vaqt tugadi"
+    return f"🪢 Rostdan ham <b>{pm(g, g.candidate)}</b> ni osishni xohlaysizmi?\n\n<b>{yes} 👍 | {no} 👎</b> — vaqt tugadi"
 
 
 def partner_msg(name: str, text: str) -> str:
@@ -676,6 +675,8 @@ def giveaway(sender: str, sender_id: int, per: int, parts: int, takers: list[tup
 GIVEAWAY_BTN = "💰 Olish"
 GIVEAWAY_GOT = "🎉 +{} {} oldingiz!"
 GIVEAWAY_NO = "😔 Tugagan yoki siz allaqachon olgansiz"
+LATE_VOTE = "⌛️ Kechikdingiz: ovoz berish vaqti tugagan"
+LATE_NIGHT = "⌛️ Kechikdingiz: tun tugagan, harakat qabul qilinmadi"
 GIVEAWAY_EARLY = "🤖 Juda tez bosdingiz - bu avtomatik bosishga o'xshaydi. Bu tarqatmadan ololmaysiz."
 
 
@@ -733,12 +734,12 @@ def game_over(g: Game, minutes: int | None = None) -> str:
     if g.winner in WINNER:  # qaysi tomon yutgani
         lines += [f"<b>{WINNER[g.winner]}</b>", f"<i>{WINNER_STORY[g.winner]}</i>"]
     lines += ["", "🏆 <b>G'oliblar:</b>"]
-    lines += [f"    {i}. {pm(g, p.uid)} - {role(p.role)}" for i, p in enumerate(won, 1)] or ["    —"]
+    lines += [f"    {i}. {pm(g, p.uid)} — {role(p.role)}" for i, p in enumerate(won, 1)] or ["    —"]
     if rest:
         lines += ["", "<b>Qolgan o'yinchilar:</b>"]
-        lines += [f"    {i}. {pm(g, p.uid)} - {role(p.role)}" for i, p in enumerate(rest, len(won) + 1)]
+        lines += [f"    {i}. {pm(g, p.uid)} — {role(p.role)}" for i, p in enumerate(rest, len(won) + 1)]
     if minutes is not None:
-        lines += ["", f"⏱ O'yin <b>{minutes}</b> minut davom etdi"]
+        lines += ["", f"⏱ O'yin <b>{minutes}</b> daqiqa davom etdi"]
     return "\n".join(lines)
 
 
@@ -1025,7 +1026,7 @@ def dn(p) -> str:
 
 
 def who(g: Game, uid: int) -> str:
-    return f"{shown_role(g, uid)} - {pm(g, uid)}"
+    return f"{shown_role(g, uid)} — {pm(g, uid)}"
 
 
 VERBS = ["vahshiylarcha o'ldirildi.", "shafqatsizlarcha o'ldirildi.", "tongni ko'ra olmadi."]
@@ -1034,17 +1035,17 @@ VERBS = ["vahshiylarcha o'ldirildi.", "shafqatsizlarcha o'ldirildi.", "tongni ko
 def alive_composition(g: Game) -> str:
     out = []
     masked = [p for p in g.alive() if p.items.get("mask", 0) > 0]
-    for team, label in ((MAFIA, "🤵🏻 Mafiya"), (NEUTRAL, "👤 Yakka rollar"), (TOWN, "🏘 Tinch aholilar")):
+    for team, label in ((MAFIA, "🤵🏻 Mafiya"), (NEUTRAL, "👤 Yakka rollar"), (TOWN, "🏘 Tinch aholi")):
         ps = [p for p in g.alive() if p.team == team and p not in masked]
         if not ps:
             continue
         counts: dict[str, int] = {}
         for p in ps:
             counts[p.role] = counts.get(p.role, 0) + 1
-        roles = ", ".join(role(c) + (f" - {k}" if k > 1 else "") for c, k in counts.items())
-        out.append(f"<b>{label} - {len(ps)}</b>\n{roles}")
+        roles = ", ".join(role(c) + (f" ×{k}" if k > 1 else "") for c, k in counts.items())
+        out.append(f"<b>{label} — {len(ps)}</b>\n{roles}")
     if masked:  # jamoasi ham ko'rinmaydi
-        out.append(f"<b>{MASKED} - {len(masked)}</b>")
+        out.append(f"<b>{MASKED} — {len(masked)}</b>")
     return "\n\n".join(out) + f"\n\n<b>Jami: {len(g.alive())}</b>"
 
 
@@ -1066,7 +1067,7 @@ composition = alive_composition
 
 def death_pm(hanged: bool) -> str:
     how = "Sizni shafqatsizlarcha osib o'ldirishdi!" if hanged else "Siz vahshiylarcha o'ldirildingiz!"
-    return f"<b>{how}</b>\n💀 So'nggi so'zingizni aytishingiz mumkin.\n⏰ Vaqt: <b>{LAST_WORDS_SECS}</b> sekund"
+    return f"<b>{how}</b>\n💀 So'nggi so'zingizni yozishingiz mumkin.\n⏳ Vaqt: <b>{LAST_WORDS_SECS}</b> soniya"
 
 
 def profile_card(u, inv) -> str:
