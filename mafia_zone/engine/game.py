@@ -12,7 +12,7 @@ from .setup import deal
 NIGHT, DAY, VOTING, CONFIRM, FINISHED = "night", "day", "voting", "confirm", "finished"
 MAX_DAYS = 20
 GAZAB_KILLS = 3
-AFK_LIMIT = 3  # ketma-ket o'tkazib yuborilgan navbatlar (0 = o'chiq)
+AFK_LIMIT = 3  # ketma-ket o'tkazib yuborilgan tungi vazifalar (0 = o'chiq)
 ATTACKS = {"mafia_kill", "hit", "kill", "bite", "shoot", "curse", "rage"}
 SKIP = "skip"  # tunda "hech narsa qilmayman"
 PICK = "r_"  # do'kondan olingan rol: "r_komissar" - keyingi o'yinda shu rol (o'yinda bo'lsa)
@@ -584,7 +584,7 @@ class Game:
 
     def resolve_vote(self) -> list[Event]:
         ev: list[Event] = []
-        self._track_idle([p for p in self.alive() if self.can_vote(p.uid)], self.votes.keys())
+        # AFK faqat tungi vazifasi bor rollarda sanaladi (resolve_night): ovoz bermaslik AFK emas
         # /leave yoki guruhdan chiqish: o'lgan ovoz beruvchi ham, o'lgan nomzod ham hisobga olinmaydi
         self.votes = {v: t for v, t in self.votes.items() if self._alive(v) and (t is None or self._alive(t))}
         tally: dict = {}

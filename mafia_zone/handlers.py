@@ -302,6 +302,10 @@ async def cb_confirm(cq: CallbackQuery):
 # ---------- pul o'tkazish va tarqatish ----------
 MAX_AMOUNT = 10 ** 9
 _refresh: dict[int, asyncio.Task] = {}  # giveaway_id -> kechiktirilgan tahrir
+# Avto-bosuvchi botlarga qarshi: xabar chiqqan payt va juda tez bosganlar (xotirada; restartdan keyin kechikish yo'q)
+# ponytail: yozuvlar o'chirilmaydi - bir tarqatmaga bir necha bayt, o'sishi sezilarli bo'lsa expire_giveaway da tozalash
+_shown: dict[int, float] = {}  # giveaway_id -> time.monotonic()
+_early: set[tuple[int, int]] = set()  # (giveaway_id, uid)
 
 
 @router.message(Command("send", "give"), GROUPS)
@@ -329,7 +333,9 @@ async def cmd_send(msg: Message, bot: Bot, command: CommandObject):
             if gid:
                 kb = Kb(inline_keyboard=[[Btn(text=texts.GIVEAWAY_BTN, callback_data=f"g:{gid}", style="success")]])
                 m = await send(bot, msg.chat.id, texts.giveaway(u.full_name, u.id, per, parts, (), cur), kb)
-                if m:  # tarqatma tepada qadalib turadi, tugagach pindan olinadi (_refresh_giveaway)
+                if m:
+                    _shown[gid] = time.monotonic()  # await dan oldin: birinchi bosish bundan keyin keladi
+                    # tarqatma tepada qadalib turadi, tugagach pindan olinadi (_refresh_giveaway)
                     await _call(bot.pin_chat_message, msg.chat.id, m.message_id, disable_notification=True)
                     await db.set_giveaway_msg(gid, m.message_id)
                     spawn(expire_giveaway(bot, gid, texts.GIVEAWAY_TTL_MIN * 60))
@@ -341,6 +347,10 @@ async def cb_giveaway(cq: CallbackQuery, bot: Bot):
     me = await _user(cq)
     if me and me.games < config.CLAIM_GAMES:
         return await cq.answer(texts.claim_locked(), show_alert=True)
+    key = (gid, cq.from_user.id)
+    if key in _early or time.monotonic() - _shown.get(gid, 0) < config.CLAIM_DELAY:
+        _early.add(key)  # keyin qayta bosib ham ololmaydi
+        return await cq.answer(texts.GIVEAWAY_EARLY, show_alert=True)
     g = await db.claim(gid, cq.from_user.id) if me else None
     if not g:
         return await cq.answer(texts.GIVEAWAY_NO)

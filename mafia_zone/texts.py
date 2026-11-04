@@ -676,6 +676,7 @@ def giveaway(sender: str, sender_id: int, per: int, parts: int, takers: list[tup
 GIVEAWAY_BTN = "💰 Olish"
 GIVEAWAY_GOT = "🎉 +{} {} oldingiz!"
 GIVEAWAY_NO = "😔 Tugagan yoki siz allaqachon olgansiz"
+GIVEAWAY_EARLY = "🤖 Juda tez bosdingiz - bu avtomatik bosishga o'xshaydi. Bu tarqatmadan ololmaysiz."
 
 
 # ---------- para ----------

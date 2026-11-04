@@ -475,17 +475,15 @@ def test_simulate_many():
 
 
 def test_afk_kicked():
-    g = mk("don", "tinch", "tinch", "tinch", "tinch", "tinch", "tinch", "tinch")
+    g = mk("don", "doktor", "tinch", "tinch", "tinch", "tinch", "tinch", "tinch", "tinch", "tinch")
     g.afk_limit = 3
-    for _ in range(2):
-        night(g, (1, "mafia_kill", 8) if g.get(8).alive else (1, "mafia_kill", 7))
-        vote(g, (1, None), (2, None), (3, None), (4, None), (5, None))
-    # 6-o'yinchi 2 kun ovoz bermadi; 3-chisida chiqariladi, faol 2-o'yinchi qoladi
-    night(g, (1, "mafia_kill", 2))
-    assert g.get(6).alive
-    ev = vote(g, (1, None), (3, None))
-    assert not g.get(6).alive and "afk" in kinds(ev)
-    assert g.get(3).alive
+    # Doktor 3 tun davolamadi -> chiqariladi; tinchlar hech qachon ovoz bermadi, lekin qoladi (vazifasi yo'q)
+    for t in (10, 9):
+        assert "afk" not in kinds(night(g, (1, "mafia_kill", t)))
+        vote(g, (1, None))
+    ev = night(g, (1, "mafia_kill", 8))
+    assert not g.get(2).alive and "afk" in kinds(ev)
+    assert all(g.get(u).alive for u in range(3, 8))
 
 
 # ---------- ikki bosqichli osish ----------
