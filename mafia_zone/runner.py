@@ -238,6 +238,9 @@ class Runner:
     def __init__(self, bot: Bot, chat_id: int, settings: dict, title: str = "", couple: bool = False):
         self.bot, self.chat_id, self.s, self.title = bot, chat_id, settings, title
         self.couple = couple  # 💞 paralar o'yini (/couplegame)
+        # javob berilmagan tugmali shaxsiy so'rovlar (tun/ovoz/👍👎): uid -> msg_id; faza tugagach o'chiriladi.
+        # Xotirada: restartdan keyin qolganlari bosilganda o'chadi (handlers._late)
+        self.prompts: dict[int, int] = {}
         self.partners: dict[int, int] = {}  # qo'shilganda: uid -> /couple jufti (ro'yxatda juftlab ko'rsatish)
         self.members: list[tuple[int, str]] = []
         self.opener: int | None = None  # /game bosgan: adminlardan tashqari u ham /begin qila oladi
@@ -441,17 +444,19 @@ class Runner:
             if ev:
                 await self._economy(ev)
             await self.save()
+        old, self.prompts = self.prompts, {}
+        spawn(self._clear_prompts(old))  # fonda: e'lon kechikmasin
         if ev is not None:
             await self._announce(ph, ev)
 
     async def _intro(self, ph: str, secs: int) -> None:
         g = self.game
         if ph == NIGHT:
-            await send_gif(self.bot, self.chat_id, "tun.mp4", texts.night_start(g, secs),
+            await send_gif(self.bot, self.chat_id, "tun.mp4", texts.NIGHT_CAPTION,
                            Kb(inline_keyboard=[[Btn(text="🌙 Botga o'tish", url=bot_link(), style="primary")]]))
             for p in g.night_actors():
                 if kb := self.night_kb(p.uid):
-                    await send(self.bot, p.uid, texts.night_prompt(g, p.uid), kb)
+                    self._prompt(p.uid, await send(self.bot, p.uid, texts.night_prompt(g, p.uid), kb))
                 elif p.role == "donishmand":  # tungi tugmasi yo'q: eshitish ishlayotganini bilsin
                     await send(self.bot, p.uid, f"🌙 <b>{g.day}-tun</b>\n\n{texts.DONISHMAND_NIGHT}")
         elif ph == DAY:
@@ -462,7 +467,7 @@ class Runner:
                        Kb(inline_keyboard=[[Btn(text="🗳 Ovoz berish", url=bot_link(), style="primary")]]))
             for p in g.alive():
                 if g.can_vote(p.uid):
-                    await send(self.bot, p.uid, texts.vote_pm(g), self.vote_kb(p.uid))
+                    self._prompt(p.uid, await send(self.bot, p.uid, texts.vote_pm(g), self.vote_kb(p.uid)))
         else:
             m = await send(self.bot, self.chat_id, texts.confirm_prompt(g, secs), self._confirm_kb())
             self.meta["confirm_msg"] = m.message_id if m else None
@@ -471,8 +476,17 @@ class Runner:
             pm_kb = self._confirm_kb(pm=True)
             for p in g.alive():
                 if g.can_confirm(p.uid):
-                    await send(self.bot, p.uid, texts.confirm_pm(g), pm_kb)
+                    self._prompt(p.uid, await send(self.bot, p.uid, texts.confirm_pm(g), pm_kb))
         await self._bots_act(ph)
+
+    def _prompt(self, uid: int, m) -> None:
+        if m:
+            self.prompts[uid] = m.message_id
+
+    async def _clear_prompts(self, prompts: dict[int, int]) -> None:
+        """Faza tugadi: javob berilmagan so'rovlar o'chiriladi - shaxsiy chat toza qoladi."""
+        for uid, mid in prompts.items():
+            await _call(self.bot.delete_message, uid, mid)
 
     def add_bots(self, n: int) -> None:
         """/testgame: n ta bot-o'yinchi qo'shish."""
@@ -662,6 +676,7 @@ class Runner:
             if not g or g.phase != NIGHT or g.day != day or not g.submit(uid, kind, target or None):
                 return False
             await self.save()
+            self.prompts.pop(uid, None)  # xabar "tanladingiz" bo'lib qoladi - o'chirilmaydi
             if not again and g.get(uid).alive:  # qayta tanlov va o'lgan Afsungar guruhga yozilmaydi (maska sir qolsin)
                 line = texts.skip_feed(g.get(uid).role) if kind == SKIP else texts.act_feed(g.get(uid).role, kind)
                 if line:
@@ -685,6 +700,7 @@ class Runner:
             if not g or g.day != day or uid in g.votes or not g.cast_vote(uid, target or None):
                 return False  # ovoz bir marta: tez ikki bosishda lenta takrorlanmasin
             await self.save()
+            self.prompts.pop(uid, None)
             self.live_lines.append(texts.vote_feed(g, uid, target or None))
         return True
 

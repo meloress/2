@@ -38,7 +38,7 @@ def shown_role(g: Game, uid: int, code: str | None = None) -> str:
     if p and p.items.get("mask", 0) > 0 and g.phase != "finished":
         return f"<b>{MASKED}</b>"
     return role(code or (p.role if p else "tinch"))
-RANKS = [(0, "🐣 Yangi boshlovchi"), (3, "🔫 Ko'cha bezori"), (10, "🕶 Gangster"), (25, "💼 Kapo"),
+RANKS = [(0, "🔰 Yangi boshlovchi"), (3, "🔫 Ko'cha bezori"), (10, "🕶 Gangster"), (25, "💼 Kapo"),
          (50, "🎩 Konsilyere"), (100, "🤵‍♂️ Don"), (250, "👑 Krestniy ota")]
 
 
@@ -119,7 +119,7 @@ def couple_started(g: Game) -> str:
         rows.append(f"{len(rows) + 1}. ❤️ {mention(p.uid, p.name)} + {mention(q.uid, q.name)} ❤️")
     return (f"❤️❤️ <b>PARALAR O'YINI BOSHLANDI!</b> ❤️❤️\n\n❤️ <b>Paralar ({len(rows)}):</b>\n" + "\n".join(rows)
             + "\n\n<i>Tinch aholi ham, mafiya ham yo'q — har kim o'z parasi uchun! Kim qo'lidan kelsa, otadi va osadi. "
-              "Oxirgi tirik para g'olib bo'ladi 🏆</i>\n\n" + composition(g))
+              "Oxirgi tirik para g'olib bo'ladi 🏆</i>\n\n" + alive_composition(g))
 
 
 NEED_PLAYERS = "😔 O'yinchilar yetarli emas (kamida <b>4</b> kishi kerak).\n<b>O'yin bekor qilindi.</b>"
@@ -246,7 +246,7 @@ def role_alert(g: Game, uid: int) -> str:
 
 
 def game_started(g: Game) -> str:
-    return _game_started(g) + "\n\n" + composition(g)
+    return _game_started(g) + "\n\n" + alive_composition(g)
 
 
 def _game_started(g: Game) -> str:
@@ -384,10 +384,6 @@ def vote_feed(g: Game, voter: int, target: int | None) -> str:
 NIGHT_CAPTION = ("🌃 <b>Tun</b>\nKo'chaga faqat jasur va qo'rqmas odamlar chiqdi.\n"
                  "Ertalab tirik qolganlarni sanaymiz...")
 DAY_CAPTION = "🌄 <b>Xayrli tong!</b>\nShamollar tundagi mish-mishlarni butun shaharga yetkazmoqda..."
-
-
-def night_start(g: Game, secs: int) -> str:
-    return NIGHT_CAPTION
 
 
 def night_prompt(g: Game, uid: int) -> str:
@@ -675,6 +671,7 @@ def giveaway(sender: str, sender_id: int, per: int, parts: int, takers: list[tup
 GIVEAWAY_BTN = "💰 Olish"
 GIVEAWAY_GOT = "🎉 +{} {} oldingiz!"
 GIVEAWAY_NO = "😔 Tugagan yoki siz allaqachon olgansiz"
+GIVEAWAY_MEMBERS = "👥 Tarqatmadan faqat shu guruh a'zolari oladi. Avval guruhga qo'shiling."
 LATE_VOTE = "⌛️ Kechikdingiz: ovoz berish vaqti tugagan"
 LATE_NIGHT = "⌛️ Kechikdingiz: tun tugagan, harakat qabul qilinmadi"
 GIVEAWAY_EARLY = "🤖 Juda tez bosdingiz - bu avtomatik bosishga o'xshaydi. Bu tarqatmadan ololmaysiz."
@@ -758,11 +755,11 @@ def next_game(title: str) -> str:
 
 # ---------- PM: profil, do'kon ----------
 def welcome() -> str:
-    return ("👋 <b>Salom! Mafiya olamiga xush kelibsan!</b>\n"
-            "<b>Men 🤵 Admiral Mafia o'yinining rasmiy botiman.</b>\n\n"
-            "<b>Bu shunchaki o'yin emas — sirlar, hiyla va ishonch dunyosi.</b>\n"
-            "<b>Guruhga qo'sh, rolingni ol, o'zingni ko'rsat!</b> 🎯\n"
-            "🎭 <b>Seni roling kutmoqda...</b>")
+    return ("👋 <b>Mafiya olamiga xush kelibsiz!</b>\n"
+            "Men — 🤵 <b>Admiral Mafia</b> o'yinining rasmiy botiman.\n\n"
+            "Bu shunchaki o'yin emas — sirlar, hiyla va ishonch dunyosi.\n"
+            "Botni guruhga qo'shing, rolingizni oling va o'zingizni ko'rsating! 🎯\n\n"
+            "🎭 <i>Rolingiz sizni kutmoqda...</i>")
 
 
 def start_pm() -> str:
@@ -793,9 +790,9 @@ PAY_FAILED = "⚠️ To'lovda texnik xato bo'ldi. /paysupport orqali adminga yoz
 
 PRO_BTN = "PRO akkaunt"  # tugmada PRO belgisi ikonka bo'lib turadi
 PRO_NO_DIAMONDS = "😔 Olmos yetarli emas. Olmos Konchi qazishidan chiqadi — yoki ⭐ Stars bilan oling."
-NICK_ONLY_PRO = "🏷 Nickname faqat PRO foydalanuvchilar uchun. /pro"
-NICK_CLEARED = "✅ Nickname o'chirildi. O'yinlarda Telegram ismingiz ko'rinadi."
-NICK_HOW = "🏷 Nickname qo'yish: <code>/nickname Laqabingiz</code>\nO'chirish: <code>/nickname</code>"
+NICK_ONLY_PRO = "🏷 Laqab faqat PRO foydalanuvchilar uchun. Batafsil: /pro"
+NICK_CLEARED = "✅ Laqab o'chirildi. O'yinlarda Telegram ismingiz ko'rinadi."
+NICK_HOW = "🏷 Laqab qo'yish: <code>/nickname Laqabingiz</code>\nO'chirish: <code>/nickname</code>"
 PRO_EXPIRING = (f"⏳ PRO muddatingiz <b>24 soat ichida</b> tugaydi.\n"
                 "Belgi, chegirma va boshqa imkoniyatlar saqlanib qolishi uchun /pro orqali uzaytiring.")
 
@@ -812,7 +809,7 @@ def pro_info(uid: int) -> str:
     return (f"{pro.badge()} <b>PRO AKKAUNT</b>\n\n"
             "<b>PRO</b> sizga quyidagilarni beradi:\n\n"
             f"{pro.badge()} <b>PRO belgisi</b> — ismingiz yonida, hamma ko'radi\n"
-            "🏷 <b>Nickname</b> — o'yinlarda o'z laqabingiz (/nickname)\n"
+            "🏷 <b>Laqab</b> — o'yinlarda ismingiz o'rniga o'z laqabingiz (/nickname)\n"
             "💬 <b>Kunduzi yozish</b> — o'yinda bo'lmasangiz ham muhokamaga qo'shiling\n"
             f"💵 <b>G'alaba puli x1.5</b> — {win} o'rniga {win * 3 // 2} 💵\n"
             "🛒 <b>Do'konda -25%</b> chegirma\n"
@@ -827,7 +824,7 @@ def pro_done(end) -> str:
 
 
 def nick_set(nick: str) -> str:
-    return f"✅ Nickname: <b>{escape(nick)}</b>\nEndi o'yinlarda shu ism ko'rinadi."
+    return f"✅ Laqabingiz: <b>{escape(nick)}</b>\nEndi o'yinlarda shu ism ko'rinadi."
 
 
 INVITE_BTN = "🤝 Do'stni taklif qilish"
@@ -858,7 +855,7 @@ def send_locked(games: int) -> str:
 
 
 def claim_locked() -> str:
-    return f"🔒 Tarqatmadan olish uchun kamida {config.CLAIM_GAMES} ta o'yin o'ynagan bo'lishingiz kerak"
+    return f"🔒 Tarqatmadan olish uchun kamida {config.CLAIM_GAMES} ta o'yin o'ynagan bo'lishingiz kerak."
 
 
 def shop(dollars: int, uid: int | None = None, diamonds: int | None = None) -> str:
@@ -922,20 +919,16 @@ def ask_send(currency: str) -> str:
             "<code>@username 100</code> yoki <code>123456789 100</code>")
 
 
-def _cur(currency: str) -> str:
-    return "💵" if currency == "dollars" else "💎"
-
-
 def sent_ok(target: str, n: int, currency: str) -> str:
-    return f"✅ {target} ga <b>{n} {_cur(currency)}</b> yuborildi."
+    return f"✅ {target} ga <b>{n} {CUR[currency]}</b> yuborildi."
 
 
 def got_money(sender: str, n: int, currency: str) -> str:
-    return f"🎁 {sender} sizga <b>{n} {_cur(currency)}</b> yubordi!"
+    return f"🎁 {sender} sizga <b>{n} {CUR[currency]}</b> yubordi!"
 
 
 def dollars_bought(diamonds: int, dollars: int) -> str:
-    return f"✅ {diamonds} 💎 → {dollars} 💵"
+    return f"✅ <b>{diamonds} 💎</b> → <b>{dollars} 💵</b> ga almashtirildi."
 
 
 def diamonds_paid(n: int, target: str | None = None) -> str:
@@ -1062,9 +1055,6 @@ def vote_chosen(name: str | None) -> str:
     return f"✅ Ovozingiz: <b>{escape(name)}</b>" if name else "✅ Siz hech kimga ovoz bermadingiz"
 
 
-composition = alive_composition
-
-
 def death_pm(hanged: bool) -> str:
     how = "Sizni shafqatsizlarcha osib o'ldirishdi!" if hanged else "Siz vahshiylarcha o'ldirildingiz!"
     return f"<b>{how}</b>\n💀 So'nggi so'zingizni yozishingiz mumkin.\n⏳ Vaqt: <b>{LAST_WORDS_SECS}</b> soniya"
@@ -1081,8 +1071,9 @@ def profile_card(u, inv) -> str:
     if end:
         days = max(1, -(-int((end - pro._now()).total_seconds()) // 86400))  # yuqoriga yaxlitlash
         status = f"{pro.badge()} {bold('PRO')}: <b>{end + PRO_TZ:%d.%m.%Y}</b> gacha ({days} kun)\n"
+    games, wins = bold("Jami o'yinlar"), bold("G'alabalar")  # f-string ichida ' ishlatib bo'lmaydi (Python 3.11)
     return (f"{head}\n\n"
             f"{bold('ID')}: <code>{u.telegram_id}</code>\n👤 {bold('Ism')}: {escape(pro.name(u.telegram_id, u.full_name))}\n"
             f"🎖 {bold('Unvon')}: {rank(u.wins)}\n{status}\n"
             f"💵 {bold('Dollar')}: {u.dollars}\n💎 {bold('Olmos')}: {u.diamonds}\n\n{items}\n\n"
-            f"🎲 {bold('Jami o' + chr(39) + 'yinlar')}: {u.games}\n🏆 {bold('G' + chr(39) + 'alabalar')}: {u.wins}")
+            f"🎲 {games}: {u.games}\n🏆 {wins}: {u.wins}")

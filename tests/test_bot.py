@@ -29,6 +29,10 @@ class FakeBot:
         self.sent.append((chat_id, text))
         return True
 
+    async def delete_message(self, chat_id, message_id):
+        self.deleted = getattr(self, "deleted", []) + [(chat_id, message_id)]
+        return True
+
     async def send_animation(self, chat_id, animation, caption=None, **kw):
         self._id += 1
         self.sent.append((chat_id, caption))
@@ -607,6 +611,27 @@ def test_phase_timer_starts_after_buttons_are_sent():
         finally:
             r.close()
 
+    asyncio.run(go())
+
+
+def test_unanswered_prompts_deleted_when_phase_ends():
+    """Ovoz berish tugadi: javob bermaganlarning tugmali xabari o'chadi, ovoz berganniki ("Ovozingiz: ...") qoladi."""
+    from mafia_zone.engine.game import Game
+
+    async def go():
+        await db.init()
+        bot = FakeBot()
+        r = runner.Runner(bot, -4646, {"vote": 10})
+        r.game, r.game_id = Game.create(-4646, [(i, f"p{i}") for i in range(1, 7)], 3), 78
+        r.game.phase = VOTING
+        await r._intro(VOTING, 10)
+        sent = dict(r.prompts)
+        assert set(sent) == {p.uid for p in r.game.alive() if r.game.can_vote(p.uid)}
+        assert await r.on_vote(1, r.game.day, 0)
+        r.meta["deadline"] = 0  # vaqt tugadi
+        await r._step()
+        await asyncio.sleep(0.2)  # fondagi o'chirish
+        assert sorted(bot.deleted) == sorted((u, m) for u, m in sent.items() if u != 1) and not r.prompts
     asyncio.run(go())
 
 

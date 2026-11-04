@@ -315,8 +315,8 @@ async def cb_confirm(cq: CallbackQuery):
 # ---------- pul o'tkazish va tarqatish ----------
 MAX_AMOUNT = 10 ** 9
 _refresh: dict[int, asyncio.Task] = {}  # giveaway_id -> kechiktirilgan tahrir
-# Avto-bosuvchi botlarga qarshi: xabar chiqqan payt va juda tez bosganlar (xotirada; restartdan keyin kechikish yo'q)
-# ponytail: yozuvlar o'chirilmaydi - bir tarqatmaga bir necha bayt, o'sishi sezilarli bo'lsa expire_giveaway da tozalash
+# Avto-bosuvchi botlarga qarshi: xabar chiqqan payt va juda tez bosganlar (xotirada; restartdan keyin kechikish yo'q).
+# Muddat tugaganda expire_giveaway tozalaydi
 _shown: dict[int, float] = {}  # giveaway_id -> time.monotonic()
 _early: set[tuple[int, int]] = set()  # (giveaway_id, uid)
 
@@ -364,6 +364,10 @@ async def cb_giveaway(cq: CallbackQuery, bot: Bot):
     if key in _early or time.monotonic() - _shown.get(gid, 0) < config.CLAIM_DELAY:
         _early.add(key)  # keyin qayta bosib ham ololmaydi
         return await cq.answer(texts.GIVEAWAY_EARLY, show_alert=True)
+    # ochiq guruhda a'zo bo'lmagan ham xabarni ko'radi: tarqatma faqat a'zolarga (xato bo'lsa ham bermaymiz)
+    m = await _call(bot.get_chat_member, cq.message.chat.id, cq.from_user.id)
+    if not m or m.status in ("left", "kicked") or (m.status == "restricted" and not getattr(m, "is_member", True)):
+        return await cq.answer(texts.GIVEAWAY_MEMBERS, show_alert=True)
     g = await db.claim(gid, cq.from_user.id) if me else None
     if not g:
         return await cq.answer(texts.GIVEAWAY_NO)
@@ -391,6 +395,8 @@ async def _refresh_giveaway(bot: Bot, chat_id: int, msg_id: int, gid: int) -> No
 async def expire_giveaway(bot: Bot, gid: int, delay: float) -> None:
     """Muddat tugadi: olinmagan ulushlar egasiga qaytadi, xabar tugmasiz qoladi va pindan olinadi."""
     await asyncio.sleep(max(0.0, delay))
+    _shown.pop(gid, None)  # muddat o'tdi: avto-bosish yozuvlari endi kerak emas
+    _early.difference_update({k for k in _early if k[0] == gid})
     for _ in range(5):  # shu payt kimdir olayotgan bo'lsa, qayta urinish
         g, refund = await db.close_giveaway(gid)
         if refund >= 0:

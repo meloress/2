@@ -604,15 +604,16 @@ def month_range(key: str) -> tuple[datetime, datetime]:
     return start, datetime(*nxt, 1, tzinfo=timezone.utc) - TASHKENT
 
 
-def _board(chat_id: int | None, month: str | None):
+def _board(chat_id: int | None, month: str | None, ranked: bool = False):
     """(uid, ism, g'alabalar, o'yinlar) so'rovi, reyting tartibida. Ban qilinganlar va 0 o'yinlilar kirmaydi.
-    Teng bo'lsa: kam o'yinda yutgan yuqorida, keyin uid (tartib har doim bir xil)."""
+    Teng bo'lsa: kam o'yinda yutgan yuqorida, keyin uid (tartib har doim bir xil).
+    ranked: tartiblash o'rniga "pos" ustuni (o'rin, SQL window) - place() uchun."""
     if chat_id is None and month is None:
         wins, games = User.wins, User.games
-        q = select(User.telegram_id, User.full_name, wins, games).where(User.games > 0)
+        q = select(User.telegram_id, User.full_name, wins.label("w"), games.label("g")).where(User.games > 0)
     else:
         wins, games = func.sum(func.cast(GamePlayer.won, Integer)), func.count()
-        q = (select(User.telegram_id, User.full_name, wins, games)
+        q = (select(User.telegram_id, User.full_name, wins.label("w"), games.label("g"))
              .join(User, User.telegram_id == GamePlayer.user_id).group_by(User.telegram_id, User.full_name))
         if chat_id is not None:
             q = q.where(GamePlayer.chat_id == chat_id)
@@ -620,7 +621,9 @@ def _board(chat_id: int | None, month: str | None):
             start, end = month_range(month)
             q = q.join(GameRow, GameRow.id == GamePlayer.game_id).where(
                 GameRow.status == "finished", GameRow.finished_at >= start, GameRow.finished_at < end)
-    return q.where(User.banned.is_(False)).order_by(wins.desc(), games, User.telegram_id)
+    order = (wins.desc(), games, User.telegram_id)
+    q = q.where(User.banned.is_(False))
+    return q.add_columns(func.row_number().over(order_by=order).label("pos")) if ranked else q.order_by(*order)
 
 
 async def top(chat_id: int | None = None, limit: int = 10, month: str | None = None) -> list[tuple[int, str, int, int]]:
@@ -631,10 +634,11 @@ async def top(chat_id: int | None = None, limit: int = 10, month: str | None = N
 
 async def place(uid: int, month: str | None = None) -> tuple[int, int, int] | None:
     """(o'rin, g'alabalar, o'yinlar) umumiy yoki oylik reytingda; reytingda yo'q bo'lsa None.
-    ponytail: hamma qatorni o'qiydi - o'yinchilar yuz minglab bo'lsa SQL window (rank()) ga o'tish kerak."""
+    O'rinni baza hisoblaydi (row_number): Pythonga faqat bitta qator keladi."""
+    sub = _board(None, month, ranked=True).subquery()
     async with Session() as s:
-        rows = (await s.execute(_board(None, month))).all()
-    return next(((i, w, g) for i, (u, _, w, g) in enumerate(rows, 1) if u == uid), None)
+        row = (await s.execute(select(sub.c.pos, sub.c.w, sub.c.g).where(sub.c.telegram_id == uid))).first()
+    return tuple(row) if row else None
 
 
 class SeasonPayout(Base):

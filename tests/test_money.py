@@ -428,10 +428,15 @@ def test_new_accounts_cannot_send_or_claim_and_ref_paid_after_games():
 def test_fast_clicker_locked_out_of_giveaway():
     """Avto-bosuvchi bot: CLAIM_DELAY ichida bosgan shu tarqatmadan umuman ololmaydi, odam tezligi o'tadi."""
     async def t():
-        a, bot_user, human = BASE + 1200, BASE + 1201, BASE + 1202
+        a, bot_user, human, outsider = BASE + 1200, BASE + 1201, BASE + 1202, BASE + 1203
         await mkuser(a, 100)
         await set_games(a, config.SEND_GAMES)
-        for u in (bot_user, human):
+
+        class Members(FakeBot):
+            async def get_chat_member(self, chat_id, uid):
+                return SimpleNamespace(status="left" if uid == outsider else "member")
+        tg = Members()
+        for u in (bot_user, human, outsider):
             await mkuser(u, 0)
             await set_games(u, config.CLAIM_GAMES)
         m, _ = fake_msg(a)
@@ -444,12 +449,14 @@ def test_fast_clicker_locked_out_of_giveaway():
                 said.append(text)
             await handlers.cb_giveaway(SimpleNamespace(
                 data=f"g:{gid}", from_user=SimpleNamespace(id=uid, full_name="x", username=None), answer=answer,
-                message=SimpleNamespace(chat=SimpleNamespace(id=-5), message_id=1)), None)
+                message=SimpleNamespace(chat=SimpleNamespace(id=-5), message_id=1)), tg)
         await click(bot_user)  # darhol
         assert said[-1] == texts.GIVEAWAY_EARLY and await bal(bot_user) == 0
         handlers._shown[gid] -= config.CLAIM_DELAY  # vaqt o'tdi
         await click(bot_user)  # kutib qayta bossa ham yo'q
         assert said[-1] == texts.GIVEAWAY_EARLY and await bal(bot_user) == 0
+        await click(outsider)  # ochiq guruhni tashqaridan ko'rgan, a'zo emas
+        assert said[-1] == texts.GIVEAWAY_MEMBERS and await bal(outsider) == 0
         await click(human)
         assert await bal(human) == 10
         handlers._refresh.pop(gid).cancel()
