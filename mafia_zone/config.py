@@ -26,7 +26,9 @@ REF_GAMES, CLAIM_GAMES, SEND_GAMES = 3, 3, 5  # taklif bonusi / tarqatmadan olis
 CLAIM_DELAY = 1.0  # tarqatma chiqqandan keyin shuncha soniya ichida bosgan (avto-bosuvchi bot) shu tarqatmadan ololmaydi
 CARD_ADMIN = "jumayeevou"  # karta orqali to'lov: Stars ekranlarida shu adminga havola
 SEASON_PRIZES = [10, 5, 3]  # oylik reyting: 1-, 2-, 3-o'ringa olmos (oy tugagach db.pay_season)
-LEAVE_FREE, LEAVE_FINE, DEBT_LIMIT = 3, 200, -1000  # kuniga 3 ta bepul chiqish; -1000 da o'yinga kirolmaydi
+# /leave o'yin paytida faqat PRO uchun (kuniga pro.leave_free ta bepul, keyin jarima). Oddiy o'yinchida bepul chiqish 0:
+# guruhdan chiqib ketsa darhol jarima. -1000 da o'yinga kirolmaydi
+LEAVE_FREE, LEAVE_FINE, DEBT_LIMIT = 0, 200, -1000
 DIAMOND_RATE = 300  # Exchange: 1 olmos -> 300 dollar
 DIAMONDS_OFF = False  # True = olmos bilan xarid (PRO, Xarid, olmosli buyumlar, Stars->olmos) yopiq: "hali ishlamayapti"
 DOLLAR_PACKS = {1: 300, 2: 600, 3: 800, 4: 1500, 15: 5000, 30: 10000}  # Xarid: olmos -> dollar
@@ -34,7 +36,16 @@ DIAMOND_STARS = {1: 7, 5: 35, 10: 66, 15: 101, 30: 202, 50: 342, 200: 1388, 500:
 NEWS_URL = os.environ.get("NEWS_URL", "").strip()  # yangiliklar kanali, bo'sh bo'lsa tugma chiqmaydi
 SHOP = {"shield": 140, "verbena": 145, "doc": 190}  # dollar
 SHOP_GEMS = {"mask": 1, "votesave": 2}  # olmos (PRO chegirmasi yo'q)
-ROLE_PICKS = {"komissar": 3, "don": 3, "doktor": 2, "kezuvchi": 2}  # rolni tanlab olish, olmos
+# Rolni tanlab olish, olmos (Tinchdan boshqa hamma rol). Narx - vazifaga qarab:
+# 1 - tungi harakati yo'q yoki oddiy; 2 - foydali harakat/maxsus g'alaba; 3 - kuchli (o'ldiradi yoki hal qiladi);
+# 4 - yakka g'olib qotillar va Konchi (o'yinda o'rtacha ~2 💎 qiymatida pul/olmos qazadi: narx undan yuqori)
+ROLE_PICKS = {
+    "komissar": 3, "serjant": 1, "doktor": 2, "daydi": 1, "kezuvchi": 2, "afsungar": 2, "voris": 1, "janob": 1,
+    "ovchi": 2, "donishmand": 1, "suitsid": 2, "qorovul": 2, "podshoh": 1,
+    "mafiya": 1, "don": 3, "jurnalist": 2, "yollanma": 3, "advokat": 2, "aka": 2, "uka": 2,
+    "sotqin": 1, "qotil": 4, "gazabkor": 3, "sehrgar": 4, "vampir": 3, "qaroqchi": 3, "konchi": 4, "tulki": 2,
+    "aferist": 2,
+}
 SHOP_OFF: set[str] = set()  # paneldan sotuvdan olingan buyumlar
 # Bular paneldan o'zgaradi (db.load_settings): kodda doim config.X deb o'qing, "from config import X" emas.
 
@@ -43,4 +54,4 @@ _domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "").strip()
 PANEL_URL = (os.environ.get("PANEL_URL", "").strip() or (f"https://{_domain}" if _domain else "")).rstrip("/")
 PANEL_SECRET = os.environ.get("PANEL_SECRET", "").strip()  # bo'sh bo'lsa BOT_TOKEN dan hosil qilinadi
 PORT = int(os.environ.get("PORT", "8080") or 8080)
-EMOJI_PACK = os.getenv("EMOJI_PACK", "RestrictedEmoji").strip()  # animatsion emoji to'plami; bo'sh = o'chiq
+EMOJI_PACK = ""  # animatsion (pro) emoji to'plami. 2026-11: o'chirilgan - hamma joyda oddiy emoji (env e'tiborsiz)

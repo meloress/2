@@ -12,9 +12,24 @@ U = 7_600_000
 def test_prices_and_catalog():
     assert config.SHOP == {"shield": 140, "verbena": 145, "doc": 190}  # tasodifiy "ticket" endi sotilmaydi
     assert config.SHOP_GEMS == {"mask": 1, "votesave": 2}
-    assert config.ROLE_PICKS == {"komissar": 3, "don": 3, "doktor": 2, "kezuvchi": 2}
+    from mafia_zone.engine.roles import ROLES
+    assert set(config.ROLE_PICKS) == set(ROLES) - {"tinch"}  # Tinchdan boshqa hamma rol sotiladi
+    assert all(1 <= p <= 4 for p in config.ROLE_PICKS.values())
+    assert config.ROLE_PICKS["komissar"] == config.ROLE_PICKS["don"] == 3 and config.ROLE_PICKS["konchi"] == 4
     for c in config.ROLE_PICKS:
         assert f"r_{c}" in texts.ITEMS and len(f"r_{c}") <= 16  # Inventory.item String(16)
+
+
+def test_every_role_pick_lands_when_role_dealt():
+    """Har bir sotiladigan rol: o'yinda bo'lsa xaridorga tushadi, tarkib o'zgarmaydi."""
+    for c in config.ROLE_PICKS:
+        for seed in range(30):
+            g = Game.create(1, [(i, f"p{i}") for i in range(1, 41)], seed, items={7: {f"r_{c}": 1}})
+            before = sorted(p.role for p in g.players)
+            dealt = c in before
+            g.use_role_picks()
+            assert (g.get(7).role == c) == dealt, (c, seed)
+            assert sorted(p.role for p in g.players) == before
 
 
 def test_mask_hides_role_everywhere_public():

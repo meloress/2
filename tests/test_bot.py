@@ -387,8 +387,11 @@ def test_back_to_group_button_on_game_pms():
             assert calls[-1].reply_markup.inline_keyboard[0][0].text == texts.BACK_TO_GROUP
             kb = Kb(inline_keyboard=[[Btn(text="1. Ali", callback_data="a")]])
             await mw(make_request, None, EditMessageText(chat_id=1, message_id=3, text="x", reply_markup=kb))
-            rows = calls[-1].reply_markup.inline_keyboard
-            assert rows[0][0].callback_data == "a" and rows[-1][0].url == url
+            assert calls[-1].reply_markup.inline_keyboard == kb.inline_keyboard  # tanlov tugmalari: qaytish yo'q
+            await mw(make_request, None, EditMessageText(chat_id=1, message_id=3, text="Siz Alini tanladingiz"))
+            assert calls[-1].reply_markup.inline_keyboard[-1][0].url == url  # tanlovdan keyin chiqadi
+            link = Kb(inline_keyboard=[[Btn(text="Kanal", url="https://t.me/x")]])
+            await mw(make_request, None, SendMessage(chat_id=1, text="x", reply_markup=link))
             await mw(make_request, None, EditMessageText(chat_id=1, message_id=3, text="x",
                                                          reply_markup=calls[-1].reply_markup))
             assert len(calls[-1].reply_markup.inline_keyboard) == 2  # ikki marta qo'shilmaydi
@@ -612,6 +615,23 @@ def test_phase_timer_starts_after_buttons_are_sent():
             r.close()
 
     asyncio.run(go())
+
+
+def test_night_submenu_has_back_button():
+    """Komissar "Otish"ni adashib bossa - ⬅️ Orqaga bilan harakat tanlashga qaytadi. Bitta harakatli rolda yo'q."""
+    from mafia_zone.engine.game import Game, Player
+    r = runner.Runner(FakeBot(), -4747, {})
+    r.game = Game(-4747, 1, [Player(1, "a", "komissar"), Player(2, "b", "doktor"), Player(3, "c", "don"),
+                             Player(4, "d", "tinch")])
+    r.game_id = 79
+    cbs = lambda kb: [b.callback_data for row in kb.inline_keyboard for b in row]
+    menu = cbs(r.night_kb(1))
+    assert f"k:79:{r.game.day}:shoot" in menu and not any(c.endswith(":menu") for c in menu)
+    assert len(r.night_kb(1).inline_keyboard[0]) == 2  # Tekshirish | Otish - bitta qatorda
+    sub = r.night_kb(1, "shoot")
+    assert cbs(sub)[-1] == f"k:79:{r.game.day}:menu" and sub.inline_keyboard[-1][0].text == texts.BACK_BTN
+    assert cbs(r.night_kb(1, None)) == menu  # "menu" -> qayta harakat tanlash
+    assert not any(c.endswith(":menu") for c in cbs(r.night_kb(2)))  # Doktor: bitta harakat
 
 
 def test_unanswered_prompts_deleted_when_phase_ends():

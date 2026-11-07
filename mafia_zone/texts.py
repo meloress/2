@@ -69,7 +69,7 @@ def role(code: str) -> str:
 
 # ---------- lobby ----------
 def lobby(members: list[tuple[int, str]], left: int) -> str:
-    body = "\n".join(f"{i}. {mention(u, n)}" for i, (u, n) in enumerate(members, 1)) or "— hali hech kim yo'q —"
+    body = ", ".join(mention(u, n) for u, n in members) or "— hali hech kim yo'q —"  # chapdan o'ngga, raqamsiz
     return (f"🎮 <b>ADMIRAL MAFIA</b> — ro'yxatdan o'tish boshlandi!\n\n"
             f"👥 <b>O'yinchilar ({len(members)}):</b>\n{body}\n\n⏳ Qoldi: <b>{left}</b> soniya")
 
@@ -157,6 +157,11 @@ def left_free(uid: int, name: str, n: int, limit: int) -> str:
             f"Limitdan keyin har bir chiqish <b>-{config.LEAVE_FINE} 💵</b>.")
 
 
+def leave_only_pro(uid: int, name: str) -> str:
+    return (f"🔒 {mention(uid, name)}, o'yin paytida chiqish faqat {pro.badge()} <b>PRO</b> foydalanuvchilar uchun.\n"
+            "O'yinni oxirigacha o'ynang! PRO haqida: botga /pro yozing.")
+
+
 def leave_warn(uid: int, name: str, limit: int) -> str:
     return (f"⚠️ {mention(uid, name)}, diqqat qiling!\n\n"
             f"Siz bugun o'yindan <b>{limit} marta</b> chiqdingiz.\n"
@@ -191,7 +196,6 @@ LEAVE_STAY = "🎮 O'yinda qoldingiz. Omad!"
 NOT_YOUR_BTN = "❌ Bu tugma siz uchun emas"
 ONLY_STARTER = "⚠️ O'yinni faqat guruh adminlari yoki /game bosgan odam boshlay oladi."
 ONLY_STARTER_EXTEND = "⚠️ Ro'yxatni faqat guruh adminlari yoki /game bosgan odam uzaytira oladi."
-EXTEND_MAX = "⏳ Ro'yxat allaqachon 10 daqiqaga uzaytirilgan — bundan ko'p bo'lmaydi."
 GROUP_ONLY = "Bu buyruq guruhda ishlaydi."
 
 
@@ -788,7 +792,7 @@ PAY_REFUNDED = ("⚠️ Texnik xato tufayli xarid amalga oshmadi — <b>⭐ Star
                 "Birozdan keyin qaytadan urinib ko'ring.")
 PAY_FAILED = "⚠️ To'lovda texnik xato bo'ldi. /paysupport orqali adminga yozing — muammo hal qilinadi."
 
-PRO_BTN = "PRO akkaunt"  # tugmada PRO belgisi ikonka bo'lib turadi
+PRO_BTN = "🌟 PRO akkaunt"
 PRO_NO_DIAMONDS = "😔 Olmos yetarli emas. Olmos Konchi qazishidan chiqadi — yoki ⭐ Stars bilan oling."
 NICK_ONLY_PRO = "🏷 Laqab faqat PRO foydalanuvchilar uchun. Batafsil: /pro"
 NICK_CLEARED = "✅ Laqab o'chirildi. O'yinlarda Telegram ismingiz ko'rinadi."
@@ -813,7 +817,7 @@ def pro_info(uid: int) -> str:
             "💬 <b>Kunduzi yozish</b> — o'yinda bo'lmasangiz ham muhokamaga qo'shiling\n"
             f"💵 <b>G'alaba puli x1.5</b> — {win} o'rniga {win * 3 // 2} 💵\n"
             "🛒 <b>Do'konda -25%</b> chegirma\n"
-            f"🚪 <b>Kuniga 5 ta</b> bepul chiqish (oddiylarga {config.LEAVE_FREE} ta)\n"
+            "🚪 <b>O'yindan chiqish</b> (/leave) — kuniga 5 ta bepul (faqat PRO)\n"
             "✨ <b>Maxsus profil</b> — PRO sarlavha va muddat"
             f"{have}\n\n🛒 <b>Sotib olish usulini tanlang:</b>" + card_note())
 
@@ -876,9 +880,14 @@ ROLE_SHOP_BTN = "🃏 Rolni tanlab olish"
 
 
 def roles_shop(diamonds: int) -> str:
-    rows = "\n".join(f"{role(c)} — <b>{p} 💎</b>" for c, p in config.ROLE_PICKS.items())
-    return (f"🃏 <b>Rolni tanlab olish</b>\n\n💎 Balans: <b>{diamonds}</b>\n\n{rows}\n\n"
-            f"<i>{ITEM_ABOUT['r_don']}. Profilda 🔴 OFF qilsangiz, saqlanib turadi.</i>")
+    blocks = []
+    for team in (TOWN, MAFIA, NEUTRAL):
+        rows = [f"{role(c)} — <b>{p} 💎</b>" for c, p in config.ROLE_PICKS.items() if ROLES[c].team == team]
+        if rows:
+            blocks.append(f"<b>{TEAM[team]}</b>\n" + "\n".join(rows))
+    return (f"🃏 <b>Rolni tanlab olish</b>\n\n💎 Balans: <b>{diamonds}</b>\n\n" + "\n\n".join(blocks) + "\n\n"
+            f"<i>{ITEM_ABOUT['r_don'].capitalize()}. Ba'zi rollar faqat ko'p kishilik o'yinlarda chiqadi "
+            "(yakka qotillar — 12 kishidan). Profilda 🔴 OFF qilsangiz, saqlanib turadi.</i>")
 
 
 BOUGHT = "✅ Sotib olindi!"
@@ -1028,17 +1037,18 @@ VERBS = ["vahshiylarcha o'ldirildi.", "shafqatsizlarcha o'ldirildi.", "tongni ko
 def alive_composition(g: Game) -> str:
     out = []
     masked = [p for p in g.alive() if p.items.get("mask", 0) > 0]
-    for team, label in ((MAFIA, "🤵🏻 Mafiya"), (NEUTRAL, "👤 Yakka rollar"), (TOWN, "🏘 Tinch aholi")):
+    # Ko'rinish: "🤵🏻 Mafiya - 8" sarlavha, ostida "🤵🏼 𝐌𝐚𝐟𝐢𝐲𝐚 - 6, 🤵🏻 𝐃𝐨𝐧" (bir xil rollar soni bilan)
+    for team, label in ((MAFIA, "🤵🏻 Mafiya"), (NEUTRAL, "👤 Yakka rollar"), (TOWN, "🏘 Tinch aholilar")):
         ps = [p for p in g.alive() if p.team == team and p not in masked]
         if not ps:
             continue
         counts: dict[str, int] = {}
         for p in ps:
             counts[p.role] = counts.get(p.role, 0) + 1
-        roles = ", ".join(role(c) + (f" ×{k}" if k > 1 else "") for c, k in counts.items())
-        out.append(f"<b>{label} — {len(ps)}</b>\n{roles}")
+        roles = ", ".join(role(c) + (f" - {k}" if k > 1 else "") for c, k in counts.items())
+        out.append(f"<b>{label} - {len(ps)}</b>\n{roles}")
     if masked:  # jamoasi ham ko'rinmaydi
-        out.append(f"<b>{MASKED} — {len(masked)}</b>")
+        out.append(f"<b>{MASKED} - {len(masked)}</b>")
     return "\n\n".join(out) + f"\n\n<b>Jami: {len(g.alive())}</b>"
 
 

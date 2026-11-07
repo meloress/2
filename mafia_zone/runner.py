@@ -137,7 +137,9 @@ def back_url(chat_id: int) -> str | None:
 
 
 class BackToGroup(BaseRequestMiddleware):
-    """O'yin (va ro'yxat) paytida o'yinchiga botdagi har xabar oxirida "Guruhga qaytish" tugmasi."""
+    """O'yin (va ro'yxat) paytida o'yinchiga botdagi xabar oxirida "Guruhga qaytish" tugmasi.
+    Tanlov tugmali xabarlarda (ovoz, tungi harakat, 👍/👎 - callback tugmalar) chiqmaydi: tanlov chalkashmasin.
+    Tanlov qilingach (xabar tugmasiz "tanladingiz" bo'lib tahrirlanadi) - chiqadi."""
 
     async def __call__(self, make_request, bot, method):
         chat = getattr(method, "chat_id", None)
@@ -149,6 +151,8 @@ class BackToGroup(BaseRequestMiddleware):
                 LAST_MSG[chat] = res.message_id
             return res
         kb = getattr(method, "reply_markup", None)
+        if isinstance(kb, Kb) and any(b.callback_data for row in kb.inline_keyboard for b in row):
+            return await make_request(bot, method)  # tanlov tugmalari: guruhga qaytish yo'q
         if (isinstance(method, (SendMessage, EditMessageText, EditMessageReplyMarkup)) and (r := PLAYING.get(chat))
                 and (url := back_url(r.chat_id)) and (kb is None or isinstance(kb, Kb))):
             rows = [row for row in (kb.inline_keyboard if kb else []) if not any(b.text == texts.BACK_TO_GROUP for b in row)]
@@ -209,7 +213,7 @@ def profile_kb(inv, uid: int | None = None) -> Kb:
 
 
 def pro_btn() -> Btn:
-    return Btn(text=texts.PRO_BTN, callback_data="m:pro", icon_custom_emoji_id=pro.BADGE_ID)
+    return Btn(text=texts.PRO_BTN, callback_data="m:pro")
 
 
 def back_btn() -> Btn:
@@ -330,7 +334,7 @@ class Runner:
             self.lobby_dirty = True
         return texts.JOINED
 
-    def extend(self, secs: int = 30) -> None:
+    def extend(self, secs: int = 60) -> None:
         self.lobby_deadline += secs
         self.lobby_dirty = True
 
@@ -650,14 +654,16 @@ class Runner:
         pre = f"{self.game_id}:{g.day}"
         skip = [Btn(text=texts.SKIP_NIGHT_BTN, callback_data=f"a:{pre}:{SKIP}:0")]  # har menyuda pastda
         if kind is None and len(acts) > 1:
-            return Kb(inline_keyboard=[[Btn(text=ACTION_LABELS[k], callback_data=f"k:{pre}:{k}")]
-                                       for k in acts] + [skip])
+            # harakatlar bitta qatorda yonma-yon (🔍 Tekshirish | 🔫 Otish)
+            return Kb(inline_keyboard=[[Btn(text=ACTION_LABELS[k], callback_data=f"k:{pre}:{k}") for k in acts], skip])
         kind = kind or acts[0]
+        # bir nechta harakatli rol (Komissar: tekshirish/otish): adashib bossa - harakat tanlashga qaytadi
+        back = [[Btn(text=texts.BACK_BTN, callback_data=f"k:{pre}:menu")]] if len(acts) > 1 else []
         if kind in NO_TARGET:
-            return Kb(inline_keyboard=[[Btn(text=ACTION_LABELS[kind], callback_data=f"a:{pre}:{kind}:0")], skip])
+            return Kb(inline_keyboard=[[Btn(text=ACTION_LABELS[kind], callback_data=f"a:{pre}:{kind}:0")], skip] + back)
         label = self._labeler(uid)
         rows = grid([self._btn(label(t), f"a:{pre}:{kind}:{t}") for t in g.targets(uid, kind)])
-        return Kb(inline_keyboard=rows + [skip])
+        return Kb(inline_keyboard=rows + [skip] + back)
 
     async def on_action(self, uid: int, day: int, kind: str, target: int) -> bool:
         async with self.lock:

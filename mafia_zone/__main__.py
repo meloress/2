@@ -12,13 +12,13 @@ from .handlers import pro_reminder, restore_giveaways, router, season_payouts
 
 GROUP_COMMANDS = [  # guruhdagi buyruqlar menyusi
     BotCommand(command="game", description="🎮 Yangi o'yin"),
-    BotCommand(command="extend", description="⏳ Ro'yxatni uzaytirish: /extend yoki /extend 60"),
+    BotCommand(command="extend", description="⏳ Ro'yxatni uzaytirish (daqiqa): /extend yoki /extend 5"),
     BotCommand(command="begin", description="▶️ Darhol boshlash (admin)"),
     BotCommand(command="couplegame", description="💞 Paralar o'yini"),
     BotCommand(command="couplestart", description="❤️ Paralar o'yinini boshlash"),
     BotCommand(command="couplestop", description="💔 Paralar o'yinini to'xtatish (admin)"),
     BotCommand(command="stop", description="🛑 O'yinni to'xtatish (admin)"),
-    BotCommand(command="leave", description="🚪 O'yindan chiqish"),
+    BotCommand(command="leave", description="🚪 O'yindan chiqish (PRO)"),
     BotCommand(command="next", description="🔔 Keyingi o'yinda xabar berish"),
     BotCommand(command="players", description="👥 Tiriklar va o'liklar"),
     BotCommand(command="send", description="💸 Pul: /send 100 10 yoki reply + /send 100"),

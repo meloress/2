@@ -1,8 +1,9 @@
 """/send: o'tkazish va tarqatish. Pul hech qachon yo'qolmasin, ikki marta berilmasin."""
 import asyncio
+from datetime import timedelta
 from types import SimpleNamespace
 
-from mafia_zone import config, db, handlers, runner, texts
+from mafia_zone import config, db, handlers, pro, runner, texts
 
 runner.GLOBAL_INTERVAL = 0
 runner.GROUP_PER_MIN = 10 ** 9
@@ -277,24 +278,23 @@ def test_extend_default_custom_cap_and_rights():
             said.append(text)
         base = _t.time()
         r = SimpleNamespace(game=None, lobby_deadline=base, lobby_dirty=False, opener=BASE + 1200)
-        r.extend = lambda secs=30: setattr(r, "lobby_deadline", r.lobby_deadline + secs)
+        r.extend = lambda secs=60: setattr(r, "lobby_deadline", r.lobby_deadline + secs)
         bot = SimpleNamespace(get_chat_member=lambda c, u: asyncio.sleep(0, SimpleNamespace(status="member")))
         handlers.RUNNERS[-78] = r
         msg = lambda uid: SimpleNamespace(chat=SimpleNamespace(id=-78), from_user=SimpleNamespace(id=uid),
                                           sender_chat=None, answer=answer)
         try:
-            await handlers.cmd_extend(msg(BASE + 1201), bot, SimpleNamespace(args="60"))  # begona: ruxsat yo'q
+            await handlers.cmd_extend(msg(BASE + 1201), bot, SimpleNamespace(args="5"))  # begona: ruxsat yo'q
             assert r.lobby_deadline == base and said[-1] == texts.ONLY_STARTER_EXTEND
-            for args, added in ((None, 30), ("60", 90), ("abc", 120)):
+            # son - daqiqa: /extend = 1, /extend 5 = 5, noto'g'ri son = 1; jami 10 daqiqa cheklovi yo'q
+            for args, added in ((None, 60), ("5", 360), ("abc", 420), ("20", 1620)):
                 await handlers.cmd_extend(msg(BASE + 1200), bot, SimpleNamespace(args=args))
-                assert abs(r.lobby_deadline - base - added) < 2, args
+                assert r.lobby_deadline - base == added, args
             await handlers.cmd_extend(msg(BASE + 1200), bot, SimpleNamespace(args="99999"))
-            assert r.lobby_deadline - _t.time() <= 601  # ko'pi bilan 10 daqiqa oldinga
-            await handlers.cmd_extend(msg(BASE + 1200), bot, SimpleNamespace(args="30"))
-            assert said[-1] == texts.EXTEND_MAX
+            assert r.lobby_deadline - base == 1620 + handlers.EXTEND_MAX_MIN * 60  # bitta buyruq ko'pi bilan 60 daq
         finally:
             handlers.RUNNERS.pop(-78, None)
-        assert "60 soniya" in said[2]
+        assert "5 daqiqa" in said[2] and "1 daqiqa" in said[1]
     run(t())
 
 
@@ -330,7 +330,9 @@ def test_leave_limit_fine_and_debt_block():
             sent.append((chat_id, text))
         orig_send, handlers.send = handlers.send, fake_send
         try:
-            for round_ in range(5):  # 3 ta bepul, keyin ogohlantirish + tugmalar
+            for round_ in range(-1, 7):  # -1: PRO emas - chiqa olmaydi; keyin PRO: 5 ta bepul, so'ng ogohlantirish
+                if round_ == 0:
+                    pro.set_user(a, db.now() + timedelta(days=1), None)
                 g = Game(-79, 1, [Player(a, "Ali", "don"), Player(other, "Vali", "tinch")], phase="day")
                 left = []
 
@@ -346,15 +348,18 @@ def test_leave_limit_fine_and_debt_block():
                 m = SimpleNamespace(chat=SimpleNamespace(id=-79), from_user=SimpleNamespace(id=a, full_name="Ali"),
                                     answer=answer)
                 await handlers.cmd_leave(m)
-                if round_ < 3:
-                    assert left == [a] and f"{round_ + 1}/3" in answers[-1][0] and await bal(a) == 100
+                if round_ < 0:
+                    assert not left and "faqat" in answers[-1][0] and "PRO" in answers[-1][0]
+                    continue
+                if round_ < 5:
+                    assert left == [a] and f"{round_ + 1}/5" in answers[-1][0] and await bal(a) == 100
                     continue
                 assert not left and answers[-1][1] is not None  # ogohlantirish, hali chiqmadi
                 deleted = []
 
                 async def delete():
                     deleted.append(1)
-                for who, data in ((other, f"lv:{r.game_id}:{a}:1"), (a, f"lv:{r.game_id}:{a}:{1 if round_ == 4 else 0}")):
+                for who, data in ((other, f"lv:{r.game_id}:{a}:1"), (a, f"lv:{r.game_id}:{a}:{1 if round_ == 6 else 0}")):
                     said = []
 
                     async def cq_answer(text=None, show_alert=False):
@@ -364,7 +369,7 @@ def test_leave_limit_fine_and_debt_block():
                     await handlers.cb_leave(cq)
                     if who == other:
                         assert said == [texts.NOT_YOUR_BTN] and not left
-                if round_ == 3:  # "davom ettirish"
+                if round_ == 5:  # "davom ettirish"
                     assert not left and await bal(a) == 100
                 else:  # "chiqish": -200, minusga tushadi
                     assert left == [a] and await bal(a) == -100 and "jarima" in sent[-1][1]
@@ -372,7 +377,8 @@ def test_leave_limit_fine_and_debt_block():
             handlers.send = orig_send
             handlers.RUNNERS.pop(-79, None)
             handlers.PLAYING.pop(a, None)
-        assert await db.leaves_today(a) == 4
+            pro.set_user(a, None, None)
+        assert await db.leaves_today(a) == 6
         await db.count_leave(a, 1000)  # -1100: o'yinga qo'shila olmaydi
         said = []
 

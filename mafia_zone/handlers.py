@@ -101,20 +101,21 @@ async def cmd_next(msg: Message):
     await msg.reply(texts.NEXT_OK)
 
 
+EXTEND_MAX_MIN = 60
+
+
 @router.message(Command("extend"), GROUPS)
 async def cmd_extend(msg: Message, bot: Bot, command: CommandObject):
-    """/extend - 30 soniya, /extend 60 - 60 soniya. Faqat adminlar va /game bosgan; qolgan vaqt <= 10 daqiqa."""
+    """/extend - 1 daqiqa, /extend 5 - 5 daqiqa (son - daqiqa). Faqat adminlar va /game bosgan.
+    Jami cheklov yo'q; bitta buyruq ko'pi bilan EXTEND_MAX_MIN daqiqa (/extend 99999 adashib yozilsa)."""
     r = RUNNERS.get(msg.chat.id)
     if r and not r.game:
         if msg.from_user.id != r.opener and not await is_admin(bot, msg.chat.id, msg.from_user.id, msg):
             return await msg.answer(texts.ONLY_STARTER_EXTEND)
         arg = (command.args or "").strip()
-        secs = min(600, max(1, int(arg))) if arg.isdigit() else 30
-        secs = max(0, min(secs, int(time.time() + 600 - r.lobby_deadline)))  # ro'yxat cheksiz cho'zilmasin
-        if not secs:
-            return await msg.answer(texts.EXTEND_MAX)
-        r.extend(secs)
-        await msg.answer(f"⏳ Ro'yxatdan o'tish {secs} soniyaga uzaytirildi.")
+        mins = min(EXTEND_MAX_MIN, max(1, int(arg))) if arg.isdigit() else 1
+        r.extend(mins * 60)
+        await msg.answer(f"⏳ Ro'yxatdan o'tish {mins} daqiqaga uzaytirildi.")
 
 
 @router.message(Command("begin", "couplestart"), GROUPS)
@@ -152,13 +153,15 @@ LEAVING: set[int] = set()  # ikki marta bosilsa jarima ikki marta yechilmasin
 
 @router.message(Command("leave"), GROUPS)
 async def cmd_leave(msg: Message):
-    """Kuniga config.LEAVE_FREE ta chiqish bepul, keyingisi tasdiq bilan -LEAVE_FINE (balans minusga tushadi)."""
+    """O'yin paytida faqat PRO: kuniga pro.leave_free ta bepul, keyingisi tasdiq bilan -LEAVE_FINE (balans minusga tushadi)."""
     r, u = RUNNERS.get(msg.chat.id), msg.from_user
     if not r or PLAYING.get(u.id) is not r:
         return
-    if not _in_game(r, u.id):  # ro'yxat bosqichi yoki o'lgan - bepul, sanalmaydi
+    if not _in_game(r, u.id):  # ro'yxat bosqichi yoki o'lgan - hamma uchun bepul, sanalmaydi
         await r.leave(u.id)
         return await msg.answer(f"🚪 {texts.mention(u.id, u.full_name)} o'yindan chiqdi.")
+    if not pro.is_pro(u.id):
+        return await msg.answer(texts.leave_only_pro(u.id, u.full_name))
     n, limit = await db.leaves_today(u.id), pro.leave_free(u.id)
     if n < limit:
         await db.count_leave(u.id)
@@ -720,9 +723,8 @@ def shop_kb(uid: int | None = None) -> Kb:
 
 
 def roles_shop_kb() -> Kb:
-    rows = [[Btn(text=f"{texts.ITEMS['r_' + c]} ({p}💎)", callback_data=f"b:r_{c}")]
-            for c, p in config.ROLE_PICKS.items()]
-    return Kb(inline_keyboard=rows + [[Btn(text=texts.BACK_BTN, callback_data="shop")]])
+    btns = [Btn(text=f"{ROLES[c].name} · {p}💎", callback_data=f"b:r_{c}") for c, p in config.ROLE_PICKS.items()]
+    return Kb(inline_keyboard=grid(btns, 2) + [[Btn(text=texts.BACK_BTN, callback_data="shop")]])
 
 
 def pro_kb() -> Kb:
@@ -964,7 +966,7 @@ async def cb_kind(cq: CallbackQuery):
     r = PLAYING.get(cq.from_user.id)
     if _stale(r, gid, day, NIGHT):
         return await _late(cq, texts.LATE_NIGHT)
-    kb = r.night_kb(cq.from_user.id, kind)
+    kb = r.night_kb(cq.from_user.id, None if kind == "menu" else kind)  # "menu" - ⬅️ Orqaga
     if kb:
         await cq.message.edit_reply_markup(reply_markup=kb)
     await cq.answer()
