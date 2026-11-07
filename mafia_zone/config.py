@@ -32,7 +32,12 @@ LEAVE_FREE, LEAVE_FINE, DEBT_LIMIT = 0, 200, -1000
 DIAMOND_RATE = 300  # Exchange: 1 olmos -> 300 dollar
 DIAMONDS_OFF = False  # True = olmos bilan xarid (PRO, Xarid, olmosli buyumlar, Stars->olmos) yopiq: "hali ishlamayapti"
 DOLLAR_PACKS = {1: 300, 2: 600, 3: 800, 4: 1500, 15: 5000, 30: 10000}  # Xarid: olmos -> dollar
-DIAMOND_STARS = {1: 7, 5: 35, 10: 66, 15: 101, 30: 202, 50: 342, 200: 1388, 500: 3488, 1000: 6984, 2000: 13984}  # olmos -> Stars
+# Olmos paketlari: karta orqali (so'm) va Stars. Ikkalasida paketlar bir xil
+DIAMOND_SUM = {1: 1150, 7: 7850, 15: 16500, 30: 32000, 55: 57000, 100: 100000, 250: 240000, 500: 462500, 1000: 890000}
+DIAMOND_STARS = {1: 6, 7: 39, 15: 83, 30: 160, 55: 285, 100: 500, 250: 1200, 500: 2313, 1000: 4450}
+# Olmos uchun karta raqami: Railway Variables'da CARD_NUMBER (gitga yozilmaydi). Bo'sh - karta to'lovi yopiq
+CARD_NUMBER = "".join(c for c in os.environ.get("CARD_NUMBER", "") if c.isdigit())
+CARD_ORDER_MIN = 7  # karta buyurtmasi shuncha daqiqa amal qiladi ("To'ladim" shu vaqt ichida)
 NEWS_URL = os.environ.get("NEWS_URL", "").strip()  # yangiliklar kanali, bo'sh bo'lsa tugma chiqmaydi
 SHOP = {"shield": 140, "verbena": 145, "doc": 190}  # dollar
 SHOP_GEMS = {"mask": 1, "votesave": 2}  # olmos (PRO chegirmasi yo'q)
@@ -54,4 +59,6 @@ _domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "").strip()
 PANEL_URL = (os.environ.get("PANEL_URL", "").strip() or (f"https://{_domain}" if _domain else "")).rstrip("/")
 PANEL_SECRET = os.environ.get("PANEL_SECRET", "").strip()  # bo'sh bo'lsa BOT_TOKEN dan hosil qilinadi
 PORT = int(os.environ.get("PORT", "8080") or 8080)
-EMOJI_PACK = ""  # animatsion (pro) emoji to'plami. 2026-11: o'chirilgan - hamma joyda oddiy emoji (env e'tiborsiz)
+# Oddiy emoji -> animatsion almashtirish to'plami. 2026-11: o'chirilgan - o'yin matnlarida oddiy emoji (env e'tiborsiz).
+# PRO belgisi (pro.badge/tail, tugma ikonkasi) bunga kirmaydi - u premium bo'lib qoladi
+EMOJI_PACK = ""

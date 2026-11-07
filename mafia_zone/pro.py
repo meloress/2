@@ -6,7 +6,8 @@ from datetime import datetime
 from . import config
 from .emoji import USER
 
-BADGE, TAIL = "🌟", "🔥"  # PRO ismdan oldin va keyin (oddiy emoji)
+BADGE_ID, BADGE_FALLBACK = "5226766493886225846", "🌟"  # ismdan oldin (thecamelot to'plami)
+TAIL_ID, TAIL_FALLBACK = "5220136481720409403", "🔥"  # ismdan keyin
 PACKS = {7: (30, 100), 15: (55, 150), 30: (99, 249)}  # kun -> (olmos, stars)
 CACHE: dict[int, tuple[datetime, str | None]] = {}  # uid -> (tugash vaqti, nickname)
 _BAD_NICK = re.compile(r"@|https?:|t\.me|www\.|\badmin\b|\bbot\b", re.I)  # "Botir", "Admiral" - mumkin
@@ -70,18 +71,17 @@ def name(uid: int, fallback: str) -> str:
     return short(_FAKE.sub(r"\1", fallback) or fallback)
 
 
-# 2026-11: pro (custom) emoji o'chirilgan - PRO belgisi hamma joyda oddiy emoji
 def badge() -> str:
-    return BADGE
+    return f'<tg-emoji emoji-id="{BADGE_ID}">{BADGE_FALLBACK}</tg-emoji>'
 
 
 def tail() -> str:
-    return TAIL
+    return f'<tg-emoji emoji-id="{TAIL_ID}">{TAIL_FALLBACK}</tg-emoji>'
 
 
 def label(uid: int, text: str) -> tuple[str, str | None]:
-    """Tugma uchun: (matn, icon_custom_emoji_id) - ikonka yo'q, belgi matnda."""
-    return (f"{BADGE} PRO {name(uid, text)}", None) if is_pro(uid) else (name(uid, text), None)
+    """Tugma uchun: (matn, icon_custom_emoji_id)."""
+    return (f"PRO {name(uid, text)}", BADGE_ID) if is_pro(uid) else (name(uid, text), None)
 
 
 def price(uid: int, base: int) -> int:

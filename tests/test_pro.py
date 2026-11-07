@@ -17,22 +17,21 @@ def setup_function():
     emoji.DISABLED = False
 
 
-def test_no_premium_emoji_from_bot():
-    """Bot o'zi hech qayerda pro (custom) emoji ishlatmaydi: to'plam o'chiq, PRO belgisi va tugmalar oddiy."""
+def test_game_emoji_plain_but_pro_badge_premium():
+    """O'yin matnlari animatsion emoji'siz (to'plam o'chiq), PRO tarif belgisi esa premium qoladi."""
     from mafia_zone import runner
     assert config.EMOJI_PACK == ""
-    pro.set_user(1, db.now() + timedelta(days=3), None)
-    assert "<tg-emoji" not in texts.mention(1, "Ali") + texts.pro_info(1) + pro.badge() + pro.tail()
-    assert pro.label(1, "Ali")[1] is None and runner.pro_btn().icon_custom_emoji_id is None
+    assert "<tg-emoji" in pro.badge() and "<tg-emoji" in pro.tail()
+    assert runner.pro_btn().icon_custom_emoji_id == pro.BADGE_ID
 
 
 def test_badge_name_and_expiry():
     pro.set_user(1, db.now() + timedelta(days=3), "Shoh<b>")
     assert pro.is_pro(1) and U(pro.name(1, "Ali")) == "Shoh<b>"
     m = texts.mention(1, "Ali")
-    assert "<tg-emoji" not in m and "<b>PRO</b>" in m and "Shoh&lt;b&gt;" in m and "tg://user?id=1" in m
-    # 🌟 PRO <nickname> 🔥 - oddiy emoji
-    assert m.index("🌟") < m.index("<b>PRO</b>") < m.index("Shoh") < m.index("🔥")
+    assert pro.BADGE_ID in m and "<b>PRO</b>" in m and "Shoh&lt;b&gt;" in m and "tg://user?id=1" in m
+    # 🌟 PRO <nickname> 🔥
+    assert m.index("5226766493886225846") < m.index("<b>PRO</b>") < m.index("Shoh") < m.index("5220136481720409403")
     pro.set_user(1, db.now() - timedelta(seconds=1), "Shoh")
     assert not pro.is_pro(1) and U(texts.mention(1, "Ali")) == '<a href="tg://user?id=1">Ali</a>'
 
@@ -42,7 +41,7 @@ def test_perks_numbers():
     assert pro.price(2, 100) == 75 and pro.price(3, 100) == 100
     assert pro.leave_free(2) == 5 and pro.leave_free(3) == config.LEAVE_FREE
     assert pro.win_reward(2) == config.REWARD_WIN * 3 // 2 and pro.win_reward(3) == config.REWARD_WIN
-    assert [(U(t), i) for t, i in (pro.label(2, "Ali"), pro.label(3, "Ali"))] == [("🌟 PRO Ali", None), ("Ali", None)]
+    assert [(U(t), i) for t, i in (pro.label(2, "Ali"), pro.label(3, "Ali"))] == [("PRO Ali", pro.BADGE_ID), ("Ali", None)]
 
 
 def test_check_nick():
@@ -61,12 +60,12 @@ def test_custom_emoji_rejected_falls_back_to_plain():
             raise TelegramBadRequest(method=method, message="Bad Request: custom emoji not allowed")
         return "ok"
 
-    emoji.load({})  # to'plam bo'sh bo'lsa ham matndagi custom emoji tozalanadi (masalan, o'yinchi yozgani)
-    m = SendMessage(chat_id=1, text='<tg-emoji emoji-id="5226766493886225846">🌟</tg-emoji> <b>PRO</b> Ali',
+    emoji.load({})  # to'plam bo'sh bo'lsa ham matndagi PRO belgisi tozalanadi
+    m = SendMessage(chat_id=1, text=f"{pro.badge()} <b>PRO</b> Ali",
                     reply_markup=Kb(inline_keyboard=[[Btn(text="PRO Ali", callback_data="x",
-                                                          icon_custom_emoji_id="5226766493886225846")]]))
+                                                          icon_custom_emoji_id=pro.BADGE_ID)]]))
     assert asyncio.run(emoji.PremiumEmoji()(make_request, None, m)) == "ok"
-    assert calls[-1].text == "🌟 <b>PRO</b> Ali"
+    assert calls[-1].text == f"{pro.BADGE_FALLBACK} <b>PRO</b> Ali"
     assert calls[-1].reply_markup.inline_keyboard[0][0].icon_custom_emoji_id is None
     n = len(calls)  # bir marta rad etilgach: keyingilari darhol oddiy yuboriladi
     assert asyncio.run(emoji.PremiumEmoji()(make_request, None, m)) == "ok" and len(calls) == n + 1
@@ -113,9 +112,11 @@ def test_pro_perks_reward_and_shop():
         before = (await db.get_user(p)).dollars
         assert await db.buy(p, "shield")
         assert before - (await db.get_user(p)).dollars == config.SHOP["shield"] * 3 // 4
-        shop = texts.shop(500, p)
-        assert f"<s>{config.SHOP['shield']}</s>" in shop and "-25%" in shop
-        assert "<s>" not in texts.shop(500, o)
+        assert "-25%" in texts.shop(500, p) and "-25%" not in texts.shop(500, o)
+        from mafia_zone import handlers
+        label = lambda uid: next(b.text for r in handlers.shop_kb(uid).inline_keyboard for b in r
+                                 if b.callback_data == "b:shield")  # narx tugmada
+        assert f"({config.SHOP['shield'] * 3 // 4}💵)" in label(p) and f"({config.SHOP['shield']}💵)" in label(o)
     asyncio.run(t())
 
 
@@ -144,12 +145,12 @@ def test_pro_buttons_profile_and_lobby_name():
     r.game_id = 3
     rows = r.vote_kb(4).inline_keyboard
     b = rows[0][0]
-    assert U(b.text) == "2. 🤵🏼 🌟 PRO Shoh" and b.icon_custom_emoji_id is None
+    assert U(b.text) == "2. 🤵🏼 PRO Shoh" and b.icon_custom_emoji_id == pro.BADGE_ID
     assert U(rows[1][0].text) == "3. Hasan" and rows[1][0].icon_custom_emoji_id is None
     r.close()
     u = SimpleNamespace(telegram_id=5, full_name="Ali", wins=0, dollars=0, diamonds=0, games=0)
     card = texts.profile_card(u, [])
-    assert "🌟" in card and "<tg-emoji" not in card and "Shoh" in card and "gacha" in card
+    assert pro.BADGE_ID in card and "Shoh" in card and "gacha" in card
     assert "gacha" not in texts.profile_card(SimpleNamespace(telegram_id=6, full_name="H", wins=0, dollars=0,
                                                              diamonds=0, games=0), [])
 

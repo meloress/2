@@ -538,6 +538,76 @@ async def add_paid_diamonds(payer: int, target: int, n: int, stars: int, charge_
     return True
 
 
+class CardOrder(Base):
+    """Karta orqali olmos buyurtmasi. Holat: new -> paid (chek yuborildi) -> approved / rejected (admin);
+    new -> cancelled (foydalanuvchi) / expired. Ko'rinadigan ID: TOP-<id>."""
+    __tablename__ = "card_orders"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    payer: Mapped[int] = mapped_column(BigInteger, index=True)
+    target: Mapped[int] = mapped_column(BigInteger)  # olmos kimga tushadi (o'zi yoki do'sti)
+    diamonds: Mapped[int] = mapped_column(Integer)
+    amount: Mapped[int] = mapped_column(Integer)  # so'm
+    status: Mapped[str] = mapped_column(String(16), default="new")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    admin_id: Mapped[int | None] = mapped_column(BigInteger)
+    check_file: Mapped[str | None] = mapped_column(String(256))  # chek (rasm/fayl) Telegram file_id
+    check_uid: Mapped[str | None] = mapped_column(String(64), index=True)  # file_unique_id: bir chek ikki marta
+    reason: Mapped[str | None] = mapped_column(String(16))  # rad etish sababi: n / s / c (texts.REJECT_WHY)
+
+
+async def create_card_order(payer: int, target: int, diamonds: int) -> CardOrder | None:
+    amount = config.DIAMOND_SUM.get(diamonds)
+    if not amount:
+        return None
+    async with Session.begin() as s:
+        o = CardOrder(payer=payer, target=target, diamonds=diamonds, amount=amount)
+        s.add(o)
+        await s.flush()
+        return o
+
+
+async def get_card_order(oid: int) -> CardOrder | None:
+    async with Session() as s:
+        return await s.get(CardOrder, oid)
+
+
+async def open_card_order(payer: int) -> CardOrder | None:
+    """To'lovchining eng oxirgi chek kutayotgan (new) buyurtmasi - bazadan (restartdan keyin ham topiladi)."""
+    async with Session() as s:
+        return await s.scalar(select(CardOrder).where(CardOrder.payer == payer, CardOrder.status == "new")
+                              .order_by(CardOrder.id.desc()).limit(1))
+
+
+async def check_used(check_uid: str, oid: int) -> int | None:
+    """Shu chek (file_unique_id) boshqa buyurtmada yuborilganmi - o'sha buyurtma id."""
+    async with Session() as s:
+        return await s.scalar(select(CardOrder.id).where(CardOrder.check_uid == check_uid, CardOrder.id != oid).limit(1))
+
+
+async def move_card_order(oid: int, frm: str, to: str, **values) -> bool:
+    """Holatni atomar o'zgartiradi (faqat frm holatidan): ikki admin bir vaqtda bossa ham bittasi o'tadi.
+    values - qo'shimcha ustunlar (admin_id, check_file, reason)."""
+    async with Session.begin() as s:
+        r = await s.execute(update(CardOrder).where(CardOrder.id == oid, CardOrder.status == frm)
+                            .values(status=to, **values))
+        return r.rowcount == 1
+
+
+async def approve_card_order(oid: int, admin: int) -> CardOrder | None:
+    """paid -> approved va olmos qabul qiluvchiga - bitta tranzaksiyada. Allaqachon hal qilingan bo'lsa None."""
+    async with Session.begin() as s:
+        r = await s.execute(update(CardOrder).where(CardOrder.id == oid, CardOrder.status == "paid")
+                            .values(status="approved", admin_id=admin))
+        if r.rowcount != 1:
+            return None
+        o = await s.get(CardOrder, oid)
+        s.add(Payment(user_id=o.payer, method="diamonds_card", days=o.diamonds, amount=o.amount, charge_id=f"card:{oid}"))
+        r = await s.execute(update(User).where(User.telegram_id == o.target).values(diamonds=User.diamonds + o.diamonds))
+        if r.rowcount != 1:  # qabul qiluvchi yo'q: hammasi qaytariladi, buyurtma "paid" bo'lib qoladi
+            raise LookupError(f"qabul qiluvchi yo'q: {o.target}")
+        return o
+
+
 async def top_groups(limit: int = 10) -> list[tuple[str, int]]:
     """[(guruh nomi, tugagan o'yinlar)] - eng faol guruhlar."""
     n = func.count(GameRow.id)

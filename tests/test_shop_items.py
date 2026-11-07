@@ -20,6 +20,21 @@ def test_prices_and_catalog():
         assert f"r_{c}" in texts.ITEMS and len(f"r_{c}") <= 16  # Inventory.item String(16)
 
 
+def test_profile_strikes_off_items_and_shows_role_picks():
+    """Profil: OFF buyum ustidan chiziladi (o'yinga olinmaydi), ON - oddiy; sotib olingan rollar alohida qatorda."""
+    inv = [SimpleNamespace(item="shield", qty=2, enabled=True), SimpleNamespace(item="doc", qty=1, enabled=False),
+           SimpleNamespace(item="r_don", qty=1, enabled=True), SimpleNamespace(item="r_komissar", qty=2, enabled=False)]
+    u = SimpleNamespace(telegram_id=U + 900, full_name="Ali", wins=1, games=3, dollars=10, diamonds=2)
+    card = texts.profile_card(u, inv)
+    assert f"{texts.bold('Qalqon')}: 2 ta" in card and f"<s>{texts.bold('Hujjat')}: 1 ta</s>" in card
+    assert f"<s>{texts.bold('Qalqon')}" not in card
+    line = next(x for x in card.split("\n") if x.startswith("🃏"))
+    assert texts.role("don") in line and f"<s>{texts.role('komissar')} ×2</s>" in line
+    assert "Komissar Katani roli" not in card  # rol buyum ro'yxatida takrorlanmaydi
+    empty = texts.profile_card(u, [])
+    assert next(x for x in empty.split("\n") if x.startswith("🃏")).endswith("—")
+
+
 def test_every_role_pick_lands_when_role_dealt():
     """Har bir sotiladigan rol: o'yinda bo'lsa xaridorga tushadi, tarkib o'zgarmaydi."""
     for c in config.ROLE_PICKS:

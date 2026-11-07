@@ -6,7 +6,7 @@ import time
 from aiogram import Bot, F, Router
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command, CommandObject, CommandStart
-from aiogram.types import CallbackQuery, ChatMemberUpdated, ErrorEvent, LabeledPrice, PreCheckoutQuery, InlineKeyboardButton as Btn, InlineKeyboardMarkup as Kb, Message
+from aiogram.types import CallbackQuery, ChatMemberUpdated, CopyTextButton, ErrorEvent, LabeledPrice, PreCheckoutQuery, InlineKeyboardButton as Btn, InlineKeyboardMarkup as Kb, Message
 
 from . import config, db, pro, texts
 from .engine.game import CONFIRM, DAY, FINISHED, NIGHT, VOTING
@@ -643,9 +643,108 @@ def card_btn() -> Btn:
 
 
 def stars_kb(target: int = 0) -> Kb:
-    """target: 0 - o'zim uchun, aks holda sovg'a oluvchi."""
-    btns = [Btn(text=f"💎 {n} = ⭐ {s}", callback_data=f"gs:{n}:{target}") for n, s in config.DIAMOND_STARS.items()]
-    return Kb(inline_keyboard=grid(btns, 2) + [[card_btn()], [Btn(text=texts.BACK_BTN, callback_data="m:gem")]])
+    """target: 0 - o'zim uchun, aks holda sovg'a oluvchi. Orqaga - karta paketlariga."""
+    btns = [Btn(text=f"⭐ {s} = 💎 {n}", callback_data=f"gs:{n}:{target}") for n, s in config.DIAMOND_STARS.items()]
+    return Kb(inline_keyboard=grid(btns, 2) + [[Btn(text=texts.BACK_BTN, callback_data=f"gp:{target}")]])
+
+
+def gem_shop_kb(target: int = 0) -> Kb:
+    """💎 OLMOS DO'KONI: karta paketlari (so'm), Stars, orqaga."""
+    btns = [Btn(text=f"💎 {n} - {texts.som(s)} so'm", callback_data=f"gc:{n}:{target}")
+            for n, s in config.DIAMOND_SUM.items()]
+    return Kb(inline_keyboard=grid(btns, 2) + [[Btn(text=texts.STARS_PAY_BTN, callback_data=f"gx:{target}")],
+                                               [Btn(text=texts.BACK_BTN, callback_data="m:gem")]])
+
+
+def order_kb(o) -> Kb:
+    back = 0 if o.target == o.payer else o.target
+    return Kb(inline_keyboard=[[Btn(text=texts.COPY_CARD_BTN, copy_text=CopyTextButton(text=config.CARD_NUMBER))],
+                               [Btn(text=texts.CANCEL_ORDER_BTN, callback_data=f"ox:{o.id}")],
+                               [Btn(text=texts.BACK_BTN, callback_data=f"gp:{back}")]])
+
+
+async def _gift_name(target: int) -> str | None | bool:
+    """Sovg'a oluvchining ismi (mention); o'zim uchun - None; topilmasa - False."""
+    if not target:
+        return None
+    t = await db.get_user(target)
+    return texts.mention(t.telegram_id, t.full_name) if t else False
+
+
+@router.callback_query(F.data.startswith(("gc:", "gx:", "gp:", "ox:")))
+async def cb_card(cq: CallbackQuery):
+    """Olmos: gp - karta paketlari, gx - Stars paketlari, gc:<olmos>:<target> - karta buyurtmasi (keyin bot
+    chek kutadi: on_check), ox:<id> - bekor qilish."""
+    if not await _user(cq):
+        return await cq.answer(texts.BANNED, show_alert=True)
+    if config.DIAMONDS_OFF:
+        return await cq.answer(texts.DIAMONDS_OFF, show_alert=True)
+    uid = cq.from_user.id
+    kind, _, rest = cq.data.partition(":")
+    if kind in ("gp", "gx", "gc"):
+        n, _, target = rest.rpartition(":") if kind == "gc" else ("", "", rest)
+        target = int(target) if target.isdigit() else 0
+        if (name := await _gift_name(target)) is False:
+            return await cq.answer(texts.WALLET_NO_USER, show_alert=True)
+        if kind == "gp":
+            await show(cq, texts.gem_shop(name), gem_shop_kb(target))
+        elif kind == "gx":
+            await show(cq, texts.stars_menu(name), stars_kb(target))
+        elif not config.CARD_NUMBER:
+            return await cq.answer(texts.card_off(), show_alert=True)
+        elif n.isdigit() and (o := await db.create_card_order(uid, target or uid, int(n))):
+            ASK[uid] = f"chek:{o.id}"  # endi shu yerga yuborilgan rasm - shu buyurtma cheki
+            await show(cq, texts.card_pay(o, config.CARD_NUMBER, name), order_kb(o))
+        return await cq.answer()
+    o = await db.get_card_order(int(rest)) if rest.isdigit() else None
+    if not o or o.payer != uid:
+        return await cq.answer()
+    if not await db.move_card_order(o.id, "new", "cancelled"):
+        return await cq.answer(texts.ORDER_DONE_ALREADY, show_alert=True)
+    if ASK.get(uid) == f"chek:{o.id}":
+        del ASK[uid]
+    await show(cq, texts.ORDER_CANCELLED, _order_back(o))
+    await cq.answer()
+
+
+def _order_back(o) -> Kb:
+    return Kb(inline_keyboard=[[Btn(text=texts.BACK_BTN, callback_data=f"gp:{0 if o.target == o.payer else o.target}")]])
+
+
+def admin_order_kb(oid: int) -> Kb:
+    why = [Btn(text=texts.REJECT_WHY[k], callback_data=f"oa:{oid}:{k}") for k in texts.REJECT_WHY]
+    return Kb(inline_keyboard=[[Btn(text=texts.APPROVE_BTN, callback_data=f"oa:{oid}:1")], why[:2], why[2:]])
+
+
+@router.message(PRIVATE, F.photo | F.document)
+async def on_check(msg: Message):
+    """Karta to'lovi cheki: buyurtma ekranidan keyin yuborilgan rasm/fayl adminlarga ma'lumot bilan boradi."""
+    # Buyurtma bazadan olinadi: ASK xotirada, deploy/restartdan keyin yo'qoladi - chek baribir qabul qilinsin
+    uid = msg.from_user.id
+    asked = ASK.get(uid, "").startswith("chek:")
+    if asked:
+        del ASK[uid]
+    o = await db.open_card_order(uid)
+    if not o:  # chek kutilmayapti: oddiy rasm - e'tiborsiz
+        return
+    if (db.now() - db._aware(o.created_at)).total_seconds() >= config.CARD_ORDER_MIN * 60:  # vaqt o'tdi
+        await db.move_card_order(o.id, "new", "expired")
+        return await msg.answer(texts.order_expired(), reply_markup=_order_back(o)) if asked else None
+    f = msg.photo[-1] if msg.photo else msg.document
+    if not await db.move_card_order(o.id, "new", "paid", check_file=f.file_id, check_uid=f.file_unique_id):
+        return
+    await msg.answer(texts.order_wait(o), reply_markup=_order_back(o))
+    name = await _gift_name(0 if o.target == uid else o.target)
+    caption = texts.order_admin(o, texts.mention(uid, msg.from_user.full_name), msg.from_user.username, name or None,
+                                await db.check_used(f.file_unique_id, o.id))
+    caption = caption.replace(texts.USER_MARK, "")  # send_photo PremiumEmoji'dan o'tmaydi: belgilar o'zimiz olamiz
+    send_file = msg.bot.send_photo if msg.photo else msg.bot.send_document
+    delivered = 0
+    for admin in config.ADMIN_IDS:
+        delivered += bool(await _call(send_file, admin, f.file_id, caption=caption, reply_markup=admin_order_kb(o.id)))
+    if not delivered:  # hech bir adminga yetmadi: foydalanuvchi kutib qolmasin
+        log.error("karta cheki adminga yetmadi: order=%s", o.id)
+        await msg.answer(texts.check_not_delivered(o))
 
 
 @router.callback_query(F.data.startswith(("xd:", "gm:", "gs:")))
@@ -667,7 +766,7 @@ async def cb_wallet(cq: CallbackQuery):
             ASK[uid] = "to"
             await show(cq, texts.ASK_TO, Kb(inline_keyboard=[[Btn(text=texts.BACK_BTN, callback_data="m:gem")]]))
         else:
-            await show(cq, texts.stars_menu(), stars_kb())
+            await show(cq, texts.gem_shop(), gem_shop_kb())
         return await cq.answer()
     n, _, target = rest.partition(":")
     if not (n.isdigit() and int(n) in config.DIAMOND_STARS and target.isdigit()):
@@ -688,13 +787,16 @@ async def _find_user(s: str) -> db.User | None:
 
 async def _answer_ask(msg: Message, ask: str) -> None:
     uid, parts = msg.from_user.id, msg.text.split()
+    if ask.startswith("chek:"):  # chek o'rniga matn yozdi - hali ham chek kutiladi
+        ASK[uid] = ask
+        return await msg.answer(texts.CHECK_NEED_PHOTO)
     if ask == "to":
         t = await _find_user(parts[0]) if len(parts) == 1 else None
         if not t:
             return await msg.answer(texts.WALLET_NO_USER)
         target = 0 if t.telegram_id == uid else t.telegram_id
-        return await msg.answer(texts.stars_menu(texts.mention(t.telegram_id, t.full_name) if target else None),
-                                reply_markup=stars_kb(target))
+        return await msg.answer(texts.gem_shop(texts.mention(t.telegram_id, t.full_name) if target else None),
+                                reply_markup=gem_shop_kb(target))
     if len(parts) != 2 or not parts[1].isdigit() or not 0 < int(parts[1]) <= MAX_AMOUNT:
         return await msg.answer(texts.WALLET_FORMAT)
     if not (t := await _find_user(parts[0])):
@@ -770,10 +872,13 @@ def _pro_payload(payload: str) -> int | None:
     return int(days) if days.isdigit() and int(days) in pro.PACKS else None
 
 
-def _dm_payload(payload: str) -> tuple[int, int] | None:
-    """dm:<olmos>:<target> -> (olmos, target); target 0 - to'lovchining o'zi."""
+def _dm_payload(payload: str, strict: bool = True) -> tuple[int, int] | None:
+    """dm:<olmos>:<target> -> (olmos, target); target 0 - to'lovchining o'zi.
+    strict=False - on_paid uchun: summa pre_checkout'da tekshirilgan; shu orada paketlar o'zgargan bo'lsa ham
+    (deploy) Stars yechilgan - olmos albatta tushsin."""
     p = payload.split(":")
-    if len(p) == 3 and p[0] == "dm" and p[1].isdigit() and p[2].isdigit() and int(p[1]) in config.DIAMOND_STARS:
+    if (len(p) == 3 and p[0] == "dm" and p[1].isdigit() and p[2].isdigit()
+            and (int(p[1]) in config.DIAMOND_STARS or not strict and 0 < int(p[1]) <= 10_000)):
         return int(p[1]), int(p[2])
     return None
 
@@ -794,7 +899,7 @@ async def on_pre_checkout(q: PreCheckoutQuery):
 @router.message(F.successful_payment)
 async def on_paid(msg: Message):
     pay = msg.successful_payment
-    days, dm = _pro_payload(pay.invoice_payload), _dm_payload(pay.invoice_payload)
+    days, dm = _pro_payload(pay.invoice_payload), _dm_payload(pay.invoice_payload, strict=False)
     if not (days or dm):
         return
     uid, charge = msg.from_user.id, pay.telegram_payment_charge_id
@@ -987,6 +1092,40 @@ async def cb_action(cq: CallbackQuery):
 
 # ---------- bot egasi ----------
 OWNER = F.from_user.id.in_(config.ADMIN_IDS)
+
+
+@router.callback_query(F.data.startswith("oa:"), OWNER)
+async def cb_order_admin(cq: CallbackQuery):
+    """Karta to'lovi (chek rasmi ostida): oa:<id>:1 - tasdiqlash (olmos tushadi), oa:<id>:<n|s|c> - sabab bilan
+    rad etish (texts.REJECT_WHY). Bir marta ishlaydi: ikkinchi bosish yoki boshqa admin - "allaqachon"."""
+    _, oid, why = cq.data.split(":")
+    o = await db.get_card_order(int(oid)) if oid.isdigit() else None
+    if not o or (why != "1" and why not in texts.REJECT_WHY):
+        return await cq.answer()
+    if why == "1":
+        try:
+            done = await db.approve_card_order(o.id, cq.from_user.id)
+        except LookupError:  # qabul qiluvchi bazada yo'q: hech narsa o'zgarmadi, buyurtma hali "paid"
+            log.exception("karta buyurtmasi tasdiqlanmadi: order=%s", o.id)
+            return await cq.answer(texts.WALLET_NO_USER, show_alert=True)
+    else:
+        done = o if await db.move_card_order(o.id, "paid", "rejected", admin_id=cq.from_user.id, reason=why) else None
+    if not done:
+        return await cq.answer(texts.ORDER_DONE_ALREADY, show_alert=True)
+    admin = texts.mention(cq.from_user.id, cq.from_user.full_name).replace(texts.USER_MARK, "")
+    await _call(cq.message.edit_caption, caption=texts.order_admin_done(cq.message.html_text, None if why == "1" else why,
+                                                                        admin))
+    await cq.answer()
+    if why != "1":
+        return await send(cq.bot, o.payer, texts.order_rejected(o, why))
+    payer = await db.get_user(o.payer)
+    if o.target != o.payer:  # sovg'a: to'lovchiga va qabul qiluvchiga
+        t = await db.get_user(o.target)
+        await send(cq.bot, o.payer, texts.diamonds_paid(o.diamonds, texts.mention(o.target, t.full_name if t else "?")))
+        await send(cq.bot, o.target, texts.got_money(texts.mention(o.payer, payer.full_name if payer else "?"),
+                                                     o.diamonds, "diamonds"))
+    else:
+        await send(cq.bot, o.payer, texts.diamonds_paid(o.diamonds))
 
 
 @router.message(Command("panel"), PRIVATE)

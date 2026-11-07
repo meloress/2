@@ -792,7 +792,7 @@ PAY_REFUNDED = ("⚠️ Texnik xato tufayli xarid amalga oshmadi — <b>⭐ Star
                 "Birozdan keyin qaytadan urinib ko'ring.")
 PAY_FAILED = "⚠️ To'lovda texnik xato bo'ldi. /paysupport orqali adminga yozing — muammo hal qilinadi."
 
-PRO_BTN = "🌟 PRO akkaunt"
+PRO_BTN = "PRO akkaunt"  # tugmada PRO belgisi ikonka bo'lib turadi
 PRO_NO_DIAMONDS = "😔 Olmos yetarli emas. Olmos Konchi qazishidan chiqadi — yoki ⭐ Stars bilan oling."
 NICK_ONLY_PRO = "🏷 Laqab faqat PRO foydalanuvchilar uchun. Batafsil: /pro"
 NICK_CLEARED = "✅ Laqab o'chirildi. O'yinlarda Telegram ismingiz ko'rinadi."
@@ -838,7 +838,7 @@ INVITE_TEXT = "🎭 Admiral Mafia — Telegramdagi mafiya o'yini! Men bilan o'yn
 
 def profile(u, inv) -> str:
     return (profile_card(u, inv)
-            + "\n\n<i>🟢 ON bo'lgan buyumlar o'yinda o'zi ishlatiladi</i>"
+            + "\n\n<i>🟢 ON bo'lgan buyumlar o'yinda o'zi ishlatiladi, 🔴 OFF (chizilgan) — saqlanib turadi</i>"
             + f"\n\n🤝 Har bir taklif qilingan do'st uchun <b>+{config.REF_BONUS} 💵</b>"
               f"\n<i>(do'stingiz {config.REF_GAMES} ta o'yin o'ynagach beriladi)</i>")
 
@@ -863,17 +863,16 @@ def claim_locked() -> str:
 
 
 def shop(dollars: int, uid: int | None = None, diamonds: int | None = None) -> str:
+    """"Nima sotib olamiz?" - har buyum va nima qilishi; narxlar tugmalarda (handlers.shop_kb)."""
     on = uid is not None and pro.is_pro(uid)
-
-    def cost(i: str, p: int) -> str:
-        return f"<s>{p}</s> <b>{pro.price(uid, p)} 💵</b>" if on else f"<b>{p} 💵</b>"
-    rows = [f"<b>{ITEMS[i]}</b> — {cost(i, p)}\n<i>{ITEM_ABOUT[i]}</i>"
-            for i, p in config.SHOP.items() if i not in config.SHOP_OFF]
-    rows += [f"<b>{ITEMS[i]}</b> — <b>{p} 💎</b>\n<i>{ITEM_ABOUT[i]}</i>" for i, p in config.SHOP_GEMS.items()]
-    rows.append(f"<b>{ROLE_SHOP_BTN}</b> — 💎\n<i>keyingi o'yinda o'zingiz tanlagan rol bilan o'ynaysiz</i>")
+    about = lambda s: s[:1].upper() + s[1:]
+    codes = [i for i in config.SHOP if i not in config.SHOP_OFF] + list(config.SHOP_GEMS)
+    rows = [f"{ITEMS[i]} - {about(ITEM_ABOUT[i])}" for i in codes]
+    rows.append(f"{ROLE_SHOP_BTN} - Oldindan rol sotib olib, keyingi o'yinda shu rol bilan o'ynashingiz mumkin")
     sale = f"\n{pro.badge()} <b>PRO chegirmasi: -25%</b> <i>(dollarli buyumlarga)</i>" if on else ""
     gems = f" · <b>{diamonds} 💎</b>" if diamonds is not None else ""
-    return f"🛒 <b>Do'kon</b>\n\n💰 Balans: <b>{dollars} 💵</b>{gems}{sale}\n\n" + "\n\n".join(rows)
+    return ("🛒 <b>Nima sotib olamiz?</b>\n\n" + "\n\n".join(rows)
+            + f"\n\n💰 Balans: <b>{dollars} 💵</b>{gems}{sale}")
 
 
 ROLE_SHOP_BTN = "🃏 Rolni tanlab olish"
@@ -919,7 +918,90 @@ def card_note() -> str:
 
 
 def stars_menu(target: str | None = None) -> str:
-    return "⭐ <b>STARS ORQALI TO'LOV</b>" + (f"\n\n🎁 Sovg'a: {target}" if target else "") + card_note()
+    return "⭐ <b>STARS ORQALI TO'LOV</b>" + (f"\n\n🎁 Sovg'a: {target}" if target else "")
+
+
+# ---------- olmos: karta orqali (admin tasdiqlaydi) ----------
+def som(n: int) -> str:
+    return f"{n:,}".replace(",", " ")
+
+
+def gem_shop(target: str | None = None) -> str:
+    return ("💎 <b>OLMOS DO'KONI</b>" + (f"\n🎁 Sovg'a: {target}" if target else "")
+            + "\n\nKerakli paketni tanlang:")
+
+
+STARS_PAY_BTN = "⭐ Stars orqali to'lash"
+COPY_CARD_BTN = "📋 Kartani nusxalash"
+CANCEL_ORDER_BTN = "❌ Bekor qilish"
+CHECK_NEED_PHOTO = "📸 Iltimos, to'lov chekini <b>rasm (skrinshot)</b> qilib yuboring."
+APPROVE_BTN = "✅ Tasdiqlash — pul keldi"
+REJECT_WHY = {"n": "❌ Pul kelmadi", "s": "❌ Summa boshqa", "c": "❌ Chek emas"}  # admin tugmalari
+REJECT_TELL = {"n": "pul kartaga kelmadi", "s": "kelgan summa buyurtmadagidan boshqa",
+               "c": "yuborilgan rasm to'lov cheki emas"}  # foydalanuvchiga sabab
+ORDER_CANCELLED = "❌ <b>Buyurtma bekor qilindi.</b>"
+ORDER_DONE_ALREADY = "Bu buyurtma allaqachon ko'rib chiqilgan"
+
+
+def card_off() -> str:
+    return f"💳 Karta orqali to'lov hozircha sozlanmagan. Stars orqali to'lang yoki @{config.CARD_ADMIN} ga yozing."
+
+
+def order_no(oid: int) -> str:
+    return f"TOP-{oid}"
+
+
+def card_pay(o, card: str, target: str | None = None) -> str:
+    """To'lov ekrani. target - sovg'a bo'lsa qabul qiluvchi (mention)."""
+    where = f"do'stingizga: {target}" if target else "hisobingizga"
+    num = " ".join(card[i:i + 4] for i in range(0, len(card), 4))
+    return ("💳 <b>To'lovni amalga oshiring</b>\n\n"
+            f"📦 💎 {o.diamonds} <b>olmos</b> → {where}\n\n"
+            f"💳 <b>Karta</b>: <code>{num}</code>\n"
+            f"💰 <b>To'lov summasi</b>: {som(o.amount)} so'm\n"
+            f"🆔 <b>ID</b>: <code>{order_no(o.id)}</code>\n\n"
+            "⚠️ <b>Muhim</b>: aynan shu summani yuboring (ko'p ham, kam ham emas).\n"
+            "📸 To'lagach, <b>chekni (skrinshot)</b> shu yerga yuboring — admin tekshirib, olmosni hisobga tushiradi.\n\n"
+            f"⏱ To'lov <b>{config.CARD_ORDER_MIN}</b> daqiqa amal qiladi.")
+
+
+def order_wait(o) -> str:
+    return (f"⏳ <b>Chek qabul qilindi, to'lovingiz tekshirilmoqda</b> ({order_no(o.id)}).\n"
+            f"💎 {o.diamonds} olmos · {som(o.amount)} so'm\n\n"
+            "Admin tasdiqlagach, olmos hisobga tushadi va sizga xabar keladi.")
+
+
+def order_expired() -> str:
+    return (f"⌛️ <b>Buyurtma vaqti tugadi</b> ({config.CARD_ORDER_MIN} daqiqa). Yangi buyurtma bering.\n"
+            f"To'lab qo'ygan bo'lsangiz, chek bilan @{config.CARD_ADMIN} ga yozing.")
+
+
+def order_admin(o, payer: str, username: str | None, target: str | None, dup: int | None = None) -> str:
+    """Bot egasiga chek rasmi ostida: tekshirib, tasdiqlaydi yoki sabab bilan rad etadi.
+    dup - shu chek avval yuborilgan buyurtma (bitta skrinshot bilan ikki marta olmos olishga urinish)."""
+    at = f" (@{escape(username)})" if username else ""
+    warn = f"⚠️ <b>Diqqat: bu chek avval #{order_no(dup)} da yuborilgan!</b>\n\n" if dup else ""
+    return (f"{warn}💳 <b>Karta to'lovi #{order_no(o.id)}</b>\n\n"
+            f"👤 {payer}{at} · <code>{o.payer}</code>\n"
+            f"💎 {o.diamonds} olmos" + (f" → 🎁 {target}" if target else "") + "\n"
+            f"💰 Kutilgan summa: <b>{som(o.amount)} so'm</b>\n"
+            f"💳 Karta: ···· {config.CARD_NUMBER[-4:]}\n\n"
+            "Bank ilovangizda <b>aynan shu summa</b> kelganini tekshiring.")
+
+
+def check_not_delivered(o) -> str:
+    return (f"⚠️ Chekingiz adminga yetib bormadi ({order_no(o.id)}). Iltimos, chek va shu ID bilan "
+            f"@{config.CARD_ADMIN} ga yozing.")
+
+
+def order_admin_done(text: str, why: str | None, admin: str) -> str:
+    """why: None - tasdiqlandi, aks holda REJECT_WHY kaliti."""
+    return text + (f"\n\n✅ Tasdiqlandi — {admin}" if why is None else f"\n\n{REJECT_WHY[why]} — {admin}")
+
+
+def order_rejected(o, why: str) -> str:
+    return (f"❌ <b>To'lov tasdiqlanmadi</b> ({order_no(o.id)}): {REJECT_TELL[why]}.\n"
+            f"Xato bo'lsa, chek bilan @{config.CARD_ADMIN} ga yozing.")
 
 
 def ask_send(currency: str) -> str:
@@ -1070,10 +1152,21 @@ def death_pm(hanged: bool) -> str:
     return f"<b>{how}</b>\n💀 So'nggi so'zingizni yozishingiz mumkin.\n⏳ Vaqt: <b>{LAST_WORDS_SECS}</b> soniya"
 
 
+def _item_row(label: str, qty: int, off: bool) -> str:
+    """"🛡 𝐐𝐚𝐥𝐪𝐨𝐧: 2 ta"; o'chirilgan (OFF) buyum ustidan chiziladi - o'yinga olinmaydi."""
+    emo, name = label.split(" ", 1)
+    row = f"{bold(name)}: {qty} ta"
+    return f"{emo} " + (f"<s>{row}</s>" if off else row)
+
+
 def profile_card(u, inv) -> str:
-    have = {i.item: i.qty for i in inv}
-    items = "\n".join(f"{label.split(' ', 1)[0]} {bold(label.split(' ', 1)[1])}: {have.get(code, 0)} ta"
-                      for code, label in ITEMS.items() if code in ALWAYS_SHOWN or have.get(code))
+    have = {i.item: i for i in inv}
+    items = "\n".join(_item_row(label, have[code].qty if code in have else 0, code in have and not have[code].enabled)
+                      for code, label in ITEMS.items()
+                      if not code.startswith("r_") and (code in ALWAYS_SHOWN or code in have and have[code].qty))
+    picks = [(c, i) for c, i in have.items() if c.startswith("r_") and i.qty > 0 and c[2:] in ROLES]
+    named = [(role(c[2:]) + (f" ×{i.qty}" if i.qty > 1 else ""), i.enabled) for c, i in picks]
+    pick = ", ".join(t if on else f"<s>{t}</s>" for t, on in named) or "—"
     end = pro.until(u.telegram_id)
     head = (f"{pro.badge()} <b>{bold('PRO')} · {bold('Admiral Mafia')}</b>" if end
             else f"<b>{bold('Admiral Mafia')}</b>")
@@ -1081,9 +1174,12 @@ def profile_card(u, inv) -> str:
     if end:
         days = max(1, -(-int((end - pro._now()).total_seconds()) // 86400))  # yuqoriga yaxlitlash
         status = f"{pro.badge()} {bold('PRO')}: <b>{end + PRO_TZ:%d.%m.%Y}</b> gacha ({days} kun)\n"
-    games, wins = bold("Jami o'yinlar"), bold("G'alabalar")  # f-string ichida ' ishlatib bo'lmaydi (Python 3.11)
+    # f-string ichida ' ishlatib bo'lmaydi (Python 3.11)
+    games, wins, nxt = bold("Jami o'yinlar"), bold("G'alabalar"), bold("Keyingi o'yindagi rol")
     return (f"{head}\n\n"
-            f"{bold('ID')}: <code>{u.telegram_id}</code>\n👤 {bold('Ism')}: {escape(pro.name(u.telegram_id, u.full_name))}\n"
+            f"{bold('ID')}: <code>{u.telegram_id}</code>\n"
+            f"👤 {bold('Ism')}: <b><i>{escape(pro.name(u.telegram_id, u.full_name))}</i></b>\n"
             f"🎖 {bold('Unvon')}: {rank(u.wins)}\n{status}\n"
             f"💵 {bold('Dollar')}: {u.dollars}\n💎 {bold('Olmos')}: {u.diamonds}\n\n{items}\n\n"
+            f"🃏 {nxt}: {pick}\n\n"
             f"🎲 {games}: {u.games}\n🏆 {wins}: {u.wins}")

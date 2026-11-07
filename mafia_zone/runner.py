@@ -213,7 +213,7 @@ def profile_kb(inv, uid: int | None = None) -> Kb:
 
 
 def pro_btn() -> Btn:
-    return Btn(text=texts.PRO_BTN, callback_data="m:pro")
+    return Btn(text=texts.PRO_BTN, callback_data="m:pro", icon_custom_emoji_id=pro.BADGE_ID)
 
 
 def back_btn() -> Btn:
