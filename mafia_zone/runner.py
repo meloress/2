@@ -163,14 +163,7 @@ async def edit(bot: Bot, chat_id: int, msg_id: int, text: str, kb: Kb | None = N
                        disable_web_page_preview=True)
 
 
-# Tugma ranglari: hujum - qizil, himoya - yashil, axborot - ko'k
-DANGER_KINDS = {"blast", "mafia_kill", "hit", "kill", "bite", "shoot", "curse", "rage", "pair", "sacrifice", "rob", "steal"}
-SAFE_KINDS = {"heal", "guard", "disguise"}
-
-
-def kind_style(kind: str) -> str:
-    return "danger" if kind in DANGER_KINDS else "success" if kind in SAFE_KINDS else "primary"
-
+# Tugmalar rangsiz (oq). Faqat profildagi buyum ON/OFF tugmasi yashil/qizil (profile_kb)
 
 MEDIA = Path(__file__).resolve().parent.parent  # kun.mp4, tun.mp4
 GIF_IDS: dict[str, str] = {}  # fayl -> Telegram file_id (bir marta yuklanadi)
@@ -206,17 +199,17 @@ def profile_kb(inv, uid: int | None = None) -> Kb:
              [Btn(text=texts.BUY_BTN, callback_data="m:buy"), Btn(text=texts.GEM_BTN, callback_data="m:gem")],
              [Btn(text=texts.PAY_BTN, callback_data="m:pay"), Btn(text=texts.GIFT_BTN, callback_data="m:gift")],
              [Btn(text=texts.GROUPS_BTN, callback_data="m:groups"),
-              Btn(text=texts.SHOP_BTN, callback_data="shop", style="primary")]]
+              Btn(text=texts.SHOP_BTN, callback_data="shop")]]
     if config.NEWS_URL:
         rows.append([Btn(text=texts.NEWS_BTN, url=config.NEWS_URL)])
     if uid is not None:
-        rows.append([Btn(text=texts.INVITE_BTN, url=invite_url(uid), style="success")])
+        rows.append([Btn(text=texts.INVITE_BTN, url=invite_url(uid))])
     rows.append([back_btn()])
     return Kb(inline_keyboard=rows)
 
 
 def pro_btn() -> Btn:
-    return Btn(text=texts.PRO_BTN, callback_data="m:pro", style="success", icon_custom_emoji_id=pro.BADGE_ID)
+    return Btn(text=texts.PRO_BTN, callback_data="m:pro", icon_custom_emoji_id=pro.BADGE_ID)
 
 
 def back_btn() -> Btn:
@@ -306,9 +299,8 @@ class Runner:
 
     def _lobby_kb(self) -> Kb:
         if self.couple:  # 💞 qizil tugma
-            return Kb(inline_keyboard=[[Btn(text=texts.COUPLE_JOIN_BTN, url=bot_link(f"join{self.chat_id}"),
-                                            style="danger")]])
-        return Kb(inline_keyboard=[[Btn(text=texts.JOIN_BTN, url=bot_link(f"join{self.chat_id}"), style="success")]])
+            return Kb(inline_keyboard=[[Btn(text=texts.COUPLE_JOIN_BTN, url=bot_link(f"join{self.chat_id}"))]])
+        return Kb(inline_keyboard=[[Btn(text=texts.JOIN_BTN, url=bot_link(f"join{self.chat_id}"))]])
 
     async def _lobby_loop(self) -> None:
         last_edit = time.time()
@@ -381,7 +373,7 @@ class Runner:
             return
         for uid, item in spent:
             await db.change_item(uid, item, -1)
-        role_kb = Kb(inline_keyboard=[[Btn(text=texts.ROLE_BTN, callback_data=f"r:{self.game_id}", style="primary")]])
+        role_kb = Kb(inline_keyboard=[[Btn(text=texts.ROLE_BTN, callback_data=f"r:{self.game_id}")]])
         if self.lobby_msg:
             await edit(self.bot, self.chat_id, self.lobby_msg,
                        texts.couple_started(self.game) if self.couple else texts.game_started(self.game), role_kb)
@@ -453,7 +445,7 @@ class Runner:
         g = self.game
         if ph == NIGHT:
             await send_gif(self.bot, self.chat_id, "tun.mp4", texts.NIGHT_CAPTION,
-                           Kb(inline_keyboard=[[Btn(text="🌙 Botga o'tish", url=bot_link(), style="primary")]]))
+                           Kb(inline_keyboard=[[Btn(text="🌙 Botga o'tish", url=bot_link())]]))
             for p in g.night_actors():
                 if kb := self.night_kb(p.uid):
                     self._prompt(p.uid, await send(self.bot, p.uid, texts.night_prompt(g, p.uid), kb))
@@ -464,7 +456,7 @@ class Runner:
             await send(self.bot, self.chat_id, texts.day_start(g, secs))
         elif ph == VOTING:
             await send(self.bot, self.chat_id, texts.vote_prompt(g, secs),
-                       Kb(inline_keyboard=[[Btn(text="🗳 Ovoz berish", url=bot_link(), style="primary")]]))
+                       Kb(inline_keyboard=[[Btn(text="🗳 Ovoz berish", url=bot_link())]]))
             for p in g.alive():
                 if g.can_vote(p.uid):
                     self._prompt(p.uid, await send(self.bot, p.uid, texts.vote_pm(g), self.vote_kb(p.uid)))
@@ -521,8 +513,8 @@ class Runner:
     def _confirm_kb(self, pm: bool = False) -> Kb:
         pre = f"c:{self.game_id}:{self.game.day}"
         yes, no = ("Osilsin", "Rahm qilinsin") if pm else self.game.confirm_tally()
-        return Kb(inline_keyboard=[[Btn(text=f"👍 {yes}", callback_data=f"{pre}:1", style="success"),
-                                    Btn(text=f"👎 {no}", callback_data=f"{pre}:0", style="danger")]])
+        return Kb(inline_keyboard=[[Btn(text=f"👍 {yes}", callback_data=f"{pre}:1"),
+                                    Btn(text=f"👎 {no}", callback_data=f"{pre}:0")]])
 
     async def _edit_confirm(self, final: bool) -> None:
         g = self.game
@@ -563,13 +555,13 @@ class Runner:
             return f"{g.num(t)}. " + (f"{mates[t]} {text}" if t in mates else text), icon  # raqam - ro'yxatdagi
         return label
 
-    def _btn(self, lab: tuple[str, str | None], data: str, style: str | None) -> Btn:
-        return Btn(text=lab[0], callback_data=data, style=style, icon_custom_emoji_id=lab[1])
+    def _btn(self, lab: tuple[str, str | None], data: str) -> Btn:
+        return Btn(text=lab[0], callback_data=data, icon_custom_emoji_id=lab[1])
 
     def vote_kb(self, uid: int) -> Kb:
         g = self.game
         label = self._labeler(uid)
-        rows = [[self._btn(label(p.uid), f"v:{self.game_id}:{g.day}:{p.uid}", "danger")]
+        rows = [[self._btn(label(p.uid), f"v:{self.game_id}:{g.day}:{p.uid}")]
                 for p in g.alive() if p.uid != uid]  # bir ustunda
         rows.append([Btn(text=texts.SKIP_BTN, callback_data=f"v:{self.game_id}:{g.day}:0")])
         return Kb(inline_keyboard=rows)
@@ -658,14 +650,13 @@ class Runner:
         pre = f"{self.game_id}:{g.day}"
         skip = [Btn(text=texts.SKIP_NIGHT_BTN, callback_data=f"a:{pre}:{SKIP}:0")]  # har menyuda pastda
         if kind is None and len(acts) > 1:
-            return Kb(inline_keyboard=[[Btn(text=ACTION_LABELS[k], callback_data=f"k:{pre}:{k}", style=kind_style(k))]
+            return Kb(inline_keyboard=[[Btn(text=ACTION_LABELS[k], callback_data=f"k:{pre}:{k}")]
                                        for k in acts] + [skip])
         kind = kind or acts[0]
         if kind in NO_TARGET:
-            return Kb(inline_keyboard=[[Btn(text=ACTION_LABELS[kind], callback_data=f"a:{pre}:{kind}:0",
-                                            style=kind_style(kind))], skip])
+            return Kb(inline_keyboard=[[Btn(text=ACTION_LABELS[kind], callback_data=f"a:{pre}:{kind}:0")], skip])
         label = self._labeler(uid)
-        rows = grid([self._btn(label(t), f"a:{pre}:{kind}:{t}", kind_style(kind)) for t in g.targets(uid, kind)])
+        rows = grid([self._btn(label(t), f"a:{pre}:{kind}:{t}") for t in g.targets(uid, kind)])
         return Kb(inline_keyboard=rows + [skip])
 
     async def on_action(self, uid: int, day: int, kind: str, target: int) -> bool:

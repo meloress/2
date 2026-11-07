@@ -779,7 +779,7 @@ def test_couple_game_through_runner():
             lobby = r._lobby_text()
             assert "PARALAR" in lobby and "❤️" in lobby and "jufti kutilmoqda" in lobby and "💞" not in lobby
             assert "Faqat /couple" not in lobby and "\n1. ❤️ " in lobby  # har para yangi qatorda
-            assert r._lobby_kb().inline_keyboard[0][0].style == "danger"
+            assert r._lobby_kb().inline_keyboard[0][0].style is None  # tugmalar rangsiz (faqat profil ON/OFF rangli)
             r.lobby_msg = 1
             await r._start_game()
             g = r.game

@@ -164,8 +164,8 @@ async def cmd_leave(msg: Message):
         await db.count_leave(u.id)
         await r.leave(u.id)
         return await msg.answer(texts.left_free(u.id, u.full_name, n + 1, limit))
-    kb = Kb(inline_keyboard=[[Btn(text=texts.leave_yes_btn(), callback_data=f"lv:{r.game_id}:{u.id}:1", style="danger")],
-                             [Btn(text=texts.LEAVE_NO_BTN, callback_data=f"lv:{r.game_id}:{u.id}:0", style="success")]])
+    kb = Kb(inline_keyboard=[[Btn(text=texts.leave_yes_btn(), callback_data=f"lv:{r.game_id}:{u.id}:1")],
+                             [Btn(text=texts.LEAVE_NO_BTN, callback_data=f"lv:{r.game_id}:{u.id}:0")]])
     await msg.answer(texts.leave_warn(u.id, u.full_name, limit), reply_markup=kb)
 
 
@@ -229,19 +229,17 @@ FLAGS = ("items", "afk", "confirm")
 
 
 def settings_kb(s: dict) -> Kb:
-    on = lambda x: "success" if x else "danger"
-    rows = [[Btn(text=f"{label}: {s[k]} s", callback_data=f"s:{k}", style="primary")] for k, (label, _) in TIMERS.items()]
-    rows.append([Btn(text=f"🎒 Buyumlar: {'✅' if s['items'] else '❌'}", callback_data="s:items", style=on(s["items"]))])
-    rows.append([Btn(text=f"😴 AFK chiqarish: {'✅' if s['afk'] else '❌'}", callback_data="s:afk", style=on(s["afk"]))])
-    rows.append([Btn(text=f"🪢 Osishni tasdiqlash: {'✅' if s['confirm'] else '❌'}", callback_data="s:confirm",
-                     style=on(s["confirm"]))])
-    rows.append([Btn(text="🎭 Rollar", callback_data="s:roles", style="primary")])
+    rows = [[Btn(text=f"{label}: {s[k]} s", callback_data=f"s:{k}")] for k, (label, _) in TIMERS.items()]
+    rows.append([Btn(text=f"🎒 Buyumlar: {'✅' if s['items'] else '❌'}", callback_data="s:items")])
+    rows.append([Btn(text=f"😴 AFK chiqarish: {'✅' if s['afk'] else '❌'}", callback_data="s:afk")])
+    rows.append([Btn(text=f"🪢 Osishni tasdiqlash: {'✅' if s['confirm'] else '❌'}", callback_data="s:confirm")])
+    rows.append([Btn(text="🎭 Rollar", callback_data="s:roles")])
     return Kb(inline_keyboard=rows)
 
 
 def roles_kb(s: dict) -> Kb:
     codes = [c for c in ROLES if c not in CORE]
-    btns = [Btn(text=ROLES[c].name, callback_data=f"s:r:{c}", style="danger" if c in s["disabled"] else "success")
+    btns = [Btn(text=f"{'❌' if c in s['disabled'] else '✅'} {ROLES[c].name}", callback_data=f"s:r:{c}")
             for c in codes]
     rows = [btns[i:i + 2] for i in range(0, len(btns), 2)]
     rows.append([Btn(text="⬅️ Orqaga", callback_data="s:main")])
@@ -344,7 +342,7 @@ async def cmd_send(msg: Message, bot: Bot, command: CommandObject):
             parts = nums[0] // per
             gid = await db.create_giveaway(msg.chat.id, u.id, per, parts, cur)
             if gid:
-                kb = Kb(inline_keyboard=[[Btn(text=texts.GIVEAWAY_BTN, callback_data=f"g:{gid}", style="success")]])
+                kb = Kb(inline_keyboard=[[Btn(text=texts.GIVEAWAY_BTN, callback_data=f"g:{gid}")]])
                 m = await send(bot, msg.chat.id, texts.giveaway(u.full_name, u.id, per, parts, (), cur), kb)
                 if m:
                     _shown[gid] = time.monotonic()  # await dan oldin: birinchi bosish bundan keyin keladi
@@ -382,7 +380,7 @@ async def _refresh_giveaway(bot: Bot, chat_id: int, msg_id: int, gid: int) -> No
         g = await db.get_giveaway(gid)
         sender = await db.get_user(g.sender_id)
         kb = None if g.left <= 0 else Kb(inline_keyboard=[[Btn(text=f"{texts.GIVEAWAY_BTN} ({g.left})",
-                                                               callback_data=f"g:{gid}", style="success")]])
+                                                               callback_data=f"g:{gid}")]])
         await edit(bot, chat_id, msg_id, texts.giveaway(sender.full_name if sender else "?", g.sender_id,
                                                         g.per, g.parts, await db.giveaway_takers(gid),
                                                         g.currency or "dollars"), kb)
@@ -458,8 +456,8 @@ async def cmd_couple(msg: Message, bot: Bot, command: CommandObject):
     if await db.partner(uid):
         return await msg.reply(texts.COUPLE_THEY_TAKEN)
     kb = Kb(inline_keyboard=[[
-        Btn(text="✅ Tasdiqlash", callback_data=f"cp:{me.telegram_id}:{uid}:1", style="success"),
-        Btn(text="❌ Bekor qilish", callback_data=f"cp:{me.telegram_id}:{uid}:0", style="danger")]])
+        Btn(text="✅ Tasdiqlash", callback_data=f"cp:{me.telegram_id}:{uid}:1"),
+        Btn(text="❌ Bekor qilish", callback_data=f"cp:{me.telegram_id}:{uid}:0")]])
     await send(bot, msg.chat.id, texts.couple_request(me.telegram_id, me.full_name, uid, name), kb)
 
 
@@ -562,7 +560,7 @@ def start_kb(uid: int | None = None, groups=()) -> Kb:
     # admin=...: guruhga qo'shishda kerakli huquqlar so'raladi (xabar o'chirish, cheklash, pin)
     add = bot_link() + "?startgroup=true&admin=delete_messages+restrict_members+pin_messages"
     rows = [[Btn(text="🎮 O'yinni guruhingizga qo'shing", url=add)],
-            [Btn(text="🏆 Reyting", callback_data="m:top", style="danger")]]
+            [Btn(text="🏆 Reyting", callback_data="m:top")]]
     # guruh topolmaganlar uchun: eng faol ochiq guruhlar, faqat nomi (bosilsa guruh ochiladi)
     rows += [[Btn(text=f"{texts.PLACES[i]} {pro.short(t)}", url=f"https://t.me/{u}")] for i, (t, u) in enumerate(groups)]
     if config.NEWS_URL:
@@ -570,7 +568,7 @@ def start_kb(uid: int | None = None, groups=()) -> Kb:
     rows += [[Btn(text="🎭 Rollar", callback_data="m:rules"), Btn(text="🛒 Do'kon", callback_data="m:shop")],
              [Btn(text="👤 Mening profilim", callback_data="m:profile")], [pro_btn()]]
     if uid is not None:
-        rows.append([Btn(text=texts.INVITE_BTN, url=invite_url(uid), style="success")])
+        rows.append([Btn(text=texts.INVITE_BTN, url=invite_url(uid))])
     return Kb(inline_keyboard=rows)
 
 
@@ -638,7 +636,7 @@ def prof_back() -> Btn:
 
 def card_btn() -> Btn:
     """Stars o'rniga karta bilan: adminning profili (texts.card_note bilan birga)."""
-    return Btn(text=texts.CARD_BTN, url=f"https://t.me/{config.CARD_ADMIN}", style="success")
+    return Btn(text=texts.CARD_BTN, url=f"https://t.me/{config.CARD_ADMIN}")
 
 
 def stars_kb(target: int = 0) -> Kb:
@@ -713,16 +711,16 @@ async def _answer_ask(msg: Message, ask: str) -> None:
 
 def shop_kb(uid: int | None = None) -> Kb:
     price = (lambda p: pro.price(uid, p)) if uid is not None else (lambda p: p)  # PRO: -25%
-    rows = [[Btn(text=f"{texts.ITEMS[i]} ({price(p)}💵)", callback_data=f"b:{i}", style="success")]
+    rows = [[Btn(text=f"{texts.ITEMS[i]} ({price(p)}💵)", callback_data=f"b:{i}")]
             for i, p in config.SHOP.items() if i not in config.SHOP_OFF]
-    rows += [[Btn(text=f"{texts.ITEMS[i]} ({p}💎)", callback_data=f"b:{i}", style="primary")]
+    rows += [[Btn(text=f"{texts.ITEMS[i]} ({p}💎)", callback_data=f"b:{i}")]
              for i, p in config.SHOP_GEMS.items()]
-    rows.append([Btn(text=texts.ROLE_SHOP_BTN, callback_data="shoproles", style="primary")])
+    rows.append([Btn(text=texts.ROLE_SHOP_BTN, callback_data="shoproles")])
     return Kb(inline_keyboard=rows + [[back_btn()]])
 
 
 def roles_shop_kb() -> Kb:
-    rows = [[Btn(text=f"{texts.ITEMS['r_' + c]} ({p}💎)", callback_data=f"b:r_{c}", style="primary")]
+    rows = [[Btn(text=f"{texts.ITEMS['r_' + c]} ({p}💎)", callback_data=f"b:r_{c}")]
             for c, p in config.ROLE_PICKS.items()]
     return Kb(inline_keyboard=rows + [[Btn(text=texts.BACK_BTN, callback_data="shop")]])
 
@@ -730,7 +728,7 @@ def roles_shop_kb() -> Kb:
 def pro_kb() -> Kb:
     """Har paket: olmos va Stars tugmasi yonma-yon."""
     rows = [[Btn(text=f"{d} kun — {dm} 💎", callback_data=f"pro:d:{d}"),
-             Btn(text=f"{d} kun — {st} ⭐", callback_data=f"pro:s:{d}", style="primary")]
+             Btn(text=f"{d} kun — {st} ⭐", callback_data=f"pro:s:{d}")]
             for d, (dm, st) in pro.PACKS.items()]
     return Kb(inline_keyboard=rows + [[card_btn()], [back_btn()]])
 
@@ -1002,8 +1000,7 @@ async def send_panel_link(msg: Message):
     note = ("🔐 <b>Admin panelga kirish</b>\n\nHavola <b>5 daqiqa</b> amal qiladi va faqat <b>bir marta</b> ishlaydi. "
             "Uni hech kimga bermang.")
     if link.startswith("https://"):
-        await msg.answer(note, reply_markup=Kb(inline_keyboard=[[Btn(text="🔐 Panelga kirish", url=link,
-                                                                      style="success")]]))
+        await msg.answer(note, reply_markup=Kb(inline_keyboard=[[Btn(text="🔐 Panelga kirish", url=link)]]))
     else:  # lokal sinov (http): Telegram tugmaga faqat https qabul qiladi
         await msg.answer(f"{note}\n\n<code>{link}</code>")
 
