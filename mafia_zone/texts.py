@@ -242,27 +242,8 @@ NOT_IN_GAME = "Siz bu o'yinda ishtirok etmayapsiz."
 
 
 def role_alert(g: Game, uid: int) -> str:
-    """Guruhdagi tugma uchun qalqib chiquvchi oyna: faqat o'z roli va vazifasi (sheriklar - botda).
-    Oddiy matn, Telegram limiti 200 belgi."""
-    p = g.get(uid)
-    text = f"Siz — {ROLES[p.role].name} siz!\n{ROLES[p.role].about}"
-    return text if len(text) <= 200 else text[:199] + "…"
-
-
-def game_started(g: Game) -> str:
-    """Ro'yxat xabari (tepada) shunga tahrirlanadi. Tarkib bu yerda emas: 1-tun GIF'idan keyin ro'yxat bilan chiqadi."""
-    return _game_started(g)
-
-
-def _game_started(g: Game) -> str:
-    return choice([
-        f"🎬 <b>O'yin boshlandi!</b> Shahar darvozalari yopildi — ichkarida {len(g.players)} kishi qoldi.\n"
-        "Ulardan ba'zilari tinch fuqaro emas... 🤫 Rolingizni botdan bilib oling.",
-        f"🎬 <b>Parda ochildi!</b> {len(g.players)} nafar o'yinchi, bitta shahar va ko'plab sirlar.\n"
-        "Kim do'st, kim dushman — tez orada bilinadi. 🤫 Rolingiz botda.",
-        f"🎬 <b>Admiral Mafia</b> shahriga xush kelibsiz! {len(g.players)} kishining taqdiri hal bo'ladi.\n"
-        "Hech kimga ishonmang... 🤫 Rolingizni botning shaxsiy chatida ko'ring.",
-    ])
+    """Guruhdagi tugma uchun qalqib chiquvchi oyna: faqat roli (vazifasi va sheriklar - botda). Oddiy matn."""
+    return f"Sizning rolingiz: {ROLES[g.get(uid).role].name}"
 
 
 # ---------- tun ----------

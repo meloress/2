@@ -63,6 +63,7 @@ class Player:
     role: str = "tinch"
     alive: bool = True
     items: dict = field(default_factory=dict)  # shield / verbena / doc -> soni
+    used: list = field(default_factory=list)  # shu o'yinda ishlagan himoyalar: har biri o'yinda 1 martadan ko'p emas
     last_target: int | None = None  # Doktor, Kezuvchi, Qorovul: ketma-ket cheklovi
     self_heal_used: bool = False  # eski saqlangan o'yinlar uchun qoldi; endi ishlatilmaydi (cheklov: last_target)
     kills: int = 0  # G'azabkor
@@ -110,9 +111,6 @@ class Game:
         items = items or {}
         players = [Player(uid, name, role, items=dict(items.get(uid, {})))
                    for (uid, name), role in zip(members, roles)]
-        for p in players:
-            if p.items.get("votesave", 0) > 1:
-                p.items["votesave"] = 1  # bir o'yinda bir martadan ko'p emas
         return cls(chat_id, seed, players, afk_limit=afk_limit, confirm=confirm,
                    max_days=max(MAX_DAYS, len(players)))
 
@@ -267,9 +265,10 @@ class Game:
         return bool(p and p.alive)
 
     def _use(self, p: Player, item: str, ev: list) -> bool:
-        if p.items.get(item, 0) <= 0:
+        if p.items.get(item, 0) <= 0 or item in p.used:  # nechta bo'lsa ham, bir o'yinda bir marta
             return False
         p.items[item] -= 1
+        p.used.append(item)
         ev.append(Event("item_used", p.uid, data={"item": item}))
         return True
 

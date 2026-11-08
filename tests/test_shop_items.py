@@ -75,8 +75,7 @@ def test_rob_never_takes_mask():
 
 def test_votesave_once_per_game():
     g = Game.create(1, [(i, f"p{i}") for i in range(1, 9)], 5, items={1: {"votesave": 3}})
-    assert g.get(1).items["votesave"] == 1  # bir o'yinda bir martadan ko'p emas
-    g.phase = "day"
+    g.phase = "day"  # 3 ta bo'lsa ham bir o'yinda bir marta
     voters = [p.uid for p in g.players if p.uid != 1]
     ev = vote(g, *[(v, 1) for v in voters])
     assert g.get(1).alive and "vote_saved" in [e.kind for e in ev] and "item_used" in [e.kind for e in ev]

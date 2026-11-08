@@ -10,6 +10,7 @@ os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///" + os.path.join(tempfile.mkdt
 
 from mafia_zone import db, pro, runner, texts  # noqa: E402
 from mafia_zone.engine.game import CONFIRM, FINISHED, NIGHT, VOTING  # noqa: E402
+from mafia_zone.engine.roles import ROLES  # noqa: E402
 
 from test_engine import play_random  # noqa: E402
 
@@ -243,6 +244,8 @@ def test_testgame_bots_play_to_the_end():
         roster = group[night + 1]
         assert start < night and roster.startswith("<b>Tirik o'yinchilar:</b>\n1. ") and "Jami: 12" in roster
         assert sum(t.startswith("<b>Tirik o'yinchilar:</b>") for t in group[:night + 2]) == 1
+        p = r.game.players[0]  # "🎭 Sizning rolingiz" - faqat rol nomi, vazifasiz
+        assert texts.role_alert(r.game, p.uid) == f"Sizning rolingiz: {ROLES[p.role].name}"
 
     asyncio.run(go())
 

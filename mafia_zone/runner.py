@@ -373,10 +373,11 @@ class Runner:
         for uid, item in spent:
             await db.change_item(uid, item, -1)
         role_kb = Kb(inline_keyboard=[[Btn(text=texts.ROLE_BTN, callback_data=f"r:{self.game_id}")]])
-        if self.lobby_msg:
-            await edit(self.bot, self.chat_id, self.lobby_msg,
-                       texts.couple_started(self.game) if self.couple else texts.game_started(self.game), role_kb)
-        await send(self.bot, self.chat_id, texts.GAME_STARTED, role_kb)  # pastda: botga o'tmasdan rolni ko'rish
+        if self.couple and self.lobby_msg:  # paralar ro'yxati tepada qoladi
+            await edit(self.bot, self.chat_id, self.lobby_msg, texts.couple_started(self.game), role_kb)
+        else:  # oddiy o'yin: ro'yxat xabari o'chadi -> "O'YIN BOSHLANDI" -> Tun GIF -> tiriklar va tarkib
+            await self._drop_lobby_msg()
+        await send(self.bot, self.chat_id, texts.GAME_STARTED, role_kb)  # botga o'tmasdan rolni ko'rish
 
         for p in self.game.players:
             await send(self.bot, p.uid, texts.role_card(self.game, p.uid))

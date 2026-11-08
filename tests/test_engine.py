@@ -238,6 +238,17 @@ def test_shield():
     assert g.get(2).alive and g.get(2).items["shield"] == 0
 
 
+def test_item_works_once_per_game():
+    """5 ta qalqon bo'lsa ham bir o'yinda faqat bir marta ishlaydi; qolgani o'yindan keyinga qoladi."""
+    g = mk("don", "tinch", "tinch", "tinch", "tinch", "tinch", "tinch", p2={"shield": 5})
+    night(g, (1, "mafia_kill", 2))
+    assert g.get(2).alive and g.get(2).items["shield"] == 4
+    g = Game.from_dict(g.to_dict())  # saqlash/tiklashdan keyin ham eslab qoladi
+    g.phase = "night"
+    ev = night(g, (1, "mafia_kill", 2))
+    assert not g.get(2).alive and g.get(2).items["shield"] == 4 and "item_used" not in [e.kind for e in ev]
+
+
 def test_aferist_steals_kill_and_check():
     g = mk("don", "aferist", "tinch", "tinch", "tinch", "tinch", "komissar", "tinch")
     ev = night(g, (1, "mafia_kill", 3), (2, "steal", 1))
