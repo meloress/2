@@ -39,8 +39,13 @@ async def drop_double_taps(handler, cq: CallbackQuery, data):
 
 @router.message.outer_middleware()
 async def drop_commands(handler, msg: Message, data):
-    """Guruhda botga yozilgan /buyruq ishlangandan keyin o'chiriladi (chat toza tursin)."""
+    """Guruhda botga yozilgan /buyruq ishlangandan keyin o'chiriladi (chat toza tursin).
+    Kanal nomidan yozilgan buyruq ishlamaydi: Telegram hamma kanallarni bitta soxta Channel_Bot
+    foydalanuvchisi qilib beradi, aks holda ular bitta umumiy profil bo'lib qolardi."""
     try:
+        sc = getattr(msg, "sender_chat", None)
+        if sc and sc.id != msg.chat.id and (msg.text or "").startswith("/"):
+            return await send(data["bot"], msg.chat.id, texts.AS_CHANNEL)
         return await handler(msg, data)
     finally:
         text = msg.text or ""
@@ -334,7 +339,7 @@ async def cmd_send(msg: Message, bot: Bot, command: CommandObject):
         return await send(bot, msg.chat.id, texts.send_locked(me.games))
     if me:
         u, reply = msg.from_user, msg.reply_to_message
-        target = reply.from_user if reply else None
+        target = reply.from_user if reply and not getattr(reply, "sender_chat", None) else None  # kanal posti - odam emas
         if len(nums) == 1 and target and not target.is_bot and target.id != u.id:
             await db.upsert_user(target.id, target.full_name, target.username)
             if await db.transfer(u.id, target.id, nums[0], cur):
@@ -428,7 +433,7 @@ async def _couple_target(msg: Message, command: CommandObject):
     """Reply, @username yoki ismga bog'langan mention. (uid, ism) yoki None."""
     if msg.reply_to_message and msg.reply_to_message.from_user:
         t = msg.reply_to_message.from_user
-        return None if t.is_bot else (t.id, t.full_name)
+        return None if t.is_bot or getattr(msg.reply_to_message, "sender_chat", None) else (t.id, t.full_name)
     for ent in msg.entities or []:
         if ent.type == "text_mention" and ent.user and not ent.user.is_bot:
             return ent.user.id, ent.user.full_name
@@ -528,6 +533,8 @@ async def cb_vote(cq: CallbackQuery):
 
 # ============ SHAXSIY CHAT ============
 async def _user(msg_or_cq) -> db.User | None:
+    if getattr(msg_or_cq, "sender_chat", None):  # yashirin admin/kanal - soxta umumiy foydalanuvchi
+        return None
     u = msg_or_cq.from_user
     user = await db.upsert_user(u.id, u.full_name, u.username)
     return None if user.banned else user

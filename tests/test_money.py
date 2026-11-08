@@ -89,6 +89,24 @@ def test_group_commands_deleted():
     run(t())
 
 
+def test_channel_commands_ignored():
+    """Kanal nomidan (Channel_Bot) buyruq ishlamaydi; yashirin admin (guruh nomidan) ishlaydi."""
+    async def t():
+        bot = FakeBot()
+        bot.me = lambda: asyncio.sleep(0, SimpleNamespace(username="MafiaZoneBot"))
+        async def handler(m, d):
+            return "ok"
+        async def delete():
+            pass
+        for sc, ok in [(-100777, False), (-5, True)]:
+            m = SimpleNamespace(text="/couple @x", chat=SimpleNamespace(id=-5, type="supergroup"),
+                                sender_chat=SimpleNamespace(id=sc), delete=delete)
+            assert (await handlers.drop_commands(handler, m, {"bot": bot}) == "ok") == ok
+            assert await handlers._user(m) is None  # soxta umumiy foydalanuvchi profil bo'lmaydi
+        assert bot.sent == [texts.AS_CHANNEL]
+    run(t())
+
+
 class FakeBot:
     def __init__(self):
         self.sent = []
