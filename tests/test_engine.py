@@ -247,23 +247,47 @@ def test_aferist_steals_kill_and_check():
     assert checked[0].uid == 2 and checked[0].data["result"] == "don"
 
 
-def test_ovchi_penalty():
-    g = mk("don", "ovchi", "tinch", "tinch", "tinch", "tinch")
-    ev = night(g, (2, "shoot", 3))
-    assert not g.get(3).alive and g.get(2).role == "tinch" and "penalty" in kinds(ev)
-
-
-def test_ovchi_shooting_komissar_shows_ovchi_not_tinch():
-    """Xato: jarimadan keyin "unikiga Tinch aholi kelgan" deb chiqardi."""
+def test_ovchi_checks_at_night_and_kills_by_day():
+    """Ovchi tunda faqat tanlaydi (otish yo'q); tongda roli ochiladi; kunduzi osishgacha o'ldirishi mumkin."""
     from mafia_zone import texts
-    g = mk("don", "ovchi", "komissar", "daydi", "tinch", "tinch", "tinch")
-    ev = night(g, (2, "shoot", 3), (4, "visit", 3))
-    killed = next(e for e in ev if e.kind == "killed")
-    assert killed.data["killer_roles"] == ["ovchi"] and killed.data["role"] == "komissar"
-    assert next(e for e in ev if e.kind == "witness").data["killer_roles"] == ["ovchi"]
-    pub, _ = texts.morning(g, ev)
-    text = next(t for t in pub if "kelgan" in t)
-    assert texts.role("ovchi") in text and texts.role("tinch") not in text and texts.role("komissar") in text
+    from mafia_zone.engine.game import HUNT_FINE
+    g = mk("don", "ovchi", "mafiya", "tinch", "tinch", "tinch", "tinch", "tinch")
+    assert g.available_actions(2) == ["check"]
+    ev = night(g, (2, "check", 3), (1, "mafia_kill", 8))
+    assert g.get(3).alive and g.hunt == [[2, 3]]  # tunda hech kim otilmadi
+    assert next(e for e in ev if e.kind == "checked").data["result"] == "mafiya"
+    _, priv = texts.morning(g, ev)
+    assert not any(u == 2 and "Tekshiruv" in t for u, t in priv)  # Ovchiga tugmali alohida xabar (runner)
+    assert g.hunter_kill(4) is None  # Ovchi emas
+    hev = g.hunter_kill(2)
+    assert not g.get(3).alive and hev[0].kind == "hunted" and hev[0].data == {"role": "mafiya", "fine": 0}
+    assert g.hunter_kill(2) is None and not g.hunt  # bir marta
+    pub, _ = texts.morning(g, hev)
+    assert "murdasi topildi" in pub[0] and texts.role("ovchi") in pub[0] and not any("jarima" in t for t in pub)
+    # tinch aholi: jarima 100-200, kunduzi ovoz berish boshlangach - kech
+    g = mk("don", "ovchi", "tinch", "tinch", "tinch", "tinch", "tinch")
+    night(g, (2, "check", 3))
+    g2 = Game.from_dict(json.loads(json.dumps(g.to_dict())))  # saqlanib, qayta ishga tushsa ham
+    hev = g2.hunter_kill(2)
+    assert HUNT_FINE[0] <= hev[0].data["fine"] <= HUNT_FINE[1] and g2.get(2).role == "ovchi"  # qobiliyat qoladi
+    pub, priv = texts.morning(g2, hev)
+    assert any("jarima" in t for t in pub) and {u for u, _ in priv} >= {2, 3}
+    night(g, (2, "check", 4))
+    g.start_voting()
+    assert g.hunter_kill(2) is None and g.get(4).alive  # osish boshlandi - kech
+
+
+def test_ovchi_hunt_needs_own_check():
+    """Uxlatilgan yoki Aferist o'g'irlagan tekshiruv - o'ldirish huquqi yo'q; nishon tunda o'lsa ham."""
+    g = mk("don", "ovchi", "kezuvchi", "tinch", "tinch", "tinch", "tinch", "tinch")
+    night(g, (2, "check", 4), (3, "block", 2))
+    assert g.hunt == []
+    g = mk("don", "ovchi", "aferist", "tinch", "tinch", "tinch", "tinch", "tinch")
+    night(g, (2, "check", 4), (3, "steal", 2))
+    assert g.hunt == []
+    g = mk("don", "ovchi", "tinch", "tinch", "tinch", "tinch", "tinch", "tinch")
+    night(g, (2, "check", 4), (1, "mafia_kill", 4))
+    assert g.hunt == [] and not g.get(4).alive
 
 
 def test_skip_night_action():
@@ -449,6 +473,13 @@ def play_random(seed: int) -> Game:
                 assert g.submit(p.uid, k, rng.choice(ts) if ts else None)
         g = Game.from_dict(json.loads(json.dumps(g.to_dict())))
         g.resolve_night()
+        if g.phase == FINISHED:
+            return g
+        g = Game.from_dict(json.loads(json.dumps(g.to_dict())))  # Ovchi nishoni (hunt) ham saqlanishi kerak
+        for u, t in list(g.hunt):  # kunduzi: ba'zan o'ldiradi, ba'zan rahm qiladi
+            if rng.random() < 0.5:
+                can = g.phase == DAY and g.get(u).alive and g.get(t).alive  # ikki Ovchi bir nishon: ikkinchisi kech
+                assert bool(g.hunter_kill(u)) == can, (seed, u, t)
         if g.phase == FINISHED:
             return g
         g.start_voting()

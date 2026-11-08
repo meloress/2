@@ -274,7 +274,8 @@ ROLE_PROMPT = {
     "kezuvchi": "💃 Kezuvchi, kimga uyqu dori berasiz? U bu tun hech narsa qila olmaydi va ertaga ovoz bera olmaydi.",
     "daydi": "🍾 Daydi, bu tun qaysi uy oldida tunaysiz? Qotillik bo'lsa, guvoh bo'lasiz.",
     "qorovul": "👨‍🦳 Qorovul, ertaga kimni dordan himoya qilasiz?",
-    "ovchi": "🏹 Ovchi, miltiq o'qlangan. Iz olamizmi yoki o'q uzamizmi? Ehtiyot bo'ling — tinchga tegsa, jazo bor!",
+    "ovchi": "🏹 Ovchi, bu tun kimni kuzatamiz? Tongda uning roli sizga ochiladi — kunduzi o'ldirish yoki rahm "
+             "qilish sizning qo'lingizda.",
     "jurnalist": "👩‍💻 Jurnalist, bu tun kimdan intervyu olamiz? Uning mehmonlarini ko'rasiz.",
     "yollanma": "🕴 Yollanma qotil, buyurtma bor. Kim?",
     "advokat": "👨‍💼 Advokat, qaysi mijozingizni bu tun himoya qilasiz?",
@@ -295,8 +296,7 @@ ROLE_PROMPT = {
 ACT_FEED = {
     ("komissar", "check"): "{r} hujjatlarni tekshirishga ketdi...",
     ("komissar", "shoot"): "{r} pistoletini o'qladi...",
-    ("ovchi", "check"): "{r} iz quvib o'rmonga kirdi...",
-    ("ovchi", "shoot"): "{r} miltig'ini o'qladi...",
+    "ovchi": "{r} shahar himoyasi uchun ketdi...",
     ("gazabkor", "sacrifice"): "{r} o'zini olovga tashlashga tayyorlanmoqda...",
     "don": "{r} navbatdagi o'ljasini tanladi...",
     "mafiya": "{r} nishonga ishora qildi...",
@@ -452,7 +452,7 @@ def victims(ev: list[Event]) -> list[int]:
     out = []
     for e in ev:
         uid = {"killed": e.target, "hanged": e.target, "revenge": e.target, "linked": e.target,
-               "tulki": e.target, "heartbreak": e.target}.get(e.kind)
+               "tulki": e.target, "heartbreak": e.target, "hunted": e.target}.get(e.kind)
         if uid is not None and uid not in out:
             out.append(uid)
     return out
@@ -558,7 +558,8 @@ def morning(g: Game, ev: list[Event]) -> tuple[list[str], list[tuple[int, str]]]
                                 f"{role(e.data['role'])}"))
         elif k == "checked":
             text = f"🔍 Tekshiruv natijasi: {n(e.target)} — {role(e.data['result'])}"
-            priv.append((e.uid, text))
+            if [e.uid, e.target] not in g.hunt:  # Ovchiga - "💀 O'ldirish" tugmali alohida xabar (runner, hunt_pm)
+                priv.append((e.uid, text))
             priv.append((e.target, CHECKED_YOU))  # kim tekshirgani aytilmaydi
             if e.target in masks and e.data["result"] == "tinch":  # Advokatga: niqob ishladi
                 priv.append((masks[e.target], f"🎭 Niqobingiz ishladi: kimdir <b>{n(e.target)}</b>ni tekshirdi "
@@ -599,10 +600,34 @@ def morning(g: Game, ev: list[Event]) -> tuple[list[str], list[tuple[int, str]]]
             for m in g.teammates(e.uid):  # jamoa yangi Don/Komissarni bilsin
                 if m.alive:
                     priv.append((m.uid, f"⭐️ {n(e.uid)} endi {role(e.data['role'])}!"))
-        elif k == "penalty":
-            priv.append((e.uid, "🏹 O'qingiz begunoh odamga tegdi! Vijdon azobi sizni qurolsiz qoldirdi."))
+        elif k == "hunted":  # Ovchi kunduzi o'ldirdi (Game.hunter_kill)
+            victim = f"{shown_role(g, e.target, e.data['role'])} — <b>{n(e.target)}</b>"
+            pub.append(f"🏹 Bugun noxush hodisa yuz berdi: aholidan {victim}ning murdasi topildi.\n"
+                       f"Aytishlaricha, bu {role('ovchi')}ning ishi.")
+            if fine := e.data["fine"]:
+                if shown_role(g, e.target, e.data["role"]) != f"<b>{MASKED}</b>":  # maska: jarima ham rolni ochmasin
+                    pub.append(f"💸 {role('ovchi')} tinch fuqaroni o'ldirgani uchun <b>{fine} 💵</b> jarima to'ladi.")
+                priv.append((e.uid, f"💸 Siz tinch fuqaroni o'ldirdingiz: <b>{fine} 💵</b> jarima — pul "
+                                    f"<b>{n(e.target)}</b>ga o'tdi."))
+                priv.append((e.target, f"💵 Ovchi jarimasi: <b>{fine} 💵</b> hisobingizga tushdi."))
+            else:
+                priv.append((e.uid, f"🎯 Siz <b>{n(e.target)}</b>ni o'ldirdingiz."))
     priv += [(uid, IMMUNE_YOU) for uid in sorted(immune)]
     return pub, priv
+
+
+HUNT_BTN = "💀 O'ldirish"
+HUNT_LATE = "⌛️ Kech qoldingiz: osish boshlandi, endi o'ldira olmaysiz."
+HUNT_NO = "❌ Endi o'ldira olmaysiz"
+
+
+def hunt_pm(g: Game, target: int, shown: str) -> str:
+    """Ovchiga tongda: tanlagan odamining roli (tekshiruvdagidek ko'rinadi) va tanlov - o'ldirish yoki rahm."""
+    from .engine.game import HUNT_FINE
+    return (f"🏹 <b>{nm(g, target)}</b> — {role(shown)}\n\n"
+            f"Osish boshlanguncha uni o'ldirishingiz yoki rahm qilishingiz mumkin (rahm qilsangiz - hech narsa bosmang).\n"
+            f"⚠️ Tinch aholini o'ldirsangiz, <b>{HUNT_FINE[0]}–{HUNT_FINE[1]} 💵</b> jarima to'laysiz — "
+            "pul o'sha o'yinchiga o'tadi.")
 
 
 def day_start(g: Game, secs: int) -> str:
@@ -1148,8 +1173,9 @@ def vote_chosen(name: str | None) -> str:
     return f"✅ Ovozingiz: <b>{escape(name)}</b>" if name else "✅ Siz hech kimga ovoz bermadingiz"
 
 
-def death_pm(hanged: bool) -> str:
-    how = "Sizni shafqatsizlarcha osib o'ldirishdi!" if hanged else "Siz vahshiylarcha o'ldirildingiz!"
+def death_pm(hanged: bool, hunted: bool = False) -> str:
+    how = (f"{role('ovchi')} sizga rahm-shafqat qilmasdan joningizni oldi." if hunted
+           else "Sizni shafqatsizlarcha osib o'ldirishdi!" if hanged else "Siz vahshiylarcha o'ldirildingiz!")
     return f"<b>{how}</b>\n💀 So'nggi so'zingizni yozishingiz mumkin.\n⏳ Vaqt: <b>{LAST_WORDS_SECS}</b> soniya"
 
 

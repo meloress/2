@@ -35,12 +35,6 @@ EFFECT_WIN = "5046509860389126442"  # 🎉 (faqat shaxsiy chatda)
 _group_sent: dict[int, deque] = defaultdict(deque)
 
 
-def group_recent(chat_id: int) -> int:
-    """Oxirgi 60 s da guruhga ketgan xabarlar soni."""
-    q, t = _group_sent.get(chat_id) or (), time.monotonic()
-    return sum(1 for x in q if t - x <= 60)
-
-
 async def _group_slot(chat_id: int) -> None:
     if chat_id > 0:
         return
@@ -238,6 +232,7 @@ class Runner:
         # javob berilmagan tugmali shaxsiy so'rovlar (tun/ovoz/👍👎): uid -> msg_id; faza tugagach o'chiriladi.
         # Xotirada: restartdan keyin qolganlari bosilganda o'chadi (handlers._late)
         self.prompts: dict[int, int] = {}
+        self.feed_lock = asyncio.Lock()  # jonli lenta qatorlari tartib bilan, birma-bir (_flush_live)
         self.partners: dict[int, int] = {}  # qo'shilganda: uid -> /couple jufti (ro'yxatda juftlab ko'rsatish)
         self.members: list[tuple[int, str]] = []
         self.opener: int | None = None  # /game bosgan: adminlardan tashqari u ham /begin qila oladi
@@ -418,13 +413,13 @@ class Runner:
         last_edit = 0.0
         while time.time() < self.meta["deadline"] and not done() and g.phase == ph:
             await asyncio.sleep(1)
-            await self._flush_live()
+            if self.live_lines:
+                spawn(self._flush_live())  # fonda: limit kutilsa ham faza vaqti o'z vaqtida tugaydi
             if self.confirm_dirty and time.time() - last_edit >= 3:  # 👍/👎 sonlari, 3 s da bir
                 self.confirm_dirty, last_edit = False, time.time()
                 await self._edit_confirm(final=False)
-        await self._flush_live()
         if g.phase != ph:  # /leave o'yinni tugatgan bo'lishi mumkin
-            return
+            return await self._flush_live()
         async with self.lock:
             self.meta.pop("deadline", None)
             if ph == NIGHT:
@@ -442,6 +437,7 @@ class Runner:
             await self.save()
         old, self.prompts = self.prompts, {}
         spawn(self._clear_prompts(old))  # fonda: e'lon kechikmasin
+        await self._flush_live()  # tungi/ovoz qatorlari (fondagilar ham) e'londan oldin chiqib bo'lsin
         if ev is not None:
             await self._announce(ph, ev)
 
@@ -573,15 +569,13 @@ class Runner:
         return Kb(inline_keyboard=rows)
 
     async def _flush_live(self) -> None:
-        """Har harakat/ovoz alohida xabar. Guruh limiti to'lsa, navbatdagilar bitta xabarga birlashadi."""
-        if not self.live_lines:
-            return
+        """Har tungi harakat/ovoz - doim alohida xabar (birlashtirilmaydi). Guruh limiti (~20/daqiqa) to'lsa,
+        send() navbat kutadi; faza sikli buni fonda chaqiradi (spawn) - tun vaqti cho'zilmaydi.
+        feed_lock (FIFO) qatorlar tartibini saqlaydi; e'londan oldin await qilinadi - natija hamma qatorlardan keyin."""
         lines, self.live_lines = self.live_lines, []
-        if len(lines) <= GROUP_PER_MIN - 4 - group_recent(self.chat_id):
+        async with self.feed_lock:
             for line in lines:
                 await send(self.bot, self.chat_id, line)
-        else:
-            await send(self.bot, self.chat_id, "\n".join(lines))
 
     async def _economy(self, ev) -> None:
         for e in ev:
@@ -604,12 +598,32 @@ class Runner:
             await send(self.bot, self.chat_id, text)
         for uid, t in priv:
             await send(self.bot, uid, t)
+        if g.phase == DAY:  # Ovchi: tanlagan odamining roli + kunduzi o'ldirish tugmasi
+            kb = Kb(inline_keyboard=[[Btn(text=texts.HUNT_BTN, callback_data=f"h:{self.game_id}:{g.day}")]])
+            for e in ev:
+                if e.kind == "checked" and [e.uid, e.target] in g.hunt:
+                    await send(self.bot, e.uid, texts.hunt_pm(g, e.target, e.data["result"]), kb)
         if g.phase != FINISHED:  # har qanday o'limdan keyin so'nggi so'z
             hanged = {e.target for e in ev if e.kind == "hanged"}
+            hunted = {e.target for e in ev if e.kind == "hunted"}
             for uid in texts.victims(ev):
                 self.last_words[uid] = time.time() + LAST_WORDS_SECS
-                await send(self.bot, uid, texts.death_pm(uid in hanged))
+                await send(self.bot, uid, texts.death_pm(uid in hanged, uid in hunted))
                 spawn(self._last_words_timeout(uid, self.last_words[uid]))
+
+    async def on_hunt(self, uid: int, day: int) -> bool:
+        """Ovchi kunduzi "💀 O'ldirish" bosdi: o'ldirish, jarima (pul o'ldirilganga), e'lon, so'nggi so'z.
+        O'yin tugasa - faza sikli buni ko'radi va _finish qiladi."""
+        async with self.lock:
+            g = self.game
+            ev = g.hunter_kill(uid) if g and g.day == day else None
+            if not ev:
+                return False
+            await self.save()
+            if fine := ev[0].data["fine"]:
+                await db.hunt_fine(uid, ev[0].target, fine)
+        await self._announce(DAY, ev)
+        return True
 
     async def _finish(self) -> None:
         g = self.game

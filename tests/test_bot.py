@@ -3,6 +3,7 @@ import asyncio
 import os
 import random
 import tempfile
+import time
 from types import SimpleNamespace
 
 os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///" + os.path.join(tempfile.mkdtemp(), "t.db")
@@ -124,6 +125,11 @@ def test_morning_renders_every_event_kind():
             ev = g.resolve_night()
             texts.morning(g, ev)
             seen |= {e.kind for e in ev}
+            for u, t in list(g.hunt):  # Ovchi kunduzi: ba'zan o'ldiradi, ba'zan rahm qiladi
+                texts.hunt_pm(g, t, g.get(t).role)
+                if rng.random() < 0.6 and (hev := g.hunter_kill(u)):
+                    texts.morning(g, hev)
+                    seen |= {e.kind for e in hev}
             if g.phase == FINISHED:
                 break
             g.start_voting()
@@ -135,7 +141,7 @@ def test_morning_renders_every_event_kind():
             seen |= {e.kind for e in ev}
         json.dumps(g.to_dict())
     expected = {"blocked", "stolen", "saw_role", "robbed", "checked", "interview", "dug", "saved", "item_used",
-                "killed", "revenge", "linked", "transformed", "promoted", "penalty", "witness",
+                "killed", "revenge", "linked", "transformed", "promoted", "hunted", "witness",
                 "hanged", "no_hang", "guard_saved", "tulki", "game_over"}
     assert expected <= seen, expected - seen
 
@@ -227,6 +233,8 @@ def test_testgame_bots_play_to_the_end():
         group = [t for c, t in bot.sent if c == -777]
         assert any(t.endswith("ga ovoz berdi") or t.endswith("ovoz bermadi") for t in group)  # har ovoz alohida
         assert any(t.endswith("...") and "\n" not in t for t in group)  # har tungi harakat alohida xabar
+        merged = [t for t in group if "\n" in t and all(x.endswith("...") for x in t.split("\n"))]
+        assert not merged  # lenta qatorlari hech qachon bitta xabarga birlashmaydi
         assert bot.gifs.count("gif-id") >= 1  # GIF bir marta yuklanib, keyin file_id bilan
         for t in group:
             assert_telegram_html(t)
@@ -622,6 +630,96 @@ def test_phase_timer_starts_after_buttons_are_sent():
     asyncio.run(go())
 
 
+def test_feed_lines_separate_and_phase_not_delayed_by_group_limit():
+    """Guruh limiti to'lib yuborish kutib tursa ham: faza o'z vaqtida hal bo'ladi, har qator alohida xabar,
+    tartib saqlanadi va natija (e'lon) hamma qatorlardan keyin chiqadi."""
+    from mafia_zone.engine.game import Game
+
+    async def go():
+        await db.init()
+        bot = FakeBot()
+        r = runner.Runner(bot, -4848, {"vote": 10})
+        r.game, r.game_id = Game.create(-4848, [(i, f"p{i}") for i in range(1, 7)], 3), 80
+        r.game.phase = VOTING
+        r.meta["deadline"] = time.time() + 1.5
+        gate, out, orig = asyncio.Event(), [], runner.send
+
+        async def slow_send(b, chat_id, text, kb=None, **kw):
+            if chat_id < 0:
+                await gate.wait()  # guruh limiti: Telegram ruxsat berguncha kutadi
+                out.append(text)
+            return SimpleNamespace(message_id=1)
+        runner.send = slow_send
+        try:
+            for v in (1, 2, 3):
+                assert await r.on_vote(v, r.game.day, 0)
+            step = asyncio.create_task(r._step())
+            await asyncio.sleep(3)
+            assert r.game.phase != VOTING and "deadline" not in r.meta  # vaqtida hal bo'ldi
+            assert not step.done() and not out  # e'lon lenta qatorlarini kutyapti
+            gate.set()
+            await step
+        finally:
+            runner.send = orig
+            r.close()
+        feed = [t for t in out if t.endswith("ovoz bermadi")]
+        assert len(feed) == 3 and out[:3] == feed  # alohida, birinchi; natija keyin
+    asyncio.run(go())
+
+
+def test_ovchi_hunt_button_kills_by_day_and_pays_fine_to_victim():
+    from mafia_zone import handlers
+    from mafia_zone.engine.game import DAY, HUNT_FINE, Game, Player
+
+    async def go():
+        await db.init()
+        ids = [9_100_000 + i for i in range(1, 8)]
+        for u in ids:
+            await db.upsert_user(u, f"p{u}", None)
+        await db.add_balance(ids[1], 1000)  # Ovchi
+        o0, v0 = (await db.get_user(ids[1])).dollars, (await db.get_user(ids[2])).dollars
+        bot = FakeBot()
+        r = runner.Runner(bot, -4949, {"night": 60, "day": 60, "vote": 60})
+        roles = ["don", "ovchi", "tinch", "tinch", "tinch", "tinch", "tinch"]
+        r.game, r.game_id = Game(-4949, 5, [Player(u, f"p{u}", x) for u, x in zip(ids, roles)], afk_limit=0), 81
+        for u in ids:
+            handlers.PLAYING[u] = r
+        try:
+            assert await r.on_action(ids[1], 1, "check", ids[2])
+            r.meta["deadline"] = 0
+            await r._step()  # tun hal bo'ldi, tong e'lon qilindi
+            assert r.game.phase == DAY and r.game.hunt == [[ids[1], ids[2]]]
+            assert any(c == ids[1] and "rahm" in t for c, t in bot.sent)  # rol + o'ldirish tugmasi
+            said = []
+
+            async def answer(text=None, **kw):
+                said.append(text)
+
+            async def edit_reply_markup(**kw):
+                pass
+            cq = lambda uid: SimpleNamespace(data=f"h:81:{r.game.day}", from_user=SimpleNamespace(id=uid),
+                                             answer=answer, message=SimpleNamespace(edit_reply_markup=edit_reply_markup))
+            await handlers.cb_hunt(cq(ids[3]))  # Ovchi emas
+            assert r.game.get(ids[2]).alive and said[-1] == texts.HUNT_NO
+            await handlers.cb_hunt(cq(ids[1]))
+            assert not r.game.get(ids[2]).alive
+            group = [t for c, t in bot.sent if c == -4949]
+            assert any("murdasi topildi" in t for t in group) and any("jarima" in t for t in group)
+            assert any(c == ids[2] and "joningizni oldi" in t for c, t in bot.sent)  # so'nggi so'z
+            fine = (await db.get_user(ids[2])).dollars - v0  # jarima o'ldirilganga o'tdi
+            assert HUNT_FINE[0] <= fine <= HUNT_FINE[1] and (await db.get_user(ids[1])).dollars == o0 - fine
+            await handlers.cb_hunt(cq(ids[1]))  # ikkinchi marta - yo'q
+            assert said[-1] == texts.HUNT_NO
+            r.game.start_voting()
+            await handlers.cb_hunt(cq(ids[1]))  # ovoz berish boshlandi - kech
+            assert said[-1] == texts.HUNT_LATE
+        finally:
+            for u in ids:
+                handlers.PLAYING.pop(u, None)
+            r.close()
+    asyncio.run(go())
+
+
 def test_night_submenu_has_back_button():
     """Komissar "Otish"ni adashib bossa - ⬅️ Orqaga bilan harakat tanlashga qaytadi. Bitta harakatli rolda yo'q."""
     from mafia_zone.engine.game import Game, Player
@@ -637,6 +735,7 @@ def test_night_submenu_has_back_button():
     assert cbs(sub)[-1] == f"k:79:{r.game.day}:menu" and sub.inline_keyboard[-1][0].text == texts.BACK_BTN
     assert cbs(r.night_kb(1, None)) == menu  # "menu" -> qayta harakat tanlash
     assert not any(c.endswith(":menu") for c in cbs(r.night_kb(2)))  # Doktor: bitta harakat
+    r.close()
 
 
 def test_unanswered_prompts_deleted_when_phase_ends():
@@ -657,6 +756,7 @@ def test_unanswered_prompts_deleted_when_phase_ends():
         await r._step()
         await asyncio.sleep(0.2)  # fondagi o'chirish
         assert sorted(bot.deleted) == sorted((u, m) for u, m in sent.items() if u != 1) and not r.prompts
+        r.close()
     asyncio.run(go())
 
 
@@ -688,6 +788,7 @@ def test_late_button_answers_and_deletes_private_prompt():
                 assert said == [late] and deleted == ([1] if chat > 0 else []), data
         finally:
             handlers.PLAYING.pop(1, None)
+            r.close()
     asyncio.run(go())
 
 

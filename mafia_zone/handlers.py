@@ -1090,6 +1090,21 @@ async def cb_action(cq: CallbackQuery):
     await cq.answer()
 
 
+@router.callback_query(F.data.startswith("h:"))
+async def cb_hunt(cq: CallbackQuery):
+    """Ovchi kunduzi tongda roli ochilgan nishonni o'ldiradi (osish boshlanguncha). Xabar o'chirilmaydi:
+    unda nishonning roli turibdi - faqat tugma olinadi."""
+    _, gid, day = cq.data.split(":")
+    r = PLAYING.get(cq.from_user.id)
+    if _stale(r, gid, day, DAY):
+        await _call(cq.message.edit_reply_markup, reply_markup=None)
+        return await cq.answer(texts.HUNT_LATE, show_alert=True)
+    if not await r.on_hunt(cq.from_user.id, int(day)):
+        return await cq.answer(texts.HUNT_NO, show_alert=True)
+    await _call(cq.message.edit_reply_markup, reply_markup=None)
+    await cq.answer()
+
+
 # ---------- bot egasi ----------
 OWNER = F.from_user.id.in_(config.ADMIN_IDS)
 

@@ -28,7 +28,8 @@ def couple_pairs(uids: list[int], partners: dict[int, int]) -> dict[int, int]:
 # Konchi o'ljasi: (ehtimol, dan, gacha). Foizlar o'yinchilarga ko'rsatilmaydi
 DIG_DOLLARS = [(0.60, 10, 50), (0.25, 51, 150), (0.10, 151, 300), (0.04, 301, 500), (0.008, 501, 1000),
                (0.002, 1001, 2000)]
-DIG_DIAMONDS = [(0.94, 0), (0.05, 1), (0.008, 2), (0.002, 3)]
+HUNT_FINE = (100, 200)  # Ovchi tinch aholini o'ldirsa: jarima oralig'i (💵), pul o'ldirilganga o'tadi
+DIG_DIAMONDS =[(0.94, 0), (0.05, 1), (0.008, 2), (0.002, 3)]
 
 
 def dig_loot(rng: random.Random) -> tuple[int, int]:
@@ -98,6 +99,7 @@ class Game:
     couple_mode: bool = False  # 💞 tomonlar yo'q: oxirgi tirik juft yutadi
     bros: list = field(default_factory=list)  # Aka va Uka uid'lari: biri Don bo'lsa ham bog'lanish qoladi
     bomb: int | None = None  # kunduzi osilgan Afsungar: keyingi tunda tong otguncha 1 kishini olib ketadi
+    hunt: list = field(default_factory=list)  # [[Ovchi, nishon]]: tongda roli ochildi - kunduzi o'ldirishi mumkin
 
     # ---------- yaratish va saqlash ----------
     @classmethod
@@ -392,11 +394,6 @@ class Game:
             else:
                 ev.append(Event("result", us[0], t, {"kind": "pair", "ok": False}))
 
-        for u, (k, t, _) in acts.items():  # Ovchi jarimasi: haqiqiy jamoa bo'yicha
-            if k == "shoot" and self.get(u).role == "ovchi" and self.get(t).team == TOWN:
-                self.get(u).role = "tinch"
-                ev.append(Event("penalty", u, t))
-
         for u, (k, t, _) in acts.items():
             if k == "sacrifice":
                 p = self.get(u)
@@ -522,6 +519,27 @@ class Game:
         self.phase = DAY
         self._kick_afk(ev)
         self._after_deaths(ev)
+        # Ovchi: o'z tekshiruvi bajarilgan bo'lsa (uxlatilmagan, Aferist olmagan) va ikkalasi tirik - kunduzi o'ldirishi mumkin
+        self.hunt = [[u, t] for u, (k, t, src) in acts.items()
+                     if k == "check" and src == "ovchi" and self.get(u).role == "ovchi" and self._alive(u) and self._alive(t)]
+        self._check_win(ev)
+        return ev
+
+    def hunter_kill(self, uid: int) -> list[Event] | None:
+        """Ovchi kunduzi (osish boshlanguncha) tongda roli ochilgan nishonni o'ldiradi; himoya ishlamaydi.
+        Tinch aholi bo'lsa - HUNT_FINE oralig'ida tasodifiy jarima (pul o'sha o'yinchiga: runner/db). None - mumkin emas."""
+        pair = next((x for x in self.hunt if x[0] == uid), None)
+        if (self.phase != DAY or not pair or not self._alive(uid) or not self._alive(pair[1])
+                or self.get(uid).role != "ovchi"):
+            return None
+        self.hunt.remove(pair)
+        v = self.get(pair[1])
+        v.alive = False
+        town = v.team == TOWN and not self.couple_mode  # paralar o'yinida tomonlar yo'q - jarima ham yo'q
+        fine = random.Random(f"{self.seed}:{self.day}:hunt").randint(*HUNT_FINE) if town else 0
+        self.get(uid).score += -3 if town else 3
+        ev = [Event("hunted", uid, v.uid, {"role": v.role, "fine": fine})]
+        self._after_deaths(ev)
         self._check_win(ev)
         return ev
 
@@ -568,6 +586,7 @@ class Game:
     # ---------- kun ----------
     def start_voting(self) -> None:
         self.phase, self.votes, self.vote_log = VOTING, {}, []
+        self.hunt = []  # Ovchi faqat osish boshlanguncha o'ldira oladi
 
     def can_vote(self, uid: int) -> bool:
         p = self.get(uid)

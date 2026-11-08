@@ -511,6 +511,14 @@ async def pay_referrals(uids: list[int]) -> list[tuple[int, str]]:
     return out
 
 
+async def hunt_fine(hunter: int, victim: int, amount: int) -> None:
+    """Ovchi tinch aholini o'ldirdi: jarima Ovchidan o'ldirilganga, bitta tranzaksiyada.
+    Jarima kabi balans minusga tushishi mumkin; bot-o'yinchilar (/testgame) bazada yo'q - ularga hech narsa."""
+    async with Session.begin() as s:
+        await s.execute(update(User).where(User.telegram_id == hunter).values(dollars=User.dollars - amount))
+        await s.execute(update(User).where(User.telegram_id == victim).values(dollars=User.dollars + amount))
+
+
 async def buy_dollars(uid: int, diamonds: int) -> bool:
     """Xarid paketi: olmos -> dollar, atomar."""
     dollars = config.DOLLAR_PACKS.get(diamonds)

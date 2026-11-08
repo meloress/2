@@ -24,7 +24,9 @@ _ROLES = [
     Role("afsungar", "💣 Afsungar", TOWN, (), "Tunda o'ldirilsangiz, qotilingiz ham siz bilan halok bo'ladi. Kunduzi osilsangiz, o'sha tunda tong otguncha xohlagan 1 kishini o'zingiz bilan olib ketasiz. Dushmanni olib ketsangiz, tinch aholi yutganda siz ham yutasiz."),
     Role("voris", "🧬 Voris", TOWN, (), "Don o'ldirsa - Mafiyaga, Komissar otsa - Serjantga aylanasiz. Boshqa hujumdan (Yollanma, Aka/Uka va boshqalar) oddiy o'lasiz."),
     Role("janob", "🎖 Janob", TOWN, (), "Kunduzgi ovoz berishda ovozingiz 2 ta hisoblanadi."),
-    Role("ovchi", "🏹 Ovchi", TOWN, ("check", "shoot"), "Har tunda 1 kishini tekshirasiz yoki otasiz. Tinchni otsangiz, qobiliyatingizni yo'qotasiz."),
+    Role("ovchi", "🏹 Ovchi", TOWN, ("check",), "Tunda 1 kishini tanlaysiz - tongda uning roli sizga ochiladi. Kunduzi osish "
+         "boshlanguncha uni o'ldirishingiz yoki rahm qilishingiz mumkin. Tinch aholini o'ldirsangiz, 100-200 💵 "
+         "jarima to'laysiz va bu pul o'sha o'yinchiga o'tadi."),
     Role("donishmand", "👨‍🏫 Donishmand", TOWN, (), "Tunda Mafiya va Komissar yozishmalarini ismsiz eshitasiz."),
     Role("suitsid", "🤦 Suitsid", TOWN, (), "Don sizni o'ldirsa, uni ham o'zingiz bilan olib ketasiz va g'olib bo'lasiz. Yollanma yoki Aka/Uka o'ldirsa, bu ishlamaydi."),
     Role("qorovul", "👨‍🦳 Qorovul", TOWN, ("guard",), "Tunda 1 kishini himoyalaysiz: u ertaga osilmaydi."),
