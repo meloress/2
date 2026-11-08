@@ -8,8 +8,8 @@ from .engine.game import DRAW, Event, Game
 from .engine.roles import MAFIA, NEUTRAL, ROLES, TOWN
 
 PRO_TZ = timedelta(hours=5)  # sanalar Toshkent vaqtida
-TEAM = {TOWN: "👨 Tinch aholi", MAFIA: "🤵 Mafiya", NEUTRAL: "🎭 Neytral"}
-ITEMS = {"shield": "🛡 Qalqon", "verbena": "🧄 Verbena", "doc": "📄 Hujjat", "mask": "🎭 Maska",
+TEAM = {TOWN: "👨 Tinch aholi", MAFIA: "🤵 Mafiya", NEUTRAL: "🪙 Neytral"}
+ITEMS = {"shield": "🛡 Qalqon", "verbena": "🌿 Verbena", "doc": "📄 Hujjat", "mask": "🎭 Maska",
          "votesave": "⚖️ Ovoz himoyasi", "ticket": "🎟 Faol rol"}
 ITEM_ABOUT = {
     "shield": "tunda hujumdan 1 marta saqlaydi (osilishdan emas — buning uchun ⚖️ Ovoz himoyasi)",
@@ -337,7 +337,7 @@ ATTACK_FAIL = "😤 {t} omon qoldi — kimdir uni himoya qildi yoki unga kuching
 WHY = {  # hujum nega o'tmadi (Event data "why"): hujumchiga va mafiyaga aytiladi
     "heal": "👨‍⚕️ uni Doktor davolab qo'ydi",
     "shield": "🛡 uning Qalqoni bor ekan",
-    "verbena": "🧄 uning Verbenasi bor ekan",
+    "verbena": "🌿 uning Verbenasi bor ekan",
     "immune": "💪 unga sizning kuchingiz yetmaydi",
     "transformed": "🧬 u Voris ekan — taqdiri o'zgarib, boshqa rolga aylandi",
     "gone": "🔥 u shu tun o'zini qurbon qilib bo'lgan edi",
@@ -1128,7 +1128,7 @@ def alive_composition(g: Game) -> str:
     out = []
     masked = [p for p in g.alive() if p.items.get("mask", 0) > 0]
     # Ko'rinish: "🤵🏻 Mafiya - 8" sarlavha, ostida "🤵🏼 𝐌𝐚𝐟𝐢𝐲𝐚 - 6, 🤵🏻 𝐃𝐨𝐧" (bir xil rollar soni bilan)
-    for team, label in ((MAFIA, "🤵🏻 Mafiya"), (NEUTRAL, "👤 Yakka rollar"), (TOWN, "🏘 Tinch aholilar")):
+    for team, label in ((MAFIA, "🤵🏻 Mafiya"), (NEUTRAL, "🪙 Yakka rollar"), (TOWN, "🏘 Tinch aholilar")):
         ps = [p for p in g.alive() if p.team == team and p not in masked]
         if not ps:
             continue

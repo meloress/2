@@ -79,3 +79,12 @@ ROLE_EMOJI = {
     "sehrgar": "5442868774111851721", "vampir": "5442753600268841336", "qaroqchi": "5442939632482300722",
     "konchi": "5442847260620664377", "tulki": "5440720349866011565", "aferist": "5442738881415916709",
 }
+# Shu to'plamdagi boshqa belgilar: oddiy emoji -> custom_emoji_id (pul, himoyalar, jamoa sarlavhalari, tun/kun).
+# Bu emojilar matnlarda faqat shu ma'noda ishlatilsin (masalan, 👤 profilda - shuning uchun Yakka rollar 🪙).
+ICON_EMOJI = {
+    "💵": "5442637241014858291", "💎": "5442882797180075258", "🛡": "5440600382839497928",
+    "🌿": "5443036312196133718", "📄": "5442731223489230355", "⚖️": "5440412164487687138",
+    "🏘": "5442988479145357411", "🪙": "5442994732617738992",
+    "🌙": "5440750582140807946", "🌃": "5440750582140807946", "☀️": "5442831111543636163", "🌄": "5442831111543636163",
+    "🤵": ROLE_EMOJI["don"],  # "🤵 Mafiya" jamoa nomi (teri rangisiz) - Don portreti
+}

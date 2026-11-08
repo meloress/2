@@ -117,3 +117,14 @@ def test_role_portraits_every_role_its_own():
     for code in ROLES:
         out = emoji.premiumize(texts.role(code))
         assert out.count("<tg-emoji") == 1 and f'emoji-id="{config.ROLE_EMOJI[code]}"' in out, code
+
+
+def test_icon_emoji_money_items_teams_phases():
+    """Pul, himoyalar, jamoa sarlavhalari, tun/kun: o'z rasmi; 👤 (profil) oddiy qoladi; 🤵 jamoa nomi - Don."""
+    from mafia_zone import config
+    emoji.load_roles(config.ROLE_EMOJI, config.ICON_EMOJI)
+    for e, i in config.ICON_EMOJI.items():
+        assert emoji.premiumize(f"{e} x") == f'<tg-emoji emoji-id="{i}">{e}</tg-emoji> x', e
+    assert "<tg-emoji" not in emoji.premiumize("👤 Ism")
+    assert config.ICON_EMOJI["🤵"] == config.ROLE_EMOJI["don"]
+    assert f'emoji-id="{config.ROLE_EMOJI["mafiya"]}"' in emoji.premiumize("🤵🏼 Mafiya")  # teri rangi - o'z portreti
