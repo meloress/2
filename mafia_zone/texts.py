@@ -67,6 +67,12 @@ def role(code: str) -> str:
     return f"{emoji} {bold(name)}"
 
 
+def team_label(team: str) -> str:
+    """"🤵 𝐌𝐚𝐟𝐢𝐲𝐚": jamoa nomi ham rollardek matematik qalin (boshqa yozuvlar - oddiy <b>)."""
+    emoji, name = TEAM[team].split(" ", 1)
+    return f"{emoji} {bold(name)}"
+
+
 # ---------- lobby ----------
 def lobby(members: list[tuple[int, str]], left: int) -> str:
     body = ", ".join(mention(u, n) for u, n in members)  # chapdan o'ngga, raqamsiz; bo'sh bo'lsa qator yo'q
@@ -217,7 +223,7 @@ RULE = {  # rol kartasida ⚠️ qatori: tavsifda yozilmagan cheklovlar
 def role_card(g: Game, uid: int) -> str:
     p = g.get(uid)
     team = ROLES[p.role].team
-    text = (f"Siz — {role(p.role)} siz!\n{TEAM_DOT[team]} Jamoa: <b>{TEAM[team].split(' ', 1)[1]}</b>\n"
+    text = (f"Siz — {role(p.role)} siz!\n{TEAM_DOT[team]} Jamoa: <b>{bold(TEAM[team].split(' ', 1)[1])}</b>\n"
             f"🎯 Vazifa: {ROLES[p.role].about}")
     if p.role in RULE:
         text += f"\n⚠️ {RULE[p.role]}"
@@ -264,7 +270,8 @@ ROLE_PROMPT = {
     "uka": "👦 Uka, akangiz bilan bir nishonni tanlang — shundagina zarba o'tadi.",
     "qotil": "🔪 Qotil, pichoq o'tkir. Bu tun kimning navbati?",
     "gazabkor": "🧟 G'azabkor, g'azab ichingizni yondiryapti. Kim qurbon bo'ladi?",
-    "sehrgar": "🧙 Sehrgar, qaysi uyni la'natlaysiz?",
+    "sehrgar": "🧙 Sehrgar, qaysi uyni la'natlaysiz? Egasi tirik qoladi, lekin bu tun uning oldiga kelgan har kim "
+               "halok bo'ladi.",
     "vampir": "🧛 Vampir, chanqoq kuchaydi. Kimning qonini ichamiz?",
     "qaroqchi": "🦹‍♂️ Qaroqchi, kimning cho'ntagini yengillatamiz?",
     "konchi": "👷‍♂️ Konchi, kirka tayyor. Qazishni boshlaymizmi?",
@@ -292,7 +299,7 @@ ACT_FEED = {
     "uka": "{r} nishonni belgiladi...",
     "qotil": "{r} navbatdagi qurbonini tanladi...",
     "gazabkor": "{r} qurbon izlab ketdi...",
-    "sehrgar": "{r} kimnidir la'natlamoqda...",
+    "sehrgar": "{r} kimningdir uyiga la'nat soldi...",
     "vampir": "{r} qorong'ilikka uchib ketdi...",
     "qaroqchi": "{r} o'g'irlikka chiqdi...",
     "konchi": "{r} yer ostiga tushdi...",
@@ -330,6 +337,8 @@ RESULT = {  # (harakat, muvaffaqiyat) -> shaxsiy xabar; {t} - nishon
     ("visit", False): "🍾 {t}ning uyi oldida tun tinch o'tdi — qotillik bo'lmadi.",
     ("pair", False): "👊 Sherigingiz boshqa nishonni tanladi — {t}ga hujum bo'lmadi.",
     ("blast", True): "💥 Siz {t}ni o'zingiz bilan olib ketdingiz!",
+    ("curse", True): "🔮 La'natingiz ishladi: {t} la'natlangan uyga kirib, halok bo'ldi.",  # {t} - kelgan odam
+    ("curse_empty", False): "🔮 Bu tun {t}ning oldiga hech kim kelmadi — la'natingiz hech kimni topmadi.",
 }
 CHECKED_YOU = "🔍 Tunda kimdir sizni tekshirdi..."
 ATTACK_OK = "🎯 Nishoningiz {t} halok bo'ldi."
@@ -445,7 +454,7 @@ def last_words(g: Game, uid: int, text: str) -> str:
 
 SAVED = ["💉 Kimdir bu tun o'lim yoqasidan qaytdi! Ajal bu safar quruq ketdi.",
          "💉 Tunda kimgadir hujum bo'ldi... lekin u omon qoldi! Shaharda qahramonlar bor.",
-         "💉 Qotil bu tun omadsiz chiqdi — qurboni tirik qoldi!"]
+         "💉 Hujumchi bu tun omadsiz chiqdi — qurboni tirik qoldi!"]  # "Qotil" emas: u alohida rol
 QUIET = ["🌤 Mo'jiza! Bu tun hech kim halok bo'lmadi. Lekin bu uzoq davom etmaydi...",
          "🌤 Tinch tun. Hamma tirik... hozircha.",
          "🌤 Hech kim o'lmadi. Mafiya nimanidir rejalashtiryaptimi?"]
@@ -465,8 +474,8 @@ def morning(g: Game, ev: list[Event]) -> tuple[list[str], list[tuple[int, str]]]
             # rollar tun boshidagi holatda (masalan, jarimadan oldingi Ovchi)
             victim = f"{shown_role(g, e.target, e.data.get('role'))} — <b>{n(e.target)}</b>"
             if e.data["by"] == ["curse"]:
-                pub.append(f"🔮 {victim} la'natlangan insonga duch keldi va shafqatsiz o'lim topdi.\n"
-                           f"Aytishlaricha, bu ishni {role('sehrgar')} qilgan.")
+                pub.append(f"🔮 Tunda {victim} la'natlangan uyga kirib qoldi va shafqatsiz o'lim topdi.\n"
+                           f"Aytishlaricha, u uyga {role('sehrgar')} la'nat solgan.")
             else:
                 codes = e.data.get("killer_roles") or [g.get(u).role for u in e.data.get("killers", [])]
                 killers = ", ".join(role(c) for c in dict.fromkeys(codes)) or "noma'lum kimdir"
@@ -552,7 +561,7 @@ def morning(g: Game, ev: list[Event]) -> tuple[list[str], list[tuple[int, str]]]
             priv.append((e.uid, f"🎤 Intervyu tayyor! Bu tun {n(e.target)}ning oldiga kelganlar: {vis}"))
         elif k == "witness":
             priv.append((e.uid, f"👀 Siz {n(e.target)}ning uyi oldida qotillikni o'z ko'zingiz bilan ko'rdingiz!\n"
-                                "Qotil(lar): " + ", ".join(f"<b>{n(x)}</b>" for x in e.data["killers"])))
+                                "Hujum qilgan(lar): " +", ".join(f"<b>{n(x)}</b>" for x in e.data["killers"])))
         elif k == "dug":
             d, gems = e.data["dollars"], e.data["diamonds"]
             extra = f" va <b>{gems} 💎</b> olmos" if gems else ""
@@ -891,7 +900,7 @@ def roles_shop(diamonds: int) -> str:
     for team in (TOWN, MAFIA, NEUTRAL):
         rows = [f"{role(c)} — <b>{p} 💎</b>" for c, p in config.ROLE_PICKS.items() if ROLES[c].team == team]
         if rows:
-            blocks.append(f"<b>{TEAM[team]}</b>\n" + "\n".join(rows))
+            blocks.append(f"<b>{team_label(team)}</b>\n" + "\n".join(rows))
     return (f"🃏 <b>Rolni tanlab olish</b>\n\n💎 Balans: <b>{diamonds}</b>\n\n" + "\n\n".join(blocks) + "\n\n"
             f"<i>{ITEM_ABOUT['r_don'].capitalize()}. Ba'zi rollar faqat ko'p kishilik o'yinlarda chiqadi "
             "(yakka qotillar — 12 kishidan). Profilda 🔴 OFF qilsangiz, saqlanib turadi.</i>")
@@ -1043,7 +1052,7 @@ def _place(i: int) -> str:
 
 def _top(title: str, entries: list[str]) -> str:
     """Har o'rin 2 qator: ism, ostida └ raqamlar."""
-    head = f"🏆 <b>{bold(title)}</b>"
+    head = f"🏆 <b>{title}</b>"
     return f"{head}\n\n" + ("\n".join(entries) if entries else "— hali o'yinlar yo'q —")
 
 
@@ -1094,7 +1103,7 @@ def season_won(key: str, place: int, prize: int) -> str:
 def rules() -> str:
     out = ["📜 <b>ADMIRAL MAFIA rollari</b>"]
     for team in (TOWN, MAFIA, NEUTRAL):
-        out.append(f"\n<b>{TEAM[team]}</b>")
+        out.append(f"\n<b>{team_label(team)}</b>")
         out += [f"{role(c)} — {r.about}" for c, r in ROLES.items() if r.team == team]
     return "\n".join(out)
 
@@ -1136,7 +1145,8 @@ def alive_composition(g: Game) -> str:
         for p in ps:
             counts[p.role] = counts.get(p.role, 0) + 1
         roles = ", ".join(role(c) + (f" - {k}" if k > 1 else "") for c, k in counts.items())
-        out.append(f"<b>{label} - {len(ps)}</b>\n{roles}")
+        emo, name = label.split(" ", 1)
+        out.append(f"{emo} <b>{bold(name)} - {len(ps)}</b>\n{roles}")  # jamoa nomi - rollardek matematik qalin
     if masked:  # jamoasi ham ko'rinmaydi
         out.append(f"<b>{MASKED} - {len(masked)}</b>")
     return "\n\n".join(out) + f"\n\n<b>Jami: {len(g.alive())}</b>"
@@ -1162,9 +1172,9 @@ def death_pm(hanged: bool, hunted: bool = False) -> str:
 
 
 def _item_row(label: str, qty: int, off: bool) -> str:
-    """"🛡 𝐐𝐚𝐥𝐪𝐨𝐧: 2 ta"; o'chirilgan (OFF) buyum ustidan chiziladi - o'yinga olinmaydi."""
+    """"🛡 <b>Qalqon</b>: 2 ta"; o'chirilgan (OFF) buyum ustidan chiziladi - o'yinga olinmaydi."""
     emo, name = label.split(" ", 1)
-    row = f"{bold(name)}: {qty} ta"
+    row = f"<b>{name}</b>: {qty} ta"
     return f"{emo} " + (f"<s>{row}</s>" if off else row)
 
 
@@ -1177,18 +1187,18 @@ def profile_card(u, inv) -> str:
     named = [(role(c[2:]) + (f" ×{i.qty}" if i.qty > 1 else ""), i.enabled) for c, i in picks]
     pick = ", ".join(t if on else f"<s>{t}</s>" for t, on in named) or "—"
     end = pro.until(u.telegram_id)
-    head = (f"{pro.badge()} <b>{bold('PRO')} · {bold('Admiral Mafia')}</b>" if end
-            else f"<b>{bold('Admiral Mafia')}</b>")
+    # Matematik qalin (bold()) - faqat rollar va jamoalar; profil yozuvlari - oddiy Telegram qalin
+    head = f"{pro.badge()} <b>PRO · Admiral Mafia</b>" if end else "<b>Admiral Mafia</b>"
     status = ""
     if end:
         days = max(1, -(-int((end - pro._now()).total_seconds()) // 86400))  # yuqoriga yaxlitlash
-        status = f"{pro.badge()} {bold('PRO')}: <b>{end + PRO_TZ:%d.%m.%Y}</b> gacha ({days} kun)\n"
+        status = f"{pro.badge()} <b>PRO</b>: <b>{end + PRO_TZ:%d.%m.%Y}</b> gacha ({days} kun)\n"
     # f-string ichida ' ishlatib bo'lmaydi (Python 3.11)
-    games, wins, nxt = bold("Jami o'yinlar"), bold("G'alabalar"), bold("Keyingi o'yindagi rol")
+    games, wins, nxt = "<b>Jami o'yinlar</b>", "<b>G'alabalar</b>", "<b>Keyingi o'yindagi rol</b>"
     return (f"{head}\n\n"
-            f"{bold('ID')}: <code>{u.telegram_id}</code>\n"
-            f"👤 {bold('Ism')}: <b><i>{escape(pro.name(u.telegram_id, u.full_name))}</i></b>\n"
-            f"🏅 {bold('Unvon')}: {rank(u.wins)}\n{status}\n"
-            f"💵 {bold('Dollar')}: {u.dollars}\n💎 {bold('Olmos')}: {u.diamonds}\n\n{items}\n\n"
+            f"<b>ID</b>: <code>{u.telegram_id}</code>\n"
+            f"👤 <b>Ism</b>: <b><i>{escape(pro.name(u.telegram_id, u.full_name))}</i></b>\n"
+            f"🏅 <b>Unvon</b>: {rank(u.wins)}\n{status}\n"
+            f"💵 <b>Dollar</b>: {u.dollars}\n💎 <b>Olmos</b>: {u.diamonds}\n\n{items}\n\n"
             f"🃏 {nxt}: {pick}\n\n"
             f"🎲 {games}: {u.games}\n🏆 {wins}: {u.wins}")

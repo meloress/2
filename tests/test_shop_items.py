@@ -26,8 +26,8 @@ def test_profile_strikes_off_items_and_shows_role_picks():
            SimpleNamespace(item="r_don", qty=1, enabled=True), SimpleNamespace(item="r_komissar", qty=2, enabled=False)]
     u = SimpleNamespace(telegram_id=U + 900, full_name="Ali", wins=1, games=3, dollars=10, diamonds=2)
     card = texts.profile_card(u, inv)
-    assert f"{texts.bold('Qalqon')}: 2 ta" in card and f"<s>{texts.bold('Hujjat')}: 1 ta</s>" in card
-    assert f"<s>{texts.bold('Qalqon')}" not in card
+    assert "<b>Qalqon</b>: 2 ta" in card and "<s><b>Hujjat</b>: 1 ta</s>" in card
+    assert "<s><b>Qalqon</b>" not in card
     line = next(x for x in card.split("\n") if x.startswith("🃏"))
     assert texts.role("don") in line and f"<s>{texts.role('komissar')} ×2</s>" in line
     assert "Komissar Katani roli" not in card  # rol buyum ro'yxatida takrorlanmaydi

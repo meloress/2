@@ -383,7 +383,13 @@ class Game:
         attacks: dict[int, list[tuple[int, str, str]]] = {}  # target -> [(actor, kind, src)]
         pairs: dict[int, list[int]] = {}
         for u, (k, t, src) in acts.items():
-            if k in ATTACKS:
+            if k == "curse":  # la'nat nishonga tegmaydi: shu tun uning oldiga kelganlar (harakati unga) halok bo'ladi
+                came = [v for v in visitors.get(t, []) if v != u and acts[v][0] != "curse"]
+                for v in came:
+                    attacks.setdefault(v, []).append((u, k, src))
+                if not came:
+                    ev.append(Event("result", u, t, {"kind": "curse_empty", "ok": False}))
+            elif k in ATTACKS:
                 attacks.setdefault(t, []).append((u, k, src))
             elif k == "pair":
                 pairs.setdefault(t, []).append(u)

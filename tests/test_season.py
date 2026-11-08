@@ -70,7 +70,7 @@ def test_top_text_shows_my_place_and_season_header():
     text = texts.top(rows, "Oylik reyting", me=(37, 4, 12))
     assert "📍 Siz: 37-o'rin · 🏆 4 · 🎮 12" in text
     assert "📍 Siz hali reytingda yo'qsiz" in texts.top(rows, "X", me=None, show_me=True)
-    assert texts.top(rows, "X", head="HEAD").startswith(f"🏆 <b>{texts.bold('X')}</b>\nHEAD\n\n")
+    assert texts.top(rows, "X", head="HEAD").startswith(f"🏆 <b>X</b>\nHEAD\n\n")
     assert "📍" not in texts.top(rows, "X")  # guruhdagi /top - shaxsiy qator yo'q
     head = texts.season_head("2026-10", days_left=22)
     assert "Oktabr" in head and "22 kun" in head and f"{config.SEASON_PRIZES[0]}💎" in head

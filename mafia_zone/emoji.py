@@ -8,7 +8,8 @@ import re
 
 from aiogram.client.session.middlewares.base import BaseRequestMiddleware
 from aiogram.exceptions import TelegramBadRequest
-from aiogram.methods import EditMessageReplyMarkup, EditMessageText, SendAnimation, SendMessage
+from aiogram.methods import (EditMessageCaption, EditMessageReplyMarkup, EditMessageText, SendAnimation,
+                             SendDocument, SendMessage, SendPhoto)
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 log = logging.getLogger(__name__)
@@ -96,11 +97,13 @@ def unmark(kb):
 
 TG_EMOJI = re.compile(r'<tg-emoji emoji-id="\d+">(.*?)</tg-emoji>', re.S)
 DISABLED = False  # Telegram bir marta rad etgach: custom emoji'siz yuboriladi (qayta ishga tushguncha)
-METHODS = (SendMessage, EditMessageText, EditMessageReplyMarkup, SendAnimation)
+METHODS = (SendMessage, EditMessageText, EditMessageReplyMarkup, SendAnimation, SendPhoto, SendDocument,
+           EditMessageCaption)
+CAPTIONED = (SendAnimation, SendPhoto, SendDocument, EditMessageCaption)  # matn "caption" maydonida
 
 
 def _field(method) -> str:
-    return "caption" if isinstance(method, SendAnimation) else "text"
+    return "caption" if isinstance(method, CAPTIONED) else "text"
 
 
 def plain(method):

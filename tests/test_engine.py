@@ -1084,9 +1084,28 @@ def test_death_pm_does_not_say_shot():
     assert "otib" not in texts.death_pm(False) and "osib" in texts.death_pm(True)
 
 
-def test_sehrgar_about_says_curse_kills():
+def test_sehrgar_curse_kills_visitors_not_target():
+    """La'natlangan odam tirik qoladi; o'sha tun uning oldiga kelganlar (Doktor, Komissar, Don ham) o'ladi."""
+    from mafia_zone import texts
     from mafia_zone.engine.roles import ROLES
-    assert "o'ladi" in ROLES["sehrgar"].about
+    assert "kelganlar o'ladi" in ROLES["sehrgar"].about
+    g = mk("don", "sehrgar", "doktor", "komissar", *["tinch"] * 8)
+    ev = night(g, (2, "curse", 5), (3, "heal", 5), (4, "check", 5), (1, "mafia_kill", 6))
+    assert g.get(5).alive and not g.get(3).alive and not g.get(4).alive and not g.get(6).alive
+    assert g.get(2).alive and g.get(1).alive  # Sehrgar o'z la'natidan o'lmaydi; Don boshqa uyga borgan
+    assert sorted(e.target for e in ev if e.kind == "result" and e.uid == 2 and e.data["ok"]) == [3, 4]
+    pub, _ = texts.morning(g, ev)
+    assert sum("la'natlangan uyga kirib" in t for t in pub) == 2
+
+    g = mk("don", "sehrgar", *["tinch"] * 10)  # Don la'natlangan uyga bordi: o'zi o'ladi, nishon ham (mafiya o'qi)
+    night(g, (2, "curse", 5), (1, "mafia_kill", 5))
+    assert not g.get(1).alive and not g.get(5).alive
+
+    g = mk("don", "sehrgar", *["tinch"] * 10)  # hech kim kelmadi - hech kim o'lmaydi, Sehrgarga aytiladi
+    ev = night(g, (2, "curse", 5))
+    assert all(p.alive for p in g.players)
+    _, priv = texts.morning(g, ev)
+    assert any(u == 2 and "hech kim kelmadi" in t for u, t in priv)
 
 
 # ---------- kunduzgi osish: eng ko'p ovoz olgan o'yinchi osiladi ----------

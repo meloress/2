@@ -611,7 +611,7 @@ async def cb_menu(cq: CallbackQuery):
     elif what in ("buy", "gem") and config.DIAMONDS_OFF:
         return await cq.answer(texts.DIAMONDS_OFF, show_alert=True)
     elif what == "buy":
-        btns = [Btn(text=f"{d}💵 - {n}💎", callback_data=f"xd:{n}") for n, d in config.DOLLAR_PACKS.items()]
+        btns = [Btn(text=f"💵 {d} — {n}💎", callback_data=f"xd:{n}") for n, d in config.DOLLAR_PACKS.items()]
         await show(cq, texts.BUY_DOLLARS, Kb(inline_keyboard=grid(btns, 2) + [[prof_back()]]))
     elif what == "gem":
         await show(cq, texts.GEM_WHO, Kb(inline_keyboard=[[Btn(text=texts.SELF_BTN, callback_data="gm:me"),
@@ -663,7 +663,7 @@ def card_btn() -> Btn:
 
 def stars_kb(target: int = 0) -> Kb:
     """target: 0 - o'zim uchun, aks holda sovg'a oluvchi. Orqaga - karta paketlariga."""
-    btns = [Btn(text=f"⭐ {s} = 💎 {n}", callback_data=f"gs:{n}:{target}") for n, s in config.DIAMOND_STARS.items()]
+    btns = [Btn(text=f"💎 {n} = {s} ⭐", callback_data=f"gs:{n}:{target}") for n, s in config.DIAMOND_STARS.items()]
     return Kb(inline_keyboard=grid(btns, 2) + [[Btn(text=texts.BACK_BTN, callback_data=f"gp:{target}")]])
 
 
@@ -756,7 +756,7 @@ async def on_check(msg: Message):
     name = await _gift_name(0 if o.target == uid else o.target)
     caption = texts.order_admin(o, texts.mention(uid, msg.from_user.full_name), msg.from_user.username, name or None,
                                 await db.check_used(f.file_unique_id, o.id))
-    caption = caption.replace(texts.USER_MARK, "")  # send_photo PremiumEmoji'dan o'tmaydi: belgilar o'zimiz olamiz
+    caption = caption.replace(texts.USER_MARK, "")  # PremiumEmoji ham oladi; bu - zaxira (middleware'siz chaqiruvlar)
     send_file = msg.bot.send_photo if msg.photo else msg.bot.send_document
     delivered = 0
     for admin in config.ADMIN_IDS:
@@ -850,8 +850,8 @@ def roles_shop_kb() -> Kb:
 
 def pro_kb() -> Kb:
     """Har paket: olmos va Stars tugmasi yonma-yon."""
-    rows = [[Btn(text=f"{d} kun — {dm} 💎", callback_data=f"pro:d:{d}"),
-             Btn(text=f"{d} kun — {st} ⭐", callback_data=f"pro:s:{d}")]
+    rows = [[Btn(text=f"💎 {dm} · {d} kun", callback_data=f"pro:d:{d}"),
+             Btn(text=f"⭐ {st} · {d} kun", callback_data=f"pro:s:{d}")]
             for d, (dm, st) in pro.PACKS.items()]
     return Kb(inline_keyboard=rows + [[card_btn()], [back_btn()]])
 

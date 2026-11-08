@@ -128,3 +128,17 @@ def test_icon_emoji_money_items_teams_phases():
     assert "<tg-emoji" not in emoji.premiumize("👤 Ism")
     assert config.ICON_EMOJI["🤵"] == config.ROLE_EMOJI["don"]
     assert f'emoji-id="{config.ROLE_EMOJI["mafiya"]}"' in emoji.premiumize("🤵🏼 Mafiya")  # teri rangi - o'z portreti
+
+
+def test_captions_premiumized_too():
+    """Rasm/fayl izohi va izoh tahriri ham premium belgilar oladi (chek adminga, panel e'loni)."""
+    from aiogram.methods import EditMessageCaption, SendDocument, SendPhoto
+    calls = []
+
+    async def make_request(bot, method):
+        calls.append(method)
+        return "ok"
+    for m in (SendPhoto(chat_id=1, photo="x", caption="💣 chek"), SendDocument(chat_id=1, document="x", caption="💣 chek"),
+              EditMessageCaption(chat_id=1, message_id=2, caption="💣 chek")):
+        asyncio.run(emoji.PremiumEmoji()(make_request, None, m))
+        assert calls[-1].caption == '<tg-emoji emoji-id="777">💣</tg-emoji> chek', type(m).__name__
