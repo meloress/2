@@ -90,20 +90,25 @@ def test_group_commands_deleted():
 
 
 def test_channel_commands_ignored():
-    """Kanal nomidan (Channel_Bot) buyruq ishlamaydi; yashirin admin (guruh nomidan) ishlaydi."""
+    """Guruhda kanal nomidan yozib bo'lmaydi (o'chiriladi, ogohlantirish 30 s da 1 marta);
+    yashirin admin (guruh nomidan) va ulangan kanalning avtomatik posti o'tadi."""
     async def t():
+        handlers._CHANNEL_WARN.clear()
         bot = FakeBot()
         bot.me = lambda: asyncio.sleep(0, SimpleNamespace(username="MafiaZoneBot"))
         async def handler(m, d):
             return "ok"
-        async def delete():
-            pass
-        for sc, ok in [(-100777, False), (-5, True)]:
-            m = SimpleNamespace(text="/couple @x", chat=SimpleNamespace(id=-5, type="supergroup"),
-                                sender_chat=SimpleNamespace(id=sc), delete=delete)
-            assert (await handlers.drop_commands(handler, m, {"bot": bot}) == "ok") == ok
+        for text, sc, auto, ok in [("/couple @x", -100777, None, False), ("salom", -100777, None, False),
+                                   ("/game", -5, None, True), ("post", -100888, True, True)]:
+            deleted = []
+            async def delete():
+                deleted.append(1)
+            m = SimpleNamespace(text=text, chat=SimpleNamespace(id=-5, type="supergroup"),
+                                sender_chat=SimpleNamespace(id=sc), is_automatic_forward=auto, delete=delete)
+            assert (await handlers.drop_commands(handler, m, {"bot": bot}) == "ok") == ok, text
+            assert bool(deleted) == (not ok or text.startswith("/")), text
             assert await handlers._user(m) is None  # soxta umumiy foydalanuvchi profil bo'lmaydi
-        assert bot.sent == [texts.AS_CHANNEL]
+        assert bot.sent == [texts.AS_CHANNEL]  # ikkinchi kanal xabariga qayta yozilmadi
     run(t())
 
 
@@ -348,7 +353,8 @@ def test_leave_limit_fine_and_debt_block():
             sent.append((chat_id, text))
         orig_send, handlers.send = handlers.send, fake_send
         try:
-            for round_ in range(-1, 7):  # -1: PRO emas - chiqa olmaydi; keyin PRO: 5 ta bepul, so'ng ogohlantirish
+            # -2: ro'yxat, -1: o'yin - PRO emas, chiqa olmaydi; keyin PRO: 5 ta bepul, so'ng ogohlantirish
+            for round_ in range(-2, 7):
                 if round_ == 0:
                     pro.set_user(a, db.now() + timedelta(days=1), None)
                 g = Game(-79, 1, [Player(a, "Ali", "don"), Player(other, "Vali", "tinch")], phase="day")
@@ -357,7 +363,7 @@ def test_leave_limit_fine_and_debt_block():
                 async def leave(uid):
                     left.append(uid)
                     g.get(uid).alive = False
-                r = SimpleNamespace(game=g, game_id=500 + round_, chat_id=-79, leave=leave)
+                r = SimpleNamespace(game=g if round_ != -2 else None, game_id=500 + round_, chat_id=-79, leave=leave)
                 handlers.RUNNERS[-79] = r
                 handlers.PLAYING[a] = r
 

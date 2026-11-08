@@ -69,9 +69,9 @@ def role(code: str) -> str:
 
 # ---------- lobby ----------
 def lobby(members: list[tuple[int, str]], left: int) -> str:
-    body = ", ".join(mention(u, n) for u, n in members) or "— hali hech kim yo'q —"  # chapdan o'ngga, raqamsiz
+    body = ", ".join(mention(u, n) for u, n in members)  # chapdan o'ngga, raqamsiz; bo'sh bo'lsa qator yo'q
     return (f"🎮 <b>ADMIRAL MAFIA</b> — ro'yxatdan o'tish boshlandi!\n\n"
-            f"👥 <b>O'yinchilar ({len(members)}):</b>\n{body}\n\n⏳ Qoldi: <b>{left}</b> soniya")
+            f"👥 <b>O'yinchilar ({len(members)}):</b>{chr(10) + body if body else ''}\n\n⏳ Qoldi: <b>{left}</b> soniya")
 
 
 JOIN_BTN = "🤝 Qo'shilish"
@@ -82,7 +82,7 @@ NO_COUPLE_JOIN = ("💔 <b>Sizda hozirda para yo'q.</b>\n\n"
 COUPLE_DROPPED = "💔 Jufti ro'yxatga yozilmagani uchun paralar o'yiniga kira olmadingiz. Keyingisida birga qo'shiling ❤️"
 NEED_COUPLES = "💔 Paralar yetarli emas (kamida <b>2</b> para kerak).\n<b>O'yin bekor qilindi.</b>"
 OTHER_LOBBY = "⚠️ Hozir boshqa o'yin ro'yxati ochiq. Avval u tugasin yoki admin /stop qilsin."
-NOT_COUPLE_LOBBY = "⚠️ Ochiq ro'yxat oddiy o'yin uchun. Uni /begin bilan boshlang."
+NOT_COUPLE_LOBBY = "⚠️ Ochiq ro'yxat oddiy o'yin uchun. Uni /start bilan boshlang."
 NOT_COUPLE_GAME = "⚠️ Hozirgi o'yin oddiy o'yin. Uni /stop bilan to'xtating."
 
 
@@ -158,7 +158,7 @@ def left_free(uid: int, name: str, n: int, limit: int) -> str:
 
 
 def leave_only_pro(uid: int, name: str) -> str:
-    return (f"🔒 {mention(uid, name)}, o'yin paytida chiqish faqat {pro.badge()} <b>PRO</b> foydalanuvchilar uchun.\n"
+    return (f"🔒 {mention(uid, name)}, o'yindan chiqish faqat {pro.badge()} <b>PRO</b> foydalanuvchilar uchun.\n"
             "O'yinni oxirigacha o'ynang! PRO haqida: botga /pro yozing.")
 
 
@@ -709,7 +709,7 @@ GIVEAWAY_EARLY = "🤖 Juda tez bosdingiz - bu avtomatik bosishga o'xshaydi. Bu 
 
 # ---------- para ----------
 COUPLE_HOW = "❌ Reply qilib yoki /couple @username yozing."
-AS_CHANNEL = "❌ Kanal nomidan buyruq ishlamaydi — o'z profilingizdan yozing."
+AS_CHANNEL = "❌ Guruhda kanal nomidan yozib bo'lmaydi — o'z profilingizdan yozing."
 COUPLE_NOT_FOUND = "❌ Bu foydalanuvchi topilmadi. U avval botga /start yozgan bo'lishi kerak yoki reply qiling."
 COUPLE_SELF = "❌ O'zingizga para bo'lolmaysiz 🙂"
 COUPLE_YOU_TAKEN = "❌ Sizda allaqachon para bor. Avval /uncouple qiling."

@@ -37,15 +37,26 @@ async def drop_double_taps(handler, cq: CallbackQuery, data):
     return await handler(cq, data)
 
 
+CHANNEL_WARN_GAP = 30  # kanal xabariga ogohlantirish guruhda shu soniyada ko'pi bilan 1 marta (spam limitni yemasin)
+_CHANNEL_WARN: dict[int, float] = {}
+
+
 @router.message.outer_middleware()
 async def drop_commands(handler, msg: Message, data):
     """Guruhda botga yozilgan /buyruq ishlangandan keyin o'chiriladi (chat toza tursin).
-    Kanal nomidan yozilgan buyruq ishlamaydi: Telegram hamma kanallarni bitta soxta Channel_Bot
-    foydalanuvchisi qilib beradi, aks holda ular bitta umumiy profil bo'lib qolardi."""
+    Guruhda kanal nomidan yozib bo'lmaydi: xabar o'chiriladi, buyruq ishlamaydi (Telegram hamma
+    kanallarni bitta soxta Channel_Bot foydalanuvchisi qilib beradi). Yashirin admin (guruh nomidan)
+    va guruhga ulangan kanalning avtomatik postlari tegilmaydi."""
+    sc = getattr(msg, "sender_chat", None)
+    if (sc and sc.id != msg.chat.id and msg.chat.type in ("group", "supergroup")
+            and not getattr(msg, "is_automatic_forward", None)):
+        await _call(msg.delete)
+        now = time.monotonic()
+        if now - _CHANNEL_WARN.get(msg.chat.id, -CHANNEL_WARN_GAP) >= CHANNEL_WARN_GAP:
+            _CHANNEL_WARN[msg.chat.id] = now
+            await send(data["bot"], msg.chat.id, texts.AS_CHANNEL)
+        return
     try:
-        sc = getattr(msg, "sender_chat", None)
-        if sc and sc.id != msg.chat.id and (msg.text or "").startswith("/"):
-            return await send(data["bot"], msg.chat.id, texts.AS_CHANNEL)
         return await handler(msg, data)
     finally:
         text = msg.text or ""
@@ -96,7 +107,7 @@ async def cmd_testgame(msg: Message, bot: Bot, command: CommandObject):
     r = Runner(bot, msg.chat.id, settings, msg.chat.title or "")
     r.add_bots(n - 1)
     await r.open_lobby()
-    await msg.answer(f"🧪 Test o'yin: {n - 1} ta 🤖 bot qo'shildi. «Qo'shilish» ni bosing, keyin /begin.")
+    await msg.answer(f"🧪 Test o'yin: {n - 1} ta 🤖 bot qo'shildi. «Qo'shilish» ni bosing, keyin /start.")
 
 
 @router.message(Command("next"), GROUPS)
@@ -123,7 +134,7 @@ async def cmd_extend(msg: Message, bot: Bot, command: CommandObject):
         await msg.answer(f"⏳ Ro'yxatdan o'tish {mins} daqiqaga uzaytirildi.")
 
 
-@router.message(Command("begin", "couplestart"), GROUPS)
+@router.message(Command("start", "begin", "couplestart"), GROUPS)  # /begin - eski nomi, menyuda yo'q
 async def cmd_begin(msg: Message, bot: Bot, command: CommandObject | None = None):
     r = RUNNERS.get(msg.chat.id)
     if r and not r.game and getattr(command, "command", "") == "couplestart" and not r.couple:
@@ -158,15 +169,16 @@ LEAVING: set[int] = set()  # ikki marta bosilsa jarima ikki marta yechilmasin
 
 @router.message(Command("leave"), GROUPS)
 async def cmd_leave(msg: Message):
-    """O'yin paytida faqat PRO: kuniga pro.leave_free ta bepul, keyingisi tasdiq bilan -LEAVE_FINE (balans minusga tushadi)."""
+    """Faqat PRO (ro'yxatda ham, o'yinda ham). O'yinda: kuniga pro.leave_free ta bepul, keyingisi tasdiq
+    bilan -LEAVE_FINE (balans minusga tushadi)."""
     r, u = RUNNERS.get(msg.chat.id), msg.from_user
     if not r or PLAYING.get(u.id) is not r:
         return
-    if not _in_game(r, u.id):  # ro'yxat bosqichi yoki o'lgan - hamma uchun bepul, sanalmaydi
-        await r.leave(u.id)
-        return await msg.answer(f"🚪 {texts.mention(u.id, u.full_name)} o'yindan chiqdi.")
     if not pro.is_pro(u.id):
         return await msg.answer(texts.leave_only_pro(u.id, u.full_name))
+    if not _in_game(r, u.id):  # ro'yxat bosqichi yoki o'lgan - bepul, sanalmaydi
+        await r.leave(u.id)
+        return await msg.answer(f"🚪 {texts.mention(u.id, u.full_name)} o'yindan chiqdi.")
     n, limit = await db.leaves_today(u.id), pro.leave_free(u.id)
     if n < limit:
         await db.count_leave(u.id)
