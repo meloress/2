@@ -4,3 +4,4 @@ __pycache__/
 mafia.db
 .pytest_cache/
 assets/
+emojies/

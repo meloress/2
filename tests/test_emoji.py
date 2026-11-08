@@ -106,3 +106,14 @@ def test_user_text_kept_as_sent():
     cut = texts.said("+  " + text, [MessageEntity(type="custom_emoji", offset=3 + at, length=2, custom_emoji_id="999")],
                      skip=3)  # "+" va bo'shliq olib tashlanadi
     assert cut.startswith(texts.USER_MARK + "xayr") and 'emoji-id="999">😎<' in cut
+
+
+def test_role_portraits_every_role_its_own():
+    """Har bir rol emojisi o'z portretiga almashadi: 🤵🏻 Don va 🤵🏼 Mafiya farqlanadi, 👨‍⚕️ ichidagi 👨 (Tinch) emas."""
+    from mafia_zone import config, texts
+    from mafia_zone.engine.roles import ROLES
+    assert set(config.ROLE_EMOJI) == set(ROLES) and len(set(config.ROLE_EMOJI.values())) == len(ROLES)
+    emoji.load_roles(config.ROLE_EMOJI)
+    for code in ROLES:
+        out = emoji.premiumize(texts.role(code))
+        assert out.count("<tg-emoji") == 1 and f'emoji-id="{config.ROLE_EMOJI[code]}"' in out, code

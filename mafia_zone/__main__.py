@@ -40,7 +40,8 @@ async def main() -> None:
     await db.init()
     bot.session.middleware(runner.BackToGroup())
     bot.session.middleware(emoji.PremiumEmoji())
-    await emoji.load_pack(bot, config.EMOJI_PACK)
+    emoji.load_roles(config.ROLE_EMOJI)  # rol portretlari (premium)
+    await emoji.load_pack(bot, config.EMOJI_PACK)  # bo'sh: o'chiq (to'ldirilsa rollarni almashtiradi)
     runner.BOT_USERNAME = (await bot.me()).username
     await bot.set_my_commands(GROUP_COMMANDS, scope=BotCommandScopeAllGroupChats())
     await bot.set_my_commands([

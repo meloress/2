@@ -34,6 +34,12 @@ def load(mapping: dict[str, str]) -> None:
     _pattern = re.compile(f"(?<!‍)(?:{body})(?![‍\U0001F3FB-\U0001F3FF])") if keys else None
 
 
+def load_roles(ids: dict[str, str]) -> None:
+    """Rol portretlari: rol emojisi (Role.name boshidagi, teri rangi bilan) -> custom_emoji_id (config.ROLE_EMOJI)."""
+    from .engine.roles import ROLES
+    load({ROLES[c].name.split()[0]: i for c, i in ids.items() if c in ROLES})
+
+
 async def load_pack(bot, name: str) -> None:
     if not name:
         return

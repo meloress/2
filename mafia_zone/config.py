@@ -64,3 +64,18 @@ PORT = int(os.environ.get("PORT", "8080") or 8080)
 # Oddiy emoji -> animatsion almashtirish to'plami. 2026-11: o'chirilgan - o'yin matnlarida oddiy emoji (env e'tiborsiz).
 # PRO belgisi (pro.badge/tail, tugma ikonkasi) bunga kirmaydi - u premium bo'lib qoladi
 EMOJI_PACK = ""
+# Rol portretlari (premium emoji; to'plam: t.me/addemoji/admiral_roles_by_AdmiralMafiabot): rol kodi -> custom_emoji_id.
+# Matnda rol emojisi (Role.name boshidagi) shu portretga almashadi. To'plamdan emas, shu yerdan: Telegram to'plamda
+# teri rangini olib tashlaydi (🤵🏻 Don va 🤵🏼 Mafiya ikkalasi 🤵 bo'lib qoladi).
+ROLE_EMOJI = {
+    "tinch": "5440476919709614472", "komissar": "5442666077425281968", "serjant": "5442701386351422873",
+    "doktor": "5443069735631630389", "daydi": "5443051202847751070", "kezuvchi": "5442822611803351913",
+    "afsungar": "5442650800226611382", "voris": "5442899203955143365", "janob": "5442864869986579422",
+    "ovchi": "5440899535901602436", "donishmand": "5442633139321088632", "suitsid": "5442632383406844556",
+    "qorovul": "5440656857364474035", "podshoh": "5443081740065226197", "mafiya": "5442925227161987216",
+    "don": "5443134087126625851", "jurnalist": "5440791023552868226", "yollanma": "5440753309445042704",
+    "advokat": "5442648261900938537", "aka": "5442625979610608414", "uka": "5442632271737697753",
+    "sotqin": "5440364743753772617", "qotil": "5442712746539918130", "gazabkor": "5443088624897799959",
+    "sehrgar": "5442868774111851721", "vampir": "5442753600268841336", "qaroqchi": "5442939632482300722",
+    "konchi": "5442847260620664377", "tulki": "5440720349866011565", "aferist": "5442738881415916709",
+}

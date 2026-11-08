@@ -1188,7 +1188,7 @@ def profile_card(u, inv) -> str:
     return (f"{head}\n\n"
             f"{bold('ID')}: <code>{u.telegram_id}</code>\n"
             f"👤 {bold('Ism')}: <b><i>{escape(pro.name(u.telegram_id, u.full_name))}</i></b>\n"
-            f"🎖 {bold('Unvon')}: {rank(u.wins)}\n{status}\n"
+            f"🏅 {bold('Unvon')}: {rank(u.wins)}\n{status}\n"
             f"💵 {bold('Dollar')}: {u.dollars}\n💎 {bold('Olmos')}: {u.diamonds}\n\n{items}\n\n"
             f"🃏 {nxt}: {pick}\n\n"
             f"🎲 {games}: {u.games}\n🏆 {wins}: {u.wins}")
