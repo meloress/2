@@ -1145,8 +1145,7 @@ def alive_composition(g: Game) -> str:
         for p in ps:
             counts[p.role] = counts.get(p.role, 0) + 1
         roles = ", ".join(role(c) + (f" - {k}" if k > 1 else "") for c, k in counts.items())
-        emo, name = label.split(" ", 1)
-        out.append(f"{emo} <b>{bold(name)} - {len(ps)}</b>\n{roles}")  # jamoa nomi - rollardek matematik qalin
+        out.append(f"<b>{label} - {len(ps)}</b>\n{roles}")  # sarlavha - oddiy Telegram qalin, rollar - matematik
     if masked:  # jamoasi ham ko'rinmaydi
         out.append(f"<b>{MASKED} - {len(masked)}</b>")
     return "\n\n".join(out) + f"\n\n<b>Jami: {len(g.alive())}</b>"
