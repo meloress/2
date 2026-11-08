@@ -618,17 +618,6 @@ async def top_groups(limit: int = 10) -> list[tuple[str, int]]:
     return [(t or "?", int(c)) for t, c in rows]
 
 
-async def public_groups(limit: int = 5) -> list[tuple[str, str]]:
-    """[(nomi, username)] - eng ko'p o'ynalgan ochiq guruhlar (bosh menyu uchun)."""
-    n = func.count(GameRow.id)
-    async with Session() as s:
-        rows = (await s.execute(select(Group.title, Group.username).join(GameRow, GameRow.chat_id == Group.chat_id)
-                                .where(GameRow.status == "finished", Group.username != "")
-                                .group_by(Group.chat_id, Group.title, Group.username)
-                                .order_by(n.desc()).limit(limit))).all()
-    return [(t or "?", u) for t, u in rows]
-
-
 async def rob_dollars(victim: int, thief: int) -> int:
     async with Session.begin() as s:
         u = await s.get(User, victim)

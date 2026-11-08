@@ -250,7 +250,8 @@ def role_alert(g: Game, uid: int) -> str:
 
 
 def game_started(g: Game) -> str:
-    return _game_started(g) + "\n\n" + alive_composition(g)
+    """Ro'yxat xabari (tepada) shunga tahrirlanadi. Tarkib bu yerda emas: 1-tun GIF'idan keyin ro'yxat bilan chiqadi."""
+    return _game_started(g)
 
 
 def _game_started(g: Game) -> str:

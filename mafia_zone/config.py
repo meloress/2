@@ -24,6 +24,8 @@ REWARD_PLAY, REWARD_WIN, REF_BONUS = 0, 40, 50  # yutsa 40$, yutqazsa 0
 # Ko'p profil bilan pul yig'ishga qarshi: shuncha tugagan o'yin kerak
 REF_GAMES, CLAIM_GAMES, SEND_GAMES = 3, 3, 5  # taklif bonusi / tarqatmadan olish / /send
 CLAIM_DELAY = 1.0  # tarqatma chiqqandan keyin shuncha soniya ichida bosgan (avto-bosuvchi bot) shu tarqatmadan ololmaydi
+# /start menyusidagi guruh tugmalari: (nomi, havola). Avtomatik "eng faol guruhlar" o'rniga - qo'lda tanlangan
+FEATURED_GROUPS = [("SKARFACE MAFIA 🥷🏻", "https://t.me/+OVoKusV3WqphZWUy")]
 CARD_ADMIN = "jumayeevou"  # karta orqali to'lov: Stars ekranlarida shu adminga havola
 SEASON_PRIZES = [10, 5, 3]  # oylik reyting: 1-, 2-, 3-o'ringa olmos (oy tugagach db.pay_season)
 # /leave o'yin paytida faqat PRO uchun (kuniga pro.leave_free ta bepul, keyin jarima). Oddiy o'yinchida bepul chiqish 0:

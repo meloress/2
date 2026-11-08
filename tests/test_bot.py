@@ -230,6 +230,11 @@ def test_testgame_bots_play_to_the_end():
         assert bot.gifs.count("gif-id") >= 1  # GIF bir marta yuklanib, keyin file_id bilan
         for t in group:
             assert_telegram_html(t)
+        # o'yin boshi tartibi: O'YIN BOSHLANDI -> Tun GIF -> tirik o'yinchilar + tarkib
+        start, night = group.index(texts.GAME_STARTED), group.index(texts.NIGHT_CAPTION)
+        roster = group[night + 1]
+        assert start < night and roster.startswith("<b>Tirik o'yinchilar:</b>\n1. ") and "Jami: 12" in roster
+        assert sum(t.startswith("<b>Tirik o'yinchilar:</b>") for t in group[:night + 2]) == 1
 
     asyncio.run(go())
 

@@ -208,18 +208,16 @@ def test_top_groups():
     run(t())
 
 
-def test_start_menu_shows_top_public_groups():
+def test_start_menu_shows_only_featured_groups():
+    """/start menyusida faqat qo'lda tanlangan guruh(lar): avtomatik "eng faol guruhlar" yo'q."""
     async def t():
-        await db.group_settings(-100881, "Ochiq guruh", "ochiq_mafia")
-        await db.group_settings(-100882, "Yopiq guruh")  # username yo'q - havola berib bo'lmaydi
-        for chat in (-100881, -100882):
-            gid = await db.create_game(chat, {})
-            await db.finish_game(gid, chat, "finished", "town", [])
-        groups = await db.public_groups()
-        assert ("Ochiq guruh", "ochiq_mafia") in groups and all(u for _, u in groups) and len(groups) <= 5
-        kb = handlers.start_kb(U, groups)
-        btn = next(b for row in kb.inline_keyboard for b in row if b.url and "ochiq_mafia" in b.url)
-        assert btn.url == "https://t.me/ochiq_mafia" and "Ochiq guruh" in btn.text
+        await db.group_settings(-100881, "Begona guruh", "begona_mafia")
+        gid = await db.create_game(-100881, {})
+        await db.finish_game(gid, -100881, "finished", "town", [])
+        kb = handlers.start_kb(U)
+        urls = {b.url: b.text for row in kb.inline_keyboard for b in row if b.url}
+        assert urls["https://t.me/+OVoKusV3WqphZWUy"] == "SKARFACE MAFIA 🥷🏻"
+        assert not any("begona_mafia" in u for u in urls)
     run(t())
 
 
