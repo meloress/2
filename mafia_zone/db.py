@@ -234,6 +234,17 @@ async def make_couple(a: int, b: int) -> bool:
     return True
 
 
+async def couple_lock() -> set[int]:
+    """Hazil qulfi (settings "couple_lock" = {"v": [uid1, uid2]}, ikkalasi rozi): bu juft /uncouple qila olmaydi.
+    Id'lar faqat bazada (repoda emas); qatorni o'chirsa - qulf yo'q."""
+    async with Session() as s:
+        row = await s.get(Setting, "couple_lock")
+    try:
+        return {int(x) for x in row.value["v"]} if row else set()
+    except (KeyError, TypeError, ValueError):
+        return set()
+
+
 async def break_couple(uid: int) -> int | None:
     """Parani bekor qiladi, sobiq parani qaytaradi."""
     async with Session.begin() as s:

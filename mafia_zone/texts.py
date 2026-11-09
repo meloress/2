@@ -699,6 +699,7 @@ GIVEAWAY_EARLY = "🤖 Juda tez bosdingiz - bu avtomatik bosishga o'xshaydi. Bu 
 
 # ---------- para ----------
 COUPLE_HOW = "❌ Reply qilib yoki /couple @username yozing."
+COUPLE_LOCKED = "💍 Siz parani uzolmaysiz! Bu juftlik abadiy 😏"
 AS_CHANNEL = "❌ Guruhda kanal nomidan yozib bo'lmaydi — o'z profilingizdan yozing."
 COUPLE_NOT_FOUND = "❌ Bu foydalanuvchi topilmadi. U avval botga /start yozgan bo'lishi kerak yoki reply qiling."
 COUPLE_SELF = "❌ O'zingizga para bo'lolmaysiz 🙂"

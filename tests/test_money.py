@@ -551,3 +551,29 @@ def test_transfers_are_logged_with_giveaway_claims():
         assert log_b[0]["at"] and log_b[1]["src"]["name"] == f"u{a}"
         assert len(await db.user_transfers(a)) == 2 and len(await db.user_transfers(c)) == 1
     run(t())
+
+
+def test_couple_lock_prank():
+    """settings "couple_lock": shu juft /uncouple qila olmaydi; qator o'chirilsa - odatdagidek uziladi."""
+    from sqlalchemy import delete
+    async def t():
+        a, b = BASE + 3000, BASE + 3001
+        await mkuser(a, 0), await mkuser(b, 0)
+        assert await db.make_couple(a, b)
+        replies = []
+
+        async def reply(text, **kw):
+            replies.append(text)
+        m = SimpleNamespace(from_user=SimpleNamespace(id=b, full_name="Vali", username=None), reply=reply)
+        async with db.Session.begin() as s:
+            s.add(db.Setting(key="couple_lock", value={"v": [a, b]}))
+        try:
+            await handlers.cmd_uncouple(m)
+            assert replies[-1] == texts.COUPLE_LOCKED and await db.partner(b) == a
+        finally:
+            async with db.Session.begin() as s:
+                await s.execute(delete(db.Setting).where(db.Setting.key == "couple_lock"))
+        assert await db.couple_lock() == set()
+        await handlers.cmd_uncouple(m)
+        assert replies[-1] != texts.COUPLE_LOCKED and await db.partner(b) is None
+    run(t())

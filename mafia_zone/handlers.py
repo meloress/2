@@ -504,6 +504,9 @@ async def cmd_uncouple(msg: Message):
     me = await _user(msg)
     if not me:
         return
+    lock = await db.couple_lock()  # hazil qulfi: bazadagi qator o'chirilguncha bu juft uzolmaydi
+    if lock and {me.telegram_id, await db.partner(me.telegram_id)} == lock:
+        return await msg.reply(texts.COUPLE_LOCKED)
     p = await db.break_couple(me.telegram_id)
     await msg.reply(texts.couple_broken(me.telegram_id, me.full_name, p, await _name(p)) if p else texts.COUPLE_NONE)
 
