@@ -8,14 +8,14 @@ from .emoji import USER
 
 BADGE_ID, BADGE_FALLBACK = "5226766493886225846", "🌟"  # ismdan oldin (thecamelot to'plami)
 TAIL_ID, TAIL_FALLBACK = "5220136481720409403", "🔥"  # ismdan keyin
-# Bot egasi (config.ADMIN_IDS): PRO o'rniga "👑 Creator <nickname> 👍" (o'sha to'plamdan) - faqat ko'rinish, imtiyoz emas
-OWNER_ID, OWNER_FALLBACK = "5222194054523029674", "👑"
-OWNER_TAIL_ID, OWNER_TAIL_FALLBACK = "5219740228037680597", "👍"
+# Bot egasi (config.ADMIN_IDS): PRO o'rniga "👑 Creator <nickname> ✅" (o'z to'plamimiz: oltin toj va oltin galochka) - faqat ko'rinish, imtiyoz emas
+OWNER_ID, OWNER_FALLBACK = "5445221694635551153", "👑"
+OWNER_TAIL_ID, OWNER_TAIL_FALLBACK = "5445185075744385629", "✅"
 PACKS = {7: (30, 100), 15: (55, 150), 30: (99, 249)}  # kun -> (olmos, stars)
 CACHE: dict[int, tuple[datetime, str | None]] = {}  # uid -> (tugash vaqti, nickname)
 _BAD_NICK = re.compile(r"@|https?:|t\.me|www\.|\badmin\b|\bbot\b|\bowner\b|\bcreator\b", re.I)  # "Botir", "Admiral" - mumkin
-# oddiy ismdagi "🌟 PRO … 🔥" / "👑 Creator … 👍" soxta belgi
-_FAKE = re.compile(r"^[\s✅☑✔🌟⭐👑\ufe0f]*(?:PRO|OWNER|CREATOR)\b[\s:|·•-]*(.*?)[\s🔥👍\ufe0f]*$", re.I | re.S)
+# oddiy ismdagi "🌟 PRO … 🔥" / "👑 Creator … ✅" soxta belgi
+_FAKE = re.compile(r"^[\s✅☑✔🌟⭐👑\ufe0f]*(?:PRO|OWNER|CREATOR)\b[\s:|·•-]*(.*?)[\s🔥👍✅\ufe0f]*$", re.I | re.S)
 
 
 def _now() -> datetime:

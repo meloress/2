@@ -307,7 +307,7 @@ def test_long_and_weird_names_are_shortened_everywhere():
 
 
 def test_owner_badge_only_for_bot_owner():
-    """Bot egasi (ADMIN_IDS): "👑 Creator nickname 👍" (PRO o'rniga, tugmada ham); boshqalar "Creator" deb yozib ololmaydi."""
+    """Bot egasi (ADMIN_IDS): "👑 Creator nickname ✅" (PRO o'rniga, tugmada ham); boshqalar "Creator" deb yozib ololmaydi."""
     owner, other = 77_500_001, 77_500_002
     old = set(config.ADMIN_IDS)
     config.ADMIN_IDS.clear(), config.ADMIN_IDS.add(owner)
