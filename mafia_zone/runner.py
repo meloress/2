@@ -607,9 +607,10 @@ class Runner:
         if g.phase != FINISHED:  # har qanday o'limdan keyin so'nggi so'z
             hanged = {e.target for e in ev if e.kind == "hanged"}
             hunted = {e.target for e in ev if e.kind == "hunted"}
+            collapsed = {e.target for e in ev if e.kind == "collapsed"}
             for uid in texts.victims(ev):
                 self.last_words[uid] = time.time() + LAST_WORDS_SECS
-                await send(self.bot, uid, texts.death_pm(uid in hanged, uid in hunted))
+                await send(self.bot, uid, texts.death_pm(uid in hanged, uid in hunted, uid in collapsed))
                 spawn(self._last_words_timeout(uid, self.last_words[uid]))
 
     async def on_hunt(self, uid: int, day: int) -> bool:

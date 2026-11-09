@@ -42,7 +42,7 @@ CARD_NUMBER = "".join(c for c in os.environ.get("CARD_NUMBER", "") if c.isdigit(
 CARD_ORDER_MIN = 7  # karta buyurtmasi shuncha daqiqa amal qiladi ("To'ladim" shu vaqt ichida)
 NEWS_URL = os.environ.get("NEWS_URL", "").strip()  # yangiliklar kanali, bo'sh bo'lsa tugma chiqmaydi
 SHOP = {"shield": 140, "verbena": 145, "doc": 190}  # dollar
-SHOP_GEMS = {"mask": 1, "votesave": 2}  # olmos (PRO chegirmasi yo'q)
+SHOP_GEMS = {"mask": 1, "votesave": 2, "ironshield": 1}  # olmos (PRO chegirmasi yo'q); ironshield - Konchi uchun
 # Rolni tanlab olish, olmos (Tinchdan boshqa hamma rol). Narx - vazifaga qarab:
 # 1 - tungi harakati yo'q yoki oddiy; 2 - foydali harakat/maxsus g'alaba; 3 - kuchli (o'ldiradi yoki hal qiladi);
 # 4 - yakka g'olib qotillar va Konchi (o'yinda o'rtacha ~2 💎 qiymatida pul/olmos qazadi: narx undan yuqori)

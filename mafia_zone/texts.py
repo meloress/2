@@ -10,7 +10,7 @@ from .engine.roles import MAFIA, NEUTRAL, ROLES, TOWN
 PRO_TZ = timedelta(hours=5)  # sanalar Toshkent vaqtida
 TEAM = {TOWN: "👨 Tinch aholi", MAFIA: "🤵 Mafiya", NEUTRAL: "🪙 Neytral"}
 ITEMS = {"shield": "🛡 Qalqon", "verbena": "🌿 Verbena", "doc": "📄 Hujjat", "mask": "🎭 Maska",
-         "votesave": "⚖️ Ovoz himoyasi", "ticket": "🎟 Faol rol"}
+         "votesave": "⚖️ Ovoz himoyasi", "ticket": "🎟 Faol rol", "ironshield": "🪖 Temir qalqon"}
 ITEM_ABOUT = {
     "shield": "tunda hujumdan 1 marta saqlaydi (osilishdan emas — buning uchun ⚖️ Ovoz himoyasi)",
     "verbena": "faqat Vampir tishlashidan 1 marta saqlaydi (Vampir 12+ kishilik o'yinlarda chiqadi)",
@@ -18,12 +18,14 @@ ITEM_ABOUT = {
     "mask": "bir o'yin davomida rolingiz guruhga ochilmaydi — o'lganingizda ham",
     "votesave": "kunduzi osilishdan 1 marta saqlaydi (bir o'yinda bir marta)",
     "ticket": "keyingi o'yinda oddiy Tinch o'rniga maxsus rol kafolatlanadi",
+    "ironshield": "faqat Konchi uchun: tunnel qulaganda 1 marta omon qoldiradi (bir o'yinda bir marta)",
 }
 ITEM_USED = {  # o'yinda ishlaganda shaxsiy xabar: "🛡 Qalqon sizni qutqardi: ..."
     "shield": "tunda sizga qilingan hujum qaytarildi",
     "verbena": "Vampir tishlay olmadi",
     "doc": "tekshiruvda «Tinch aholi» bo'lib ko'rindingiz",
     "votesave": "dordan omon qoldingiz",
+    "ironshield": "tunnel qulab tushdi, lekin siz kondan omon chiqdingiz",
 }
 for _c in config.ROLE_PICKS:  # "r_komissar": "🕵️‍♂️ Komissar Katani roli"
     ITEMS[f"r_{_c}"] = f"{ROLES[_c].name} roli"
@@ -53,6 +55,8 @@ WINNER = {TOWN: "👨 Tinch aholi g'alaba qildi!", MAFIA: "🤵 Mafiya g'alaba q
 def mention(uid: int, name: str) -> str:
     """Bosilsa profil ochiladigan ism. PRO bo'lsa: [✅] PRO <nickname yoki ism>."""
     link = f'<a href="tg://user?id={uid}">{escape(pro.name(uid, name))}</a>'
+    if pro.is_owner(uid):  # bot egasi: PRO o'rniga Creator
+        return f"{pro.owner_badge()} <b>Creator</b> {link} {pro.owner_tail()}"
     return f"{pro.badge()} <b>PRO</b> {link} {pro.tail()}" if pro.is_pro(uid) else link
 
 
@@ -442,7 +446,7 @@ def victims(ev: list[Event]) -> list[int]:
     out = []
     for e in ev:
         uid = {"killed": e.target, "hanged": e.target, "revenge": e.target, "linked": e.target,
-               "tulki": e.target, "heartbreak": e.target, "hunted": e.target}.get(e.kind)
+               "tulki": e.target, "heartbreak": e.target, "hunted": e.target, "collapsed": e.target}.get(e.kind)
         if uid is not None and uid not in out:
             out.append(uid)
     return out
@@ -568,6 +572,12 @@ def morning(g: Game, ev: list[Event]) -> tuple[list[str], list[tuple[int, str]]]
             head = ("💎 <b>Olmos koni!</b> " if gems >= 2 else "") + ("💰 <b>Oltin tomir!</b> " if d > 500 else "")
             priv.append((e.uid, f"{head}👷‍♂️ <b>Tabriklaymiz!</b>\nTunneldan <b>{d} 💵</b> dollar{extra} topdingiz!"))
             pub.append(f"{role('konchi')} bugun tunda <b>{d} 💵</b> dollar{extra} topdi!")
+        elif k == "collapsed":  # Konchi qazishda halok bo'ldi
+            pub.append(f"🪦 Bugun tunda {shown_role(g, e.target, e.data['role'])} — <b>{n(e.target)}</b>ning jasadi "
+                       f"{e.data['tunnel']}-tunneldan topildi.")
+        elif k == "dig_saved":
+            pub.append(f"{role('konchi')} {ITEMS['ironshield'].split(' ', 1)[1].lower()}dan foydalandi va kondan "
+                       "omon chiqdi!")
         elif k == "item_used":
             used = ITEM_USED.get(e.data["item"]) or ITEM_ABOUT[e.data["item"]]
             priv.append((e.uid, f"{ITEMS[e.data['item']]} sizni qutqardi: {used}."))
@@ -1151,8 +1161,9 @@ def vote_chosen(name: str | None) -> str:
     return f"✅ Ovozingiz: <b>{escape(name)}</b>" if name else "✅ Siz hech kimga ovoz bermadingiz"
 
 
-def death_pm(hanged: bool, hunted: bool = False) -> str:
-    how = (f"{role('ovchi')} sizga rahm-shafqat qilmasdan joningizni oldi." if hunted
+def death_pm(hanged: bool, hunted: bool = False, collapsed: bool = False) -> str:
+    how = ("Tunnel ustingizga qulab tushdi — kondan chiqa olmadingiz." if collapsed
+           else f"{role('ovchi')} sizga rahm-shafqat qilmasdan joningizni oldi." if hunted
            else "Sizni shafqatsizlarcha osib o'ldirishdi!" if hanged else "Siz vahshiylarcha o'ldirildingiz!")
     return f"<b>{how}</b>\n💀 So'nggi so'zingizni yozishingiz mumkin.\n⏳ Vaqt: <b>{LAST_WORDS_SECS}</b> soniya"
 

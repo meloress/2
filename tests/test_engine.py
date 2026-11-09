@@ -1247,3 +1247,25 @@ def test_immune_target_told_and_advokat_told_disguise_worked():
     g.submit(2, "disguise", 1), g.submit(3, "check", 1)
     _, priv = texts.morning(g, g.resolve_night())
     assert any(u == 2 and "Niqob" in t and "ishladi" in t for u, t in priv)
+
+
+def test_konchi_tunnel_collapse_and_iron_shield(monkeypatch):
+    """Qazishda tunnel qulasa Konchi o'ladi ("N-tunneldan topildi"); 🪖 Temir qalqon bir marta saqlaydi."""
+    from mafia_zone import texts
+    from mafia_zone.engine import game as gm
+    monkeypatch.setattr(gm, "DIG_DEATH", 1.0)  # har qazish - qulash
+    g = mk("don", "konchi", *["tinch"] * 8, p2={"ironshield": 1})
+    ev = night(g, (2, "dig", None))
+    assert g.get(2).alive and [e.kind for e in ev if e.uid == 2][:3] == ["item_used", "dig_saved", "dug"]
+    pub, _ = texts.morning(g, ev)
+    assert any("temir qalqondan foydalandi va kondan omon chiqdi" in t for t in pub)
+    ev = night(g, (2, "dig", None))  # qalqon bir o'yinda bir marta: endi halok
+    col = [e for e in ev if e.kind == "collapsed"]
+    assert not g.get(2).alive and len(col) == 1 and 1 <= col[0].data["tunnel"] <= gm.TUNNELS
+    assert "dug" not in [e.kind for e in ev] and 2 in texts.victims(ev)
+    pub, _ = texts.morning(g, ev)
+    assert any(t.startswith("🪦 Bugun tunda") and f"{col[0].data['tunnel']}-tunneldan topildi" in t for t in pub)
+    monkeypatch.setattr(gm, "DIG_DEATH", 0.0)  # qulamasa - odatdagidek
+    g = mk("don", "konchi", *["tinch"] * 8)
+    ev = night(g, (2, "dig", None))
+    assert g.get(2).alive and "dug" in [e.kind for e in ev]

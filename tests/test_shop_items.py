@@ -11,7 +11,7 @@ U = 7_600_000
 
 def test_prices_and_catalog():
     assert config.SHOP == {"shield": 140, "verbena": 145, "doc": 190}  # tasodifiy "ticket" endi sotilmaydi
-    assert config.SHOP_GEMS == {"mask": 1, "votesave": 2}
+    assert config.SHOP_GEMS == {"mask": 1, "votesave": 2, "ironshield": 1}
     from mafia_zone.engine.roles import ROLES
     assert set(config.ROLE_PICKS) == set(ROLES) - {"tinch"}  # Tinchdan boshqa hamma rol sotiladi
     assert all(1 <= p <= 4 for p in config.ROLE_PICKS.values())

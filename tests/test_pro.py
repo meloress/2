@@ -304,3 +304,24 @@ def test_long_and_weird_names_are_shortened_everywhere():
     assert long not in texts.mention(uid, long) and "…" in texts.mention(uid, long)
     assert pro.label(uid, long)[0] == pro.short(long)
     assert long not in texts.ref_bonus(long)
+
+
+def test_owner_badge_only_for_bot_owner():
+    """Bot egasi (ADMIN_IDS): "👑 Creator nickname 👍" (PRO o'rniga, tugmada ham); boshqalar "Creator" deb yozib ololmaydi."""
+    owner, other = 77_500_001, 77_500_002
+    old = set(config.ADMIN_IDS)
+    config.ADMIN_IDS.clear(), config.ADMIN_IDS.add(owner)
+    try:
+        pro.set_user(owner, db.now() + timedelta(days=1), "Shoh")
+        m = texts.mention(owner, "Ali")
+        assert pro.OWNER_ID in m and pro.OWNER_TAIL_ID in m and "<b>Creator</b>" in m and "Shoh" in m
+        assert pro.BADGE_ID not in m and "<b>PRO</b>" not in m
+        assert pro.label(owner, "Ali") == ("Creator " + pro.short("Shoh"), pro.OWNER_ID)
+        pro.set_user(owner, None, None)  # PRO tugasa ham egasi Creator
+        assert "<b>Creator</b>" in texts.mention(owner, "Ali")
+        assert U(texts.mention(other, "👑 OWNER Vali 👍")) == '<a href="tg://user?id=77500002">Vali</a>'
+        assert U(texts.mention(other, "👑 Creator Vali 👍")) == '<a href="tg://user?id=77500002">Vali</a>'
+        assert pro._BAD_NICK.search("Creator")  # PRO nickname ham "Creator" bo'lolmaydi
+    finally:
+        config.ADMIN_IDS.clear(), config.ADMIN_IDS.update(old)
+        pro.set_user(owner, None, None)

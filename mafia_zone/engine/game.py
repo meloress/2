@@ -29,6 +29,8 @@ def couple_pairs(uids: list[int], partners: dict[int, int]) -> dict[int, int]:
 DIG_DOLLARS = [(0.60, 10, 50), (0.25, 51, 150), (0.10, 151, 300), (0.04, 301, 500), (0.008, 501, 1000),
                (0.002, 1001, 2000)]
 HUNT_FINE = (100, 200)  # Ovchi tinch aholini o'ldirsa: jarima oralig'i (💵), pul o'ldirilganga o'tadi
+DIG_DEATH = 0.10  # Konchi har qazishda shu ehtimol bilan tunnel ostida qoladi (🪖 Temir qalqon bir marta saqlaydi)
+TUNNELS = 9  # "jasadi N-tunneldan topildi": N shu oraliqdan
 DIG_DIAMONDS =[(0.94, 0), (0.05, 1), (0.008, 2), (0.002, 3)]
 
 
@@ -366,6 +368,7 @@ class Game:
             if t is not None:
                 visitors.setdefault(t, []).append(u)
         docced: set[int] = set()  # shu tun Hujjat ko'rsatganlar: boshqa tekshiruvda ham Tinch
+        collapsed: dict[int, int] = {}  # Konchi -> tunnel raqami (qazishda halok bo'ldi)
         for u, t in peeked:
             ev.append(Event("saw_role", u, t, {"role": self._appear(t, disguised, docced, ev)}))
         for u, (k, t, _) in acts.items():
@@ -376,6 +379,11 @@ class Game:
             elif k == "interview":
                 ev.append(Event("interview", u, t, {"visitors": [x for x in visitors.get(t, []) if x != u]}))
             elif k == "dig":
+                if rng.random() < DIG_DEATH:  # tunnel qulab tushdi
+                    if not self._use(self.get(u), "ironshield", ev):
+                        collapsed[u] = rng.randint(1, TUNNELS)  # hujumlardan keyin o'ladi (hujum bo'lsa - o'sha xabari)
+                        continue
+                    ev.append(Event("dig_saved", u))
                 dollars, gems = dig_loot(rng)
                 ev.append(Event("dug", u, data={"dollars": dollars, "diamonds": gems}))
 
@@ -468,6 +476,10 @@ class Game:
             for a in alist:
                 if a[1] == "rage":
                     self.get(a[0]).kills += 1
+        for u, tunnel in collapsed.items():  # hujumdan o'lmagan bo'lsa - tunnel ostida qoldi
+            if self.get(u).alive:
+                self.get(u).alive = False
+                ev.append(Event("collapsed", target=u, data={"tunnel": tunnel, "role": roles0[u]}))
 
         # 5. Qasos
         for t, alist in deaths.items():

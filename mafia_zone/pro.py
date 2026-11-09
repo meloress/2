@@ -8,10 +8,14 @@ from .emoji import USER
 
 BADGE_ID, BADGE_FALLBACK = "5226766493886225846", "🌟"  # ismdan oldin (thecamelot to'plami)
 TAIL_ID, TAIL_FALLBACK = "5220136481720409403", "🔥"  # ismdan keyin
+# Bot egasi (config.ADMIN_IDS): PRO o'rniga "👑 Creator <nickname> 👍" (o'sha to'plamdan) - faqat ko'rinish, imtiyoz emas
+OWNER_ID, OWNER_FALLBACK = "5222194054523029674", "👑"
+OWNER_TAIL_ID, OWNER_TAIL_FALLBACK = "5219740228037680597", "👍"
 PACKS = {7: (30, 100), 15: (55, 150), 30: (99, 249)}  # kun -> (olmos, stars)
 CACHE: dict[int, tuple[datetime, str | None]] = {}  # uid -> (tugash vaqti, nickname)
-_BAD_NICK = re.compile(r"@|https?:|t\.me|www\.|\badmin\b|\bbot\b", re.I)  # "Botir", "Admiral" - mumkin
-_FAKE = re.compile(r"^[\s✅☑✔🌟⭐\ufe0f]*PRO\b[\s:|·•-]*(.*?)[\s🔥]*$", re.I | re.S)  # oddiy ismdagi "🌟 PRO … 🔥" soxta belgi
+_BAD_NICK = re.compile(r"@|https?:|t\.me|www\.|\badmin\b|\bbot\b|\bowner\b|\bcreator\b", re.I)  # "Botir", "Admiral" - mumkin
+# oddiy ismdagi "🌟 PRO … 🔥" / "👑 Creator … 👍" soxta belgi
+_FAKE = re.compile(r"^[\s✅☑✔🌟⭐👑\ufe0f]*(?:PRO|OWNER|CREATOR)\b[\s:|·•-]*(.*?)[\s🔥👍\ufe0f]*$", re.I | re.S)
 
 
 def _now() -> datetime:
@@ -66,8 +70,8 @@ def short(s: str) -> str:
 
 def name(uid: int, fallback: str) -> str:
     """Ko'rsatiladigan ism: PRO va nickname bo'lsa - nickname. Oddiy foydalanuvchi ismidagi "✅ PRO" olib tashlanadi."""
-    if is_pro(uid):
-        return short(CACHE[uid][1] or fallback)
+    if is_pro(uid) or is_owner(uid):  # egasi PRO'siz ham nickname/haqiqiy ismini "Creator" bilan ko'rsatadi
+        return short((CACHE.get(uid) or (None, None))[1] or fallback)
     return short(_FAKE.sub(r"\1", fallback) or fallback)
 
 
@@ -79,8 +83,22 @@ def tail() -> str:
     return f'<tg-emoji emoji-id="{TAIL_ID}">{TAIL_FALLBACK}</tg-emoji>'
 
 
+def is_owner(uid: int) -> bool:
+    return uid in config.ADMIN_IDS
+
+
+def owner_badge() -> str:
+    return f'<tg-emoji emoji-id="{OWNER_ID}">{OWNER_FALLBACK}</tg-emoji>'
+
+
+def owner_tail() -> str:
+    return f'<tg-emoji emoji-id="{OWNER_TAIL_ID}">{OWNER_TAIL_FALLBACK}</tg-emoji>'
+
+
 def label(uid: int, text: str) -> tuple[str, str | None]:
-    """Tugma uchun: (matn, icon_custom_emoji_id)."""
+    """Tugma uchun: (matn, icon_custom_emoji_id). Egasi - Creator, PRO - PRO."""
+    if is_owner(uid):
+        return f"Creator {name(uid, text)}", OWNER_ID
     return (f"PRO {name(uid, text)}", BADGE_ID) if is_pro(uid) else (name(uid, text), None)
 
 

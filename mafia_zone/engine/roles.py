@@ -47,6 +47,7 @@ _ROLES = [
     Role("vampir", "🧛 Vampir", NEUTRAL, ("bite",), "Tunda o'yinchini tishlaysiz. Doktor, Qalqon yoki Verbena saqlamasa, u o'ladi."),
     Role("qaroqchi", "🦹‍♂️ Qaroqchi", NEUTRAL, ("rob",), "O'yinchilardan pul, buyum yoki ovoz huquqini o'g'irlaysiz. Oxirigacha tirik qolsangiz, g'olibsiz."),
     Role("konchi", "👷‍♂️ Konchi", NEUTRAL, ("dig",), "Har tunda tunnel qazib 10 dan 2000 gacha 💵 va 0 dan 3 tagacha 💎 topishingiz mumkin. "
+         "Ba'zan tunnel qulab, halok bo'lishingiz mumkin (🪖 Temir qalqon bir marta saqlaydi). "
          "Oxirigacha tirik qolsangiz, g'olibsiz."),
     Role("tulki", "🦊 Tulki", NEUTRAL, (), "Kunduzi osilsangiz, sizga 1-ovoz bergan bilan birga o'lasiz va g'olib bo'lasiz."),
     Role("aferist", "🤹 Aferist", NEUTRAL, ("steal",), "Boshqa o'yinchining tungi harakatini o'g'irlaysiz. Tirik qolib, g'olib tomonga qo'shilasiz."),
