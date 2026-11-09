@@ -56,14 +56,17 @@ def mention(uid: int, name: str) -> str:
     """Bosilsa profil ochiladigan ism + Pro ko'rinishi (pro_look)."""
     link = f'<a href="tg://user?id={uid}">{escape(pro.name(uid, name))}</a>'
     if pro.is_owner(uid):  # bot egasi: Pro o'rniga Creator
-        return f"{pro.owner_badge()} <b>Creator</b> {link} {pro.owner_tail()}"
+        return f"{pro.owner_badge()} {pro.CREATOR_TAG} {link} {pro.owner_tail()}"
     return pro_look(link, pro.tier(uid), pro.title(uid))
 
 
 def pro_look(link: str, tier: int, title: str | None = None) -> str:
-    """Pro 1: qalin kursiv ism (pro.name); Pro 2: + belgi oldida va keyin; Pro 3: + "Pro"; toifa: "Shahar Mafia Owner"."""
-    if title or tier >= 3:
-        return f"{pro.badge()} <b>{escape(title or 'Pro')}</b> {link} {pro.tail()}"
+    """Pro 1: qalin kursiv ism (pro.name); Pro 2: + pro boshi oldida, qizil galochka keyin; Pro 3: + "Pro";
+    toifa (guruh egasi): pro boshi + "Vip" + ism + qora galochka."""
+    if title:
+        return f"{pro.badge()} {pro.VIP_TAG} {link} {pro.vip_tail()}"
+    if tier >= 3:
+        return f"{pro.badge()} {pro.PRO_TAG} {link} {pro.tail()}"
     return f"{pro.badge()} {link} {pro.tail()}" if tier == 2 else link
 
 
@@ -817,10 +820,10 @@ NICK_HOW = "🏷 Laqab qo'yish: <code>/nickname Laqabingiz</code>\nO'chirish: <c
 PRO_EXPIRING = (f"⏳ Pro muddatingiz <b>24 soat ichida</b> tugaydi.\n"
                 "Belgi, chegirma va boshqa imkoniyatlar saqlanib qolishi uchun /pro orqali uzaytiring.")
 TIER_ICON = {1: "⭐", 2: "🌟", 3: "💫"}
-TITLE_BTN = "👑 Toifa"
+TITLE_BTN = "👑 Vip toifa"
 TITLE_ADD_BTN = "➕ Guruhga qo'shish"
 TITLE_CHECK_BTN = "✅ Tekshirish"
-TITLE_HAVE = "👑 Sizda guruh egasi toifasi bor — cheksiz Pro 3."
+TITLE_HAVE = "👑 Sizda Vip toifasi bor — cheksiz Pro 3."
 
 
 def _pro_date(t) -> str:
@@ -832,7 +835,7 @@ def _pro_have(uid: int) -> str:
     if not end:
         return ""
     if t:
-        return f"\n\n👑 Sizda <b>{escape(t)}</b> toifasi bor: cheksiz <b>Pro 3</b>."
+        return f"\n\n{pro.badge()} Sizda <b>Vip</b> toifasi bor: cheksiz <b>Pro 3</b>."
     return f"\n\n{pro.badge()} Sizda <b>Pro {pro.tier(uid)}</b> bor: <b>{_pro_date(end)}</b> gacha."
 
 
@@ -863,19 +866,20 @@ def pro_done(end, tier: int = 3) -> str:
 
 
 def title_info() -> str:
-    return ("👑 <b>Guruh egasi toifasi</b>\n\n"
+    look = f"{pro.badge()} {pro.VIP_TAG} {escape(pro.short(pro.fancy('Ism')))} {pro.vip_tail()}"
+    return ("👑 <b>Vip toifa — guruh egalari uchun</b>\n\n"
             "Admiral Mafia o'ynaladigan katta guruhingiz bormi? Unda Pro'ni <b>tekin</b> oling!\n\n"
             "📋 <b>Talablar:</b>\n"
             f"👥 {config.TITLE_MEMBERS} va undan ko'p a'zo\n"
             f"🎮 Kamida {config.TITLE_GAMES} ta o'yin o'ynalgan, oxirgisi {config.TITLE_DAYS} kun ichida\n"
             "👑 Guruhni aynan siz ochgan bo'lishingiz (egasi), bot esa guruhda turishi kerak\n\n"
-            "🎁 <b>Mukofot:</b> muddatsiz <b>Pro 3</b> — ismingiz yonida guruhingiz nomi chiqadi "
-            "(masalan: <i>Shahar Mafia Owner</i>).\n\n"
+            "🎁 <b>Mukofot:</b> muddatsiz <b>Pro 3</b> va ismingiz oldida <b>Vip</b> belgisi:\n"
+            f"{look}\n\n"
             f"Bot guruhingizda bo'lmasa, avval «{TITLE_ADD_BTN}» orqali qo'shing, so'ng «{TITLE_CHECK_BTN}» ni bosing.")
 
 
 def title_done(title: str) -> str:
-    return (f"🎉 👑 <b>{escape(title)}</b> toifasi berildi!\nEndi sizda cheksiz <b>Pro 3</b> bor.\n\n"
+    return (f"🎉 {pro.badge()} <b>Vip</b> toifasi berildi! ({escape(title)})\nEndi sizda cheksiz <b>Pro 3</b> bor.\n\n"
             "🏷 Laqab qo'yish: /nickname")
 
 
@@ -1219,7 +1223,7 @@ def profile_card(u, inv) -> str:
     head = f"{pro.badge()} <b>Pro · Admiral Mafia</b>" if end else "<b>Admiral Mafia</b>"
     status = ""
     if title:
-        status = f"👑 <b>{escape(title)}</b>: cheksiz Pro 3\n"
+        status = f"{pro.badge()} <b>Vip</b>: cheksiz Pro 3\n"
     elif end:
         days = max(1, -(-int((end - pro._now()).total_seconds()) // 86400))  # yuqoriga yaxlitlash
         status = f"{pro.badge()} <b>Pro {pro.tier(uid)}</b>: <b>{end + PRO_TZ:%d.%m.%Y}</b> gacha ({days} kun)\n"

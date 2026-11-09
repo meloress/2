@@ -215,7 +215,7 @@ def test_start_menu_shows_only_featured_groups():
         await db.finish_game(gid, -100881, "finished", "town", [])
         kb = handlers.start_kb(U)
         urls = {b.url: b.text for row in kb.inline_keyboard for b in row if b.url}
-        assert urls["https://t.me/+OVoKusV3WqphZWUy"] == "SKARFACE MAFIA 🥷🏻"
+        assert urls["https://t.me/+OVoKusV3WqphZWUy"] == "𝐒𝐊𝐀𝐑𝐅𝐀𝐂𝐄 𝐌𝐀𝐅𝐈𝐀 🥷🏻"
         assert not any("begona_mafia" in u for u in urls)
     run(t())
 

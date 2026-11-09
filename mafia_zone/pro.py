@@ -6,22 +6,24 @@ from datetime import datetime, timezone
 from . import config
 from .emoji import USER
 
-BADGE_ID, BADGE_FALLBACK = "5226766493886225846", "🌟"  # ismdan oldin (thecamelot to'plami)
-TAIL_ID, TAIL_FALLBACK = "5220136481720409403", "🔥"  # ismdan keyin
+# o'z to'plamimiz (admiral_roles_by_AdmiralMafiabot): "pro boshi" ismdan oldin, galochka keyin (Pro - qizil, Vip - qora)
+BADGE_ID, BADGE_FALLBACK = "5444964086792104275", "🎩"
+TAIL_ID, TAIL_FALLBACK = "5444981103452531111", "☑️"
+VIP_TAIL_ID, VIP_TAIL_FALLBACK = "5442967463870380552", "✔️"
 # Bot egasi (config.ADMIN_IDS): PRO o'rniga "👑 Creator <nickname> ✅" (o'z to'plamimiz: oltin toj va oltin galochka) - faqat ko'rinish, imtiyoz emas
 OWNER_ID, OWNER_FALLBACK = "5445221694635551153", "👑"
-OWNER_TAIL_ID, OWNER_TAIL_FALLBACK = "5445185075744385629", "✅"
+OWNER_TAIL_ID, OWNER_TAIL_FALLBACK = "5445219637346216382", "✅"
 DAYS = 7  # har paket shuncha kun
 PACKS = {1: (9, 50), 2: (19, 100), 3: (29, 150)}  # daraja -> (olmos, stars), DAYS kunga
 DISCOUNT = {1: 5, 2: 10, 3: 15, None: 25}  # do'kon chegirmasi %; None - eski (darajasiz) PRO, muddati tugaguncha
 WIN = {1: 100, 2: 125, 3: 150, None: 150}  # g'alaba puli %
 FOREVER = datetime(2100, 1, 1, tzinfo=timezone.utc)  # guruh egasi toifasi - cheksiz Pro 3
-# uid -> (tugash vaqti, nickname, daraja (None = eski PRO, Pro 3 kabi), toifa nomi ("Shahar Mafia Owner") yoki None)
+# uid -> (tugash vaqti, nickname, daraja (None = eski PRO, Pro 3 kabi), toifa (guruh nomi + " Owner"; bor bo'lsa "Vip" ko'rinadi) yoki None)
 CACHE: dict[int, tuple[datetime, str | None, int | None, str | None]] = {}
 FORCED: dict[int, str] = {}  # uid -> qulflangan ism (settings "name_lock", db._apply): nickname/ismdan ustun, o'zgarmaydi
-_BAD_NICK = re.compile(r"@|https?:|t\.me|www\.|\badmin\b|\bbot\b|\bowner\b|\bcreator\b", re.I)  # "Botir", "Admiral" - mumkin
-# oddiy ismdagi "🌟 PRO … 🔥" / "👑 Creator … ✅" soxta belgi
-_FAKE = re.compile(r"^[\s✅☑✔🌟⭐👑\ufe0f]*(?:PRO|OWNER|CREATOR)\b[\s:|·•-]*(.*?)[\s🔥👍✅\ufe0f]*$", re.I | re.S)
+_BAD_NICK = re.compile(r"@|https?:|t\.me|www\.|\badmin\b|\bbot\b|\bowner\b|\bcreator\b|\bvip\b", re.I)  # "Botir", "Admiral" - mumkin
+# oddiy ismdagi "🎩 Pro … ☑️" / "👑 Creator … ✅" soxta belgi
+_FAKE = re.compile(r"^[\s✅☑✔🌟⭐👑🎩\ufe0f]*(?:PRO|VIP|OWNER|CREATOR|𝐏𝐫𝐨|𝐕𝐢𝐩|𝐂𝐫𝐞𝐚𝐭𝐨𝐫)\b[\s:|·•-]*(.*?)[\s🔥👍✅☑✔\ufe0f]*$", re.I | re.S)
 
 
 def _now() -> datetime:
@@ -64,11 +66,16 @@ def tier(uid: int) -> int:
 
 
 def title(uid: int) -> str | None:
-    """Guruh egasi toifasi: "Shahar Mafia Owner" (Pro o'rniga yoziladi)."""
+    """Guruh egasi toifasi (saqlangan nomi "Shahar Mafia Owner"); bor bo'lsa ism oldida "Vip" yoziladi."""
     return CACHE[uid][3] if is_pro(uid) else None
 
 
 _FANCY = {**{chr(65 + i): chr(0x1D468 + i) for i in range(26)}, **{chr(97 + i): chr(0x1D482 + i) for i in range(26)}}
+
+
+_BOLD = {**{chr(65 + i): chr(0x1D400 + i) for i in range(26)}, **{chr(97 + i): chr(0x1D41A + i) for i in range(26)}}
+# ism yonidagi yozuvlar matematik qalin shriftda: 𝐏𝐫𝐨 / 𝐕𝐢𝐩 / 𝐂𝐫𝐞𝐚𝐭𝐨𝐫
+PRO_TAG, VIP_TAG, CREATOR_TAG = ("".join(_BOLD[c] for c in w) for w in ("Pro", "Vip", "Creator"))
 
 
 def fancy(s: str) -> str:
@@ -117,6 +124,10 @@ def tail() -> str:
     return f'<tg-emoji emoji-id="{TAIL_ID}">{TAIL_FALLBACK}</tg-emoji>'
 
 
+def vip_tail() -> str:
+    return f'<tg-emoji emoji-id="{VIP_TAIL_ID}">{VIP_TAIL_FALLBACK}</tg-emoji>'
+
+
 def is_owner(uid: int) -> bool:
     return uid in config.ADMIN_IDS
 
@@ -130,15 +141,15 @@ def owner_tail() -> str:
 
 
 def label(uid: int, text: str) -> tuple[str, str | None]:
-    """Tugma uchun: (matn, icon_custom_emoji_id). Egasi - Creator; toifa - "Shahar Mafia Owner"; Pro 3 - "Pro";
+    """Tugma uchun: (matn, icon_custom_emoji_id). Egasi - Creator; toifa - "Vip"; Pro 3 - "Pro";
     Pro 2 - belgi ikonkasi; Pro 1 - faqat qalin kursiv ism."""
     n = name(uid, text)
     if is_owner(uid):
-        return f"Creator {n}", OWNER_ID
-    if t := title(uid):
-        return f"{t} {n}", BADGE_ID
+        return f"{CREATOR_TAG} {n}", OWNER_ID
+    if title(uid):
+        return f"{VIP_TAG} {n}", BADGE_ID
     lv = tier(uid)
-    return (f"Pro {n}", BADGE_ID) if lv >= 3 else (n, BADGE_ID) if lv == 2 else (n, None)
+    return (f"{PRO_TAG} {n}", BADGE_ID) if lv >= 3 else (n, BADGE_ID) if lv == 2 else (n, None)
 
 
 def price(uid: int, base: int) -> int:

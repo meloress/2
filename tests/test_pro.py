@@ -30,9 +30,9 @@ def test_badge_name_and_expiry():
     pro.set_user(1, db.now() + timedelta(days=3), "Shoh<1>")  # daraja None - eski PRO = Pro 3
     assert pro.is_pro(1) and pro.tier(1) == 3 and U(pro.name(1, "Ali")) == F("Shoh<1>")
     m = texts.mention(1, "Ali")
-    assert pro.BADGE_ID in m and "<b>Pro</b>" in m and F("Shoh") + "&lt;1&gt;" in m and "tg://user?id=1" in m
+    assert pro.BADGE_ID in m and pro.PRO_TAG in m and F("Shoh") + "&lt;1&gt;" in m and "tg://user?id=1" in m
     # 🌟 Pro <nickname> 🔥
-    assert m.index(pro.BADGE_ID) < m.index("<b>Pro</b>") < m.index(F("Shoh")) < m.index(pro.TAIL_ID)
+    assert m.index(pro.BADGE_ID) < m.index(pro.PRO_TAG) < m.index(F("Shoh")) < m.index(pro.TAIL_ID)
     pro.set_user(1, db.now() - timedelta(seconds=1), "Shoh")
     assert not pro.is_pro(1) and U(texts.mention(1, "Ali")) == '<a href="tg://user?id=1">Ali</a>'
 
@@ -41,16 +41,16 @@ def test_perks_numbers():
     pro.set_user(2, db.now() + timedelta(days=1), None)  # eski PRO: muddati tugaguncha -25%, x1.5
     assert pro.price(2, 100) == 75 and pro.price(3, 100) == 100
     assert pro.win_reward(2) == config.REWARD_WIN * 3 // 2 and pro.win_reward(3) == config.REWARD_WIN
-    assert [(U(t), i) for t, i in (pro.label(2, "Ali"), pro.label(3, "Ali"))] == [("Pro " + F("Ali"), pro.BADGE_ID),
+    assert [(U(t), i) for t, i in (pro.label(2, "Ali"), pro.label(3, "Ali"))] == [(pro.PRO_TAG + " " + F("Ali"), pro.BADGE_ID),
                                                                                     ("Ali", None)]
     w = config.REWARD_WIN
     for lv, price, win, icon in ((1, 95, w, None), (2, 90, w * 125 // 100, pro.BADGE_ID), (3, 85, w * 3 // 2, pro.BADGE_ID)):
         pro.set_user(4, db.now() + timedelta(days=1), "Shoh", lv)
         assert pro.tier(4) == lv and pro.price(4, 100) == price and pro.win_reward(4) == win, lv
-        text = "Pro " + F("Shoh") if lv == 3 else F("Ali")  # nickname faqat Pro 3 da
+        text = pro.PRO_TAG + " " + F("Shoh") if lv == 3 else F("Ali")  # nickname faqat Pro 3 da
         assert (U(pro.label(4, "Ali")[0]), pro.label(4, "Ali")[1]) == (text, icon)
         m = texts.mention(4, "Ali")  # belgi Pro 2 dan; "Pro" yozuvi Pro 3 da
-        assert (F("Shoh") in m) == (lv == 3) and (pro.BADGE_ID in m) == (lv >= 2) and ("<b>Pro</b>" in m) == (lv == 3)
+        assert (F("Shoh") in m) == (lv == 3) and (pro.BADGE_ID in m) == (lv >= 2) and (pro.PRO_TAG in m) == (lv == 3)
         assert "PRO" not in m
 
 
@@ -162,7 +162,7 @@ def test_pro_buttons_profile_and_lobby_name():
     r.game_id = 3
     rows = r.vote_kb(4).inline_keyboard
     b = rows[0][0]
-    assert U(b.text) == "2. 🤵🏼 Pro " + F("Shoh") and b.icon_custom_emoji_id == pro.BADGE_ID
+    assert U(b.text) == "2. 🤵🏼 " + pro.PRO_TAG + " " + F("Shoh") and b.icon_custom_emoji_id == pro.BADGE_ID
     assert U(rows[1][0].text) == "3. Hasan" and rows[1][0].icon_custom_emoji_id is None
     r.close()
     u = SimpleNamespace(telegram_id=5, full_name="Ali", wins=0, dollars=0, diamonds=0, games=0)
@@ -227,7 +227,7 @@ def test_pro_menu_diamonds_and_nickname():
             text, kb = shown[-1]
             assert f"Pro {lv}" in text and F("Ali") in text and f"({pro.DISCOUNT[lv]}%)" in text and "/leave" in text
             assert ("/nickname" in text) == (lv == 3) and ("x1.5" in text) == (lv == 3) and ("x1.25" in text) == (lv == 2)
-            assert ("<b>Pro</b>" in text) == (lv == 3) and (pro.BADGE_ID in text) == (lv >= 2) and "PRO" not in text
+            assert (pro.PRO_TAG in text) == (lv == 3) and (pro.BADGE_ID in text) == (lv >= 2) and "PRO" not in text
             cbs = [b.callback_data for row in kb.inline_keyboard for b in row]
             assert [c for c in cbs if c] == [f"pro:d:{lv}", f"pro:s:{lv}", "m:pro"]
             assert kb.inline_keyboard[0][0].text == f"💎 7 kun — {pro.PACKS[lv][0]}"
@@ -344,11 +344,11 @@ def test_owner_badge_only_for_bot_owner():
     try:
         pro.set_user(owner, db.now() + timedelta(days=1), "Shoh")
         m = texts.mention(owner, "Ali")
-        assert pro.OWNER_ID in m and pro.OWNER_TAIL_ID in m and "<b>Creator</b>" in m and F("Shoh") in m
-        assert pro.BADGE_ID not in m and "<b>Pro</b>" not in m
-        assert pro.label(owner, "Ali") == ("Creator " + pro.short(F("Shoh")), pro.OWNER_ID)
+        assert pro.OWNER_ID in m and pro.OWNER_TAIL_ID in m and pro.CREATOR_TAG in m and F("Shoh") in m
+        assert pro.BADGE_ID not in m and pro.PRO_TAG not in m
+        assert pro.label(owner, "Ali") == (pro.CREATOR_TAG + " " + pro.short(F("Shoh")), pro.OWNER_ID)
         pro.set_user(owner, None, None)  # PRO tugasa ham egasi Creator
-        assert "<b>Creator</b>" in texts.mention(owner, "Ali")
+        assert pro.CREATOR_TAG in texts.mention(owner, "Ali")
         assert U(texts.mention(other, "👑 OWNER Vali 👍")) == '<a href="tg://user?id=77500002">Vali</a>'
         assert U(texts.mention(other, "👑 Creator Vali 👍")) == '<a href="tg://user?id=77500002">Vali</a>'
         assert pro._BAD_NICK.search("Creator")  # PRO nickname ham "Creator" bo'lolmaydi
@@ -389,8 +389,10 @@ def test_group_owner_title():
         await db.load_pro()
         assert pro.tier(u) == 3 and pro.title(u) == title and pro.until(u) == pro.FOREVER
         m = texts.mention(u, "Ali")
-        assert f"<b>{title}</b>" in m and pro.BADGE_ID in m and "<b>Pro</b>" not in m
-        assert U(pro.label(u, "Ali")[0]) == "Shahar Mafia 🌟 Owner " + F("Ali")
+        # pro boshi + Vip + ism + qora (Vip) galochka; guruh nomi ko'rinmaydi
+        assert m.startswith(pro.badge() + f" {pro.VIP_TAG} ") and m.endswith(pro.vip_tail())
+        assert "Shahar" not in m and pro.PRO_TAG not in m and pro.TAIL_ID not in m
+        assert U(pro.label(u, "Ali")[0]) == pro.VIP_TAG + " " + F("Ali")
         assert await db.add_pro(u, 7, "admin", 0, tier=1) == pro.FOREVER and pro.tier(u) == 3  # toifa tegilmaydi
         alerts = []
 
@@ -421,7 +423,7 @@ def test_name_lock_prank():
             await db.load_settings()
             assert U(pro.name(u, "Ali")) == "Creator's" and "Creator&#x27;s" in texts.mention(u, "Ali")
             pro.set_user(u, db.now() + timedelta(days=1), "Shoh", 3)
-            assert U(pro.name(u, "Ali")) == F("Creator's") and U(pro.label(u, "Ali")[0]) == "Pro " + F("Creator's")
+            assert U(pro.name(u, "Ali")) == F("Creator's") and U(pro.label(u, "Ali")[0]) == pro.PRO_TAG + " " + F("Creator's")
             said = []
 
             async def answer(text=None, **kw):

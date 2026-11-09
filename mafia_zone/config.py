@@ -25,7 +25,7 @@ REWARD_PLAY, REWARD_WIN, REF_BONUS = 0, 40, 50  # yutsa 40$, yutqazsa 0
 
 CLAIM_DELAY = 1.0  # tarqatma chiqqandan keyin shuncha soniya ichida bosgan (avto-bosuvchi bot) shu tarqatmadan ololmaydi
 # /start menyusidagi guruh tugmalari: (nomi, havola). Avtomatik "eng faol guruhlar" o'rniga - qo'lda tanlangan
-FEATURED_GROUPS = [("SKARFACE MAFIA 🥷🏻", "https://t.me/+OVoKusV3WqphZWUy")]
+FEATURED_GROUPS = [("𝐒𝐊𝐀𝐑𝐅𝐀𝐂𝐄 𝐌𝐀𝐅𝐈𝐀 🥷🏻", "https://t.me/+OVoKusV3WqphZWUy")]
 # Guruh egasi toifasi (cheksiz Pro 3): guruhda kamida shuncha a'zo, tugagan o'yin, oxirgi o'yin shuncha kun ichida
 TITLE_MEMBERS, TITLE_GAMES, TITLE_DAYS = 500, 20, 14
 CARD_ADMIN = "jumayeevou"  # karta orqali to'lov: Stars ekranlarida shu adminga havola
