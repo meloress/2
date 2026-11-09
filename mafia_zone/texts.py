@@ -53,11 +53,18 @@ WINNER = {TOWN: "👨 Tinch aholi g'alaba qildi!", MAFIA: "🤵 Mafiya g'alaba q
 
 
 def mention(uid: int, name: str) -> str:
-    """Bosilsa profil ochiladigan ism. PRO bo'lsa: [✅] PRO <nickname yoki ism>."""
+    """Bosilsa profil ochiladigan ism + Pro ko'rinishi (pro_look)."""
     link = f'<a href="tg://user?id={uid}">{escape(pro.name(uid, name))}</a>'
-    if pro.is_owner(uid):  # bot egasi: PRO o'rniga Creator
+    if pro.is_owner(uid):  # bot egasi: Pro o'rniga Creator
         return f"{pro.owner_badge()} <b>Creator</b> {link} {pro.owner_tail()}"
-    return f"{pro.badge()} <b>PRO</b> {link} {pro.tail()}" if pro.is_pro(uid) else link
+    return pro_look(link, pro.tier(uid), pro.title(uid))
+
+
+def pro_look(link: str, tier: int, title: str | None = None) -> str:
+    """Pro 1: qalin kursiv ism (pro.name); Pro 2: + belgi oldida va keyin; Pro 3: + "Pro"; toifa: "Shahar Mafia Owner"."""
+    if title or tier >= 3:
+        return f"{pro.badge()} <b>{escape(title or 'Pro')}</b> {link} {pro.tail()}"
+    return f"{pro.badge()} {link} {pro.tail()}" if tier == 2 else link
 
 
 def pm(g: Game, uid: int) -> str:
@@ -161,23 +168,9 @@ def giveaway_refund(amount: int, currency: str = "dollars") -> str:
 
 STOPPED = "🛑 <b>O'yin to'xtatildi.</b>"
 ONLY_ADMIN = "⚠️ Bu buyruq faqat guruh adminlari uchun."
-def left_free(uid: int, name: str, n: int, limit: int) -> str:
-    return (f"🚪 {mention(uid, name)} o'yindan chiqdi.\n"
-            f"ℹ️ Bugungi chiqishlar: <b>{n}/{limit}</b>. "
-            f"Limitdan keyin har bir chiqish <b>-{config.LEAVE_FINE} 💵</b>.")
-
-
 def leave_only_pro(uid: int, name: str) -> str:
-    return (f"🔒 {mention(uid, name)}, o'yindan chiqish faqat {pro.badge()} <b>PRO</b> foydalanuvchilar uchun.\n"
-            "O'yinni oxirigacha o'ynang! PRO haqida: botga /pro yozing.")
-
-
-def leave_warn(uid: int, name: str, limit: int) -> str:
-    return (f"⚠️ {mention(uid, name)}, diqqat qiling!\n\n"
-            f"Siz bugun o'yindan <b>{limit} marta</b> chiqdingiz.\n"
-            f"Bu safar chiqsangiz, hisobingizdan <b>{config.LEAVE_FINE} 💵</b> yechiladi "
-            "(pul yetmasa, balans minusga tushadi).\n\n"
-            f"❗️ Hisobi <b>{config.DEBT_LIMIT} 💵</b> ga yetgan o'yinchi o'yinlarga qo'shila olmaydi.")
+    return (f"🔒 {mention(uid, name)}, o'yindan chiqish faqat {pro.badge()} <b>Pro</b> foydalanuvchilar uchun.\n"
+            "O'yinni oxirigacha o'ynang! Pro haqida: botga /pro yozing.")
 
 
 def left_fined(uid: int, name: str) -> str:
@@ -190,10 +183,6 @@ def debt_block(dollars: int) -> str:
             "Balansni to'ldirish uchun 🤝 do'stlaringizni taklif qiling.")
 
 
-def leave_yes_btn() -> str:
-    return f"🚪 Chiqish (-{config.LEAVE_FINE} 💵)"
-
-
 KICK_HOW = "❌ O'yinchining xabariga reply qilib /kick yozing yoki raqamini bering: <code>/kick 5</code>"
 
 
@@ -201,8 +190,6 @@ def kicked(uid: int, name: str) -> str:
     return f"🚫 {mention(uid, name)} o'yindan chiqarildi."
 
 
-LEAVE_NO_BTN = "🎮 O'yinni davom ettirish"
-LEAVE_STAY = "🎮 O'yinda qoldingiz. Omad!"
 NOT_YOUR_BTN = "❌ Bu tugma siz uchun emas"
 ONLY_STARTER = "⚠️ O'yinni faqat guruh adminlari yoki /game bosgan odam boshlay oladi."
 ONLY_STARTER_EXTEND = "⚠️ Ro'yxatni faqat guruh adminlari yoki /game bosgan odam uzaytira oladi."
@@ -812,7 +799,7 @@ def start_pm() -> str:
 def pay_support() -> str:
     admins = ", ".join(mention(a, "admin") for a in sorted(config.ADMIN_IDS)) or "bot adminiga"
     return ("💳 <b>To'lov bo'yicha yordam</b>\n\n"
-            "PRO to'lovi bilan muammo bo'lsa (pul yechildi, lekin PRO yoqilmadi va hokazo), "
+            "Pro to'lovi bilan muammo bo'lsa (pul yechildi, lekin Pro yoqilmadi va hokazo), "
             f"to'lov chekining skrinshoti bilan yozing: {admins}.\n"
             "Hal qilinmasa, ⭐ Stars to'liq qaytariladi.")
 
@@ -821,39 +808,81 @@ PAY_REFUNDED = ("⚠️ Texnik xato tufayli xarid amalga oshmadi — <b>⭐ Star
                 "Birozdan keyin qaytadan urinib ko'ring.")
 PAY_FAILED = "⚠️ To'lovda texnik xato bo'ldi. /paysupport orqali adminga yozing — muammo hal qilinadi."
 
-PRO_BTN = "PRO akkaunt"  # tugmada PRO belgisi ikonka bo'lib turadi
+PRO_BTN = "Pro akkaunt"  # tugmada Pro belgisi ikonka bo'lib turadi
 PRO_NO_DIAMONDS = "😔 Olmos yetarli emas. Olmos Konchi qazishidan chiqadi — yoki ⭐ Stars bilan oling."
-NICK_ONLY_PRO = "🏷 Laqab faqat PRO foydalanuvchilar uchun. Batafsil: /pro"
+NICK_ONLY_PRO = "🏷 Laqab faqat 3-daraja Pro foydalanuvchilar uchun. Batafsil: /pro"
+NICK_LOCKED = "🔒 Sizning ismingiz qulflangan — uni o'zgartirib bo'lmaydi 😏"
 NICK_CLEARED = "✅ Laqab o'chirildi. O'yinlarda Telegram ismingiz ko'rinadi."
 NICK_HOW = "🏷 Laqab qo'yish: <code>/nickname Laqabingiz</code>\nO'chirish: <code>/nickname</code>"
-PRO_EXPIRING = (f"⏳ PRO muddatingiz <b>24 soat ichida</b> tugaydi.\n"
+PRO_EXPIRING = (f"⏳ Pro muddatingiz <b>24 soat ichida</b> tugaydi.\n"
                 "Belgi, chegirma va boshqa imkoniyatlar saqlanib qolishi uchun /pro orqali uzaytiring.")
+TIER_ICON = {1: "⭐", 2: "🌟", 3: "💫"}
+TITLE_BTN = "👑 Toifa"
+TITLE_ADD_BTN = "➕ Guruhga qo'shish"
+TITLE_CHECK_BTN = "✅ Tekshirish"
+TITLE_HAVE = "👑 Sizda guruh egasi toifasi bor — cheksiz Pro 3."
 
 
 def _pro_date(t) -> str:
     return f"{t + PRO_TZ:%d.%m.%Y}"
 
 
+def _pro_have(uid: int) -> str:
+    end, t = pro.until(uid), pro.title(uid)
+    if not end:
+        return ""
+    if t:
+        return f"\n\n👑 Sizda <b>{escape(t)}</b> toifasi bor: cheksiz <b>Pro 3</b>."
+    return f"\n\n{pro.badge()} Sizda <b>Pro {pro.tier(uid)}</b> bor: <b>{_pro_date(end)}</b> gacha."
+
+
 def pro_info(uid: int) -> str:
-    end = pro.until(uid)
-    have = (f"\n\n{pro.badge()} Sizda PRO bor: <b>{_pro_date(end)}</b> gacha.\n"
-            "<i>Yana sotib olsangiz, muddat ustiga qo'shiladi.</i>") if end else ""
-    win = config.REWARD_WIN
-    return (f"{pro.badge()} <b>PRO AKKAUNT</b>\n\n"
-            "<b>PRO</b> sizga quyidagilarni beradi:\n\n"
-            f"{pro.badge()} <b>PRO belgisi</b> — ismingiz yonida, hamma ko'radi\n"
-            "🏷 <b>Laqab</b> — o'yinlarda ismingiz o'rniga o'z laqabingiz (/nickname)\n"
-            "💬 <b>Kunduzi yozish</b> — o'yinda bo'lmasangiz ham muhokamaga qo'shiling\n"
-            f"💵 <b>G'alaba puli x1.5</b> — {win} o'rniga {win * 3 // 2} 💵\n"
-            "🛒 <b>Do'konda -25%</b> chegirma\n"
-            "🚪 <b>O'yindan chiqish</b> (/leave) — kuniga 5 ta bepul (faqat PRO)\n"
-            "✨ <b>Maxsus profil</b> — PRO sarlavha va muddat"
-            f"{have}\n\n🛒 <b>Sotib olish usulini tanlang:</b>" + card_note())
+    return f"{pro.badge()} <b>Pro AKKAUNT</b>\n\n<b>Pro</b> olish uchun darajani tanlang{_pro_have(uid)}"
 
 
-def pro_done(end) -> str:
-    return (f"🎉 {pro.badge()} <b>PRO faollashdi!</b>\nMuddat: <b>{_pro_date(end)}</b> gacha.\n\n"
+def pro_tier(uid: int, tier: int, name: str) -> str:
+    """Bitta daraja: ro'yxatda qanday ko'rinadi va nimalar beradi."""
+    look = pro_look(escape(pro.short(pro.fancy(name))), tier)
+    win = pro.WIN[tier]
+    rows = ["☀️ Kunduzi o'yinda bo'lmasangiz yoki o'lgan bo'lsangiz ham guruhda yozish (tunda emas)",
+            "🚪 /leave (o'yindan bepul chiqish, cheksiz)"]
+    if tier >= 3:
+        rows.append("🏷 /nickname (o'z nomini o'rnatish)")
+    rows.append(f"🛒 Do'kon chegirmasi ({pro.DISCOUNT[tier]}%)")
+    if win > 100:
+        rows.append(f"💵 G'alaba puli x{win / 100:g} ({config.REWARD_WIN} o'rniga {config.REWARD_WIN * win // 100} 💵)")
+    switch = ("\n\n<i>Boshqa darajadan o'tsangiz, qolgan kunlaringiz narx bo'yicha yangi darajaga "
+              "qayta hisoblanadi.</i>") if pro.until(uid) and not pro.title(uid) else ""
+    return (f"{TIER_ICON[tier]} <b>Pro {tier}</b>\n\n👁 Ro'yxatda ko'rinishi:\n{look}\n\n"
+            + "\n".join(f"✅ {r}" for r in rows) + _pro_have(uid) + switch + card_note())
+
+
+def pro_done(end, tier: int = 3) -> str:
+    nick = "\n\n🏷 Laqab qo'yish: /nickname" if tier >= 3 else ""
+    return f"🎉 {pro.badge()} <b>Pro {tier} faollashdi!</b>\nMuddat: <b>{_pro_date(end)}</b> gacha.{nick}"
+
+
+def title_info() -> str:
+    return ("👑 <b>Guruh egasi toifasi</b>\n\n"
+            "Admiral Mafia o'ynaladigan katta guruhingiz bormi? Unda Pro'ni <b>tekin</b> oling!\n\n"
+            "📋 <b>Talablar:</b>\n"
+            f"👥 {config.TITLE_MEMBERS} va undan ko'p a'zo\n"
+            f"🎮 Kamida {config.TITLE_GAMES} ta o'yin o'ynalgan, oxirgisi {config.TITLE_DAYS} kun ichida\n"
+            "👑 Guruhni aynan siz ochgan bo'lishingiz (egasi), bot esa guruhda turishi kerak\n\n"
+            "🎁 <b>Mukofot:</b> muddatsiz <b>Pro 3</b> — ismingiz yonida guruhingiz nomi chiqadi "
+            "(masalan: <i>Shahar Mafia Owner</i>).\n\n"
+            f"Bot guruhingizda bo'lmasa, avval «{TITLE_ADD_BTN}» orqali qo'shing, so'ng «{TITLE_CHECK_BTN}» ni bosing.")
+
+
+def title_done(title: str) -> str:
+    return (f"🎉 👑 <b>{escape(title)}</b> toifasi berildi!\nEndi sizda cheksiz <b>Pro 3</b> bor.\n\n"
             "🏷 Laqab qo'yish: /nickname")
+
+
+def title_none() -> str:
+    return ("😔 Shartlarga mos guruh topilmadi.\nBot o'sha guruhda bo'lishi, siz guruh egasi bo'lishingiz, "
+            f"guruhda kamida {config.TITLE_MEMBERS}+ a'zo va {config.TITLE_GAMES} ta o'yin, oxirgisi "
+            f"{config.TITLE_DAYS} kun ichida bo'lishi kerak.")
 
 
 def nick_set(nick: str) -> str:
@@ -883,7 +912,8 @@ def shop(dollars: int, uid: int | None = None, diamonds: int | None = None) -> s
     codes = [i for i in config.SHOP if i not in config.SHOP_OFF] + list(config.SHOP_GEMS)
     rows = [f"{ITEMS[i]} - {about(ITEM_ABOUT[i])}" for i in codes]
     rows.append(f"{ROLE_SHOP_BTN} - Oldindan rol sotib olib, keyingi o'yinda shu rol bilan o'ynashingiz mumkin")
-    sale = f"\n{pro.badge()} <b>PRO chegirmasi: -25%</b> <i>(dollarli buyumlarga)</i>" if on else ""
+    sale = (f"\n{pro.badge()} <b>Pro chegirmasi: -{pro.DISCOUNT[pro._raw(uid)]}%</b> <i>(dollarli buyumlarga)</i>"
+            if on else "")
     gems = f" · <b>{diamonds} 💎</b>" if diamonds is not None else ""
     return ("🛒 <b>Nima sotib olamiz?</b>\n\n" + "\n\n".join(rows)
             + f"\n\n💰 Balans: <b>{dollars} 💵</b>{gems}{sale}")
@@ -1185,11 +1215,14 @@ def profile_card(u, inv) -> str:
     pick = ", ".join(t if on else f"<s>{t}</s>" for t, on in named) or "—"
     end = pro.until(u.telegram_id)
     # Matematik qalin (bold()) - faqat rollar va jamoalar; profil yozuvlari - oddiy Telegram qalin
-    head = f"{pro.badge()} <b>PRO · Admiral Mafia</b>" if end else "<b>Admiral Mafia</b>"
+    uid, title = u.telegram_id, pro.title(u.telegram_id)
+    head = f"{pro.badge()} <b>Pro · Admiral Mafia</b>" if end else "<b>Admiral Mafia</b>"
     status = ""
-    if end:
+    if title:
+        status = f"👑 <b>{escape(title)}</b>: cheksiz Pro 3\n"
+    elif end:
         days = max(1, -(-int((end - pro._now()).total_seconds()) // 86400))  # yuqoriga yaxlitlash
-        status = f"{pro.badge()} <b>PRO</b>: <b>{end + PRO_TZ:%d.%m.%Y}</b> gacha ({days} kun)\n"
+        status = f"{pro.badge()} <b>Pro {pro.tier(uid)}</b>: <b>{end + PRO_TZ:%d.%m.%Y}</b> gacha ({days} kun)\n"
     # f-string ichida ' ishlatib bo'lmaydi (Python 3.11)
     games, wins, nxt = "<b>Jami o'yinlar</b>", "<b>G'alabalar</b>", "<b>Keyingi o'yindagi rol</b>"
     return (f"{head}\n\n"

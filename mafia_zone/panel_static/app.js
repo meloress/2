@@ -648,7 +648,7 @@
     // ---- PRO ----
     const reload = () => { if (alive(view)) loadDetail(box, uid, view, refreshList, listHref); };
     const proParts = [h("div", { class: "divider" }), h("h3", { text: "PRO" }),
-      h("p", { class: "small", text: u.pro_until ? `PRO: ${fmtDate(u.pro_until)} gacha` : "PRO yo'q" })];
+      h("p", { class: "small", text: u.pro_title ? `${u.pro_title}: cheksiz Pro 3` : u.pro_until ? `Pro ${u.pro_tier}: ${fmtDate(u.pro_until)} gacha` : "Pro yo'q" })];
     if (u.nickname) proParts.push(h("p", { class: "small muted", text: `Nickname: ${u.nickname}` }));
     if (can("owner")) {
       const days = h("input", { class: "input num", id: "p-days", type: "number", inputmode: "numeric", min: "1", max: "3650", step: "1", value: "30" });

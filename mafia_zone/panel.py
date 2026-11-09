@@ -373,7 +373,8 @@ async def api_user(req: web.Request) -> web.Response:
                           "enabled": inv[c].enabled if c in inv else True} for c, n in texts.ITEMS.items()],
                "history": await db.user_games(uid),
                "transfers": await db.user_transfers(uid),
-               "pro_until": iso(pro.until(uid)), "nickname": u.nickname})
+               "pro_until": iso(pro.until(uid)), "pro_tier": pro.tier(uid), "pro_title": pro.title(uid),
+               "nickname": u.nickname})
 
 
 async def _notify(uid: int, text: str) -> None:
@@ -421,17 +422,18 @@ async def api_item(req: web.Request) -> web.Response:
 
 
 async def api_pro(req: web.Request) -> web.Response:
-    """PRO berish (days > 0, muddat ustiga qo'shiladi) yoki olib tashlash (days = 0)."""
+    """Pro berish (days > 0, muddat ustiga qo'shiladi; tier 1..3, standart 3) yoki olib tashlash (days = 0)."""
     need(req, "owner")
     uid = path_int(req, "uid")
     d = await body(req)
     days = as_int(d.get("days"), 0, 3650, "Kun")
+    tier = as_int(d.get("tier", 3), 1, 3, "Daraja")
     if not await db.get_user(uid):
         raise NotFound("Foydalanuvchi topilmadi")
-    end = await db.set_pro(uid, days)
-    await audit(req, "pro", uid, f"+{days} kun" if days else "olib tashlandi")
+    end = await db.set_pro(uid, days, tier)
+    await audit(req, "pro", uid, f"Pro {tier} +{days} kun" if days else "olib tashlandi")
     if d.get("notify") is True and end:
-        await _notify(uid, texts.pro_done(end))
+        await _notify(uid, texts.pro_done(end, tier))
     return ok({"pro_until": iso(end)})
 
 

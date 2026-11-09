@@ -329,7 +329,9 @@ def test_pro_grant_remove_and_nickname():
         hdr = {"X-CSRF": csrf}
         r = await c.post(f"/api/users/{USER}/pro", json={"days": 7, "notify": True}, headers=hdr)
         assert r.status == 200 and (await r.json())["pro_until"] and pro.is_pro(USER)
-        assert any(chat == USER and "PRO" in t for chat, t, _ in panel.BOT.sent)
+        assert any(chat == USER and "Pro 3" in t for chat, t, _ in panel.BOT.sent) and pro.tier(USER) == 3
+        r = await c.post(f"/api/users/{USER}/pro", json={"days": 7, "tier": 2}, headers=hdr)
+        assert r.status == 200 and pro.tier(USER) == 2
         for bad in ({"days": -1}, {"days": "x"}, {"days": 99999}):
             assert (await c.post(f"/api/users/{USER}/pro", json=bad, headers=hdr)).status == 400, bad
         await db.set_nickname(USER, "Shoh")

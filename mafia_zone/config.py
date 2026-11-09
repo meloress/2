@@ -26,10 +26,12 @@ REWARD_PLAY, REWARD_WIN, REF_BONUS = 0, 40, 50  # yutsa 40$, yutqazsa 0
 CLAIM_DELAY = 1.0  # tarqatma chiqqandan keyin shuncha soniya ichida bosgan (avto-bosuvchi bot) shu tarqatmadan ololmaydi
 # /start menyusidagi guruh tugmalari: (nomi, havola). Avtomatik "eng faol guruhlar" o'rniga - qo'lda tanlangan
 FEATURED_GROUPS = [("SKARFACE MAFIA 🥷🏻", "https://t.me/+OVoKusV3WqphZWUy")]
+# Guruh egasi toifasi (cheksiz Pro 3): guruhda kamida shuncha a'zo, tugagan o'yin, oxirgi o'yin shuncha kun ichida
+TITLE_MEMBERS, TITLE_GAMES, TITLE_DAYS = 500, 20, 14
 CARD_ADMIN = "jumayeevou"  # karta orqali to'lov: Stars ekranlarida shu adminga havola
 SEASON_PRIZES = [10, 5, 3]  # oylik reyting: 1-, 2-, 3-o'ringa olmos (oy tugagach db.pay_season)
-# /leave o'yin paytida faqat PRO uchun (kuniga pro.leave_free ta bepul, keyin jarima). Oddiy o'yinchida bepul chiqish 0:
-# guruhdan chiqib ketsa darhol jarima. -1000 da o'yinga kirolmaydi
+# /leave faqat Pro uchun (cheksiz, bepul). Oddiy o'yinchida bepul chiqish 0: o'yin paytida guruhdan chiqib
+# ketsa darhol jarima. -1000 da o'yinga kirolmaydi
 LEAVE_FREE, LEAVE_FINE, DEBT_LIMIT = 0, 200, -1000
 DIAMOND_RATE = 300  # Exchange: 1 olmos -> 300 dollar
 DIAMONDS_OFF = False  # True = olmos bilan xarid (PRO, Xarid, olmosli buyumlar, Stars->olmos) yopiq: "hali ishlamayapti"
@@ -42,7 +44,7 @@ CARD_NUMBER = "".join(c for c in os.environ.get("CARD_NUMBER", "") if c.isdigit(
 CARD_ORDER_MIN = 7  # karta buyurtmasi shuncha daqiqa amal qiladi ("To'ladim" shu vaqt ichida)
 NEWS_URL = os.environ.get("NEWS_URL", "").strip()  # yangiliklar kanali, bo'sh bo'lsa tugma chiqmaydi
 SHOP = {"shield": 140, "verbena": 145, "doc": 190}  # dollar
-SHOP_GEMS = {"mask": 1, "votesave": 2, "ironshield": 1}  # olmos (PRO chegirmasi yo'q); ironshield - Konchi uchun
+SHOP_GEMS = {"mask": 1, "votesave": 2, "ironshield": 1}  # olmos (Pro chegirmasi yo'q); ironshield - Konchi uchun
 # Rolni tanlab olish, olmos (Tinchdan boshqa hamma rol). Narx - vazifaga qarab:
 # 1 - tungi harakati yo'q yoki oddiy; 2 - foydali harakat/maxsus g'alaba; 3 - kuchli (o'ldiradi yoki hal qiladi);
 # 4 - yakka g'olib qotillar va Konchi (o'yinda o'rtacha ~2 💎 qiymatida pul/olmos qazadi: narx undan yuqori)

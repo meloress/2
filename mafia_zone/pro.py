@@ -1,7 +1,7 @@
-"""PRO obuna: xotiradagi kesh (bitta replika; db.load_pro ishga tushishda to'ldiradi) va ko'rinish yordamchilari."""
+"""Pro obuna (1/2/3-daraja, guruh egasi toifasi): xotiradagi kesh (bitta replika; db.load_pro ishga tushishda to'ldiradi) va ko'rinish yordamchilari."""
 import re
 import unicodedata
-from datetime import datetime
+from datetime import datetime, timezone
 
 from . import config
 from .emoji import USER
@@ -11,8 +11,14 @@ TAIL_ID, TAIL_FALLBACK = "5220136481720409403", "🔥"  # ismdan keyin
 # Bot egasi (config.ADMIN_IDS): PRO o'rniga "👑 Creator <nickname> ✅" (o'z to'plamimiz: oltin toj va oltin galochka) - faqat ko'rinish, imtiyoz emas
 OWNER_ID, OWNER_FALLBACK = "5445221694635551153", "👑"
 OWNER_TAIL_ID, OWNER_TAIL_FALLBACK = "5445185075744385629", "✅"
-PACKS = {7: (30, 100), 15: (55, 150), 30: (99, 249)}  # kun -> (olmos, stars)
-CACHE: dict[int, tuple[datetime, str | None]] = {}  # uid -> (tugash vaqti, nickname)
+DAYS = 7  # har paket shuncha kun
+PACKS = {1: (9, 50), 2: (19, 100), 3: (29, 150)}  # daraja -> (olmos, stars), DAYS kunga
+DISCOUNT = {1: 5, 2: 10, 3: 15, None: 25}  # do'kon chegirmasi %; None - eski (darajasiz) PRO, muddati tugaguncha
+WIN = {1: 100, 2: 125, 3: 150, None: 150}  # g'alaba puli %
+FOREVER = datetime(2100, 1, 1, tzinfo=timezone.utc)  # guruh egasi toifasi - cheksiz Pro 3
+# uid -> (tugash vaqti, nickname, daraja (None = eski PRO, Pro 3 kabi), toifa nomi ("Shahar Mafia Owner") yoki None)
+CACHE: dict[int, tuple[datetime, str | None, int | None, str | None]] = {}
+FORCED: dict[int, str] = {}  # uid -> qulflangan ism (settings "name_lock", db._apply): nickname/ismdan ustun, o'zgarmaydi
 _BAD_NICK = re.compile(r"@|https?:|t\.me|www\.|\badmin\b|\bbot\b|\bowner\b|\bcreator\b", re.I)  # "Botir", "Admiral" - mumkin
 # oddiy ismdagi "🌟 PRO … 🔥" / "👑 Creator … ✅" soxta belgi
 _FAKE = re.compile(r"^[\s✅☑✔🌟⭐👑\ufe0f]*(?:PRO|OWNER|CREATOR)\b[\s:|·•-]*(.*?)[\s🔥👍✅\ufe0f]*$", re.I | re.S)
@@ -23,18 +29,19 @@ def _now() -> datetime:
     return now()
 
 
-def set_user(uid: int, until: datetime | None, nick: str | None) -> None:
+def set_user(uid: int, until: datetime | None, nick: str | None, level: int | None = None,
+             title: str | None = None) -> None:
     if until is None:
         CACHE.pop(uid, None)
     else:
-        CACHE[uid] = (until, nick)
+        CACHE[uid] = (until, nick, level, title)
 
 
 def load(rows) -> None:
-    """rows: [(uid, pro_until, nickname)]"""
+    """rows: [(uid, pro_until, nickname, daraja, toifa)]"""
     CACHE.clear()
-    for uid, until_, nick in rows:
-        set_user(uid, until_, nick)
+    for row in rows:
+        set_user(*row)
 
 
 def until(uid: int) -> datetime | None:
@@ -44,6 +51,29 @@ def until(uid: int) -> datetime | None:
 
 def is_pro(uid: int) -> bool:
     return until(uid) is not None
+
+
+def _raw(uid: int) -> int | None:
+    return CACHE[uid][2] if is_pro(uid) else 0
+
+
+def tier(uid: int) -> int:
+    """0 - Pro yo'q; 1..3. Eski (darajasiz) PRO - 3."""
+    t = _raw(uid)
+    return 3 if t is None else t
+
+
+def title(uid: int) -> str | None:
+    """Guruh egasi toifasi: "Shahar Mafia Owner" (Pro o'rniga yoziladi)."""
+    return CACHE[uid][3] if is_pro(uid) else None
+
+
+_FANCY = {**{chr(65 + i): chr(0x1D468 + i) for i in range(26)}, **{chr(97 + i): chr(0x1D482 + i) for i in range(26)}}
+
+
+def fancy(s: str) -> str:
+    """Pro ismi: 𝑶𝒈'𝒂𝒃𝒆𝒌 (matematik qalin kursiv; lotin bo'lmagan harflar o'zgarmaydi)."""
+    return "".join(_FANCY.get(c, c) for c in s)
 
 
 NAME_MAX = 20  # botning hamma joyida ism shundan uzun bo'lsa "…" bilan qisqaradi (= nickname chegarasi)
@@ -69,9 +99,13 @@ def short(s: str) -> str:
 
 
 def name(uid: int, fallback: str) -> str:
-    """Ko'rsatiladigan ism: PRO va nickname bo'lsa - nickname. Oddiy foydalanuvchi ismidagi "✅ PRO" olib tashlanadi."""
-    if is_pro(uid) or is_owner(uid):  # egasi PRO'siz ham nickname/haqiqiy ismini "Creator" bilan ko'rsatadi
-        return short((CACHE.get(uid) or (None, None))[1] or fallback)
+    """Ko'rsatiladigan ism: Pro - qalin kursiv, Pro 3 (va egasi) nickname qo'ysa - nickname.
+    Oddiy foydalanuvchi ismidagi "✅ PRO" olib tashlanadi."""
+    if uid in FORCED:
+        return short(fancy(FORCED[uid]) if is_pro(uid) else FORCED[uid])
+    if is_pro(uid) or is_owner(uid):  # egasi Pro'siz ham nickname/haqiqiy ismini "Creator" bilan ko'rsatadi
+        nick = CACHE[uid][1] if uid in CACHE and (tier(uid) >= 3 or is_owner(uid)) else None
+        return short(fancy(nick or fallback))
     return short(_FAKE.sub(r"\1", fallback) or fallback)
 
 
@@ -96,22 +130,23 @@ def owner_tail() -> str:
 
 
 def label(uid: int, text: str) -> tuple[str, str | None]:
-    """Tugma uchun: (matn, icon_custom_emoji_id). Egasi - Creator, PRO - PRO."""
+    """Tugma uchun: (matn, icon_custom_emoji_id). Egasi - Creator; toifa - "Shahar Mafia Owner"; Pro 3 - "Pro";
+    Pro 2 - belgi ikonkasi; Pro 1 - faqat qalin kursiv ism."""
+    n = name(uid, text)
     if is_owner(uid):
-        return f"Creator {name(uid, text)}", OWNER_ID
-    return (f"PRO {name(uid, text)}", BADGE_ID) if is_pro(uid) else (name(uid, text), None)
+        return f"Creator {n}", OWNER_ID
+    if t := title(uid):
+        return f"{t} {n}", BADGE_ID
+    lv = tier(uid)
+    return (f"Pro {n}", BADGE_ID) if lv >= 3 else (n, BADGE_ID) if lv == 2 else (n, None)
 
 
 def price(uid: int, base: int) -> int:
-    return base * 3 // 4 if is_pro(uid) else base  # -25%
-
-
-def leave_free(uid: int) -> int:
-    return 5 if is_pro(uid) else config.LEAVE_FREE
+    return base * (100 - DISCOUNT[_raw(uid)]) // 100 if is_pro(uid) else base
 
 
 def win_reward(uid: int) -> int:
-    return config.REWARD_WIN * 3 // 2 if is_pro(uid) else config.REWARD_WIN  # x1.5
+    return config.REWARD_WIN * WIN[_raw(uid)] // 100 if is_pro(uid) else config.REWARD_WIN
 
 
 def check_nick(s: str) -> str | None:

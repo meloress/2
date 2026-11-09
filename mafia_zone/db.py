@@ -51,6 +51,8 @@ class User(Base):
     pro_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # PRO tugash vaqti
     nickname: Mapped[str | None] = mapped_column(String(32))  # PRO laqabi
     pro_reminded: Mapped[bool] = mapped_column(Boolean, default=False)  # tugash eslatmasi yuborilganmi
+    pro_tier: Mapped[int | None] = mapped_column(Integer)  # 1..3; None - eski (darajasiz) PRO
+    title: Mapped[str | None] = mapped_column(String(64))  # guruh egasi toifasi: "Shahar Mafia Owner"
 
 
 class Inventory(Base):
@@ -289,66 +291,96 @@ async def close_giveaway(gid: int) -> tuple[Giveaway | None, int]:
 
 
 # ---------- PRO ----------
-async def _extend(s, uid: int, days: int) -> datetime | None:
-    """PRO muddatini uzaytiradi (tugagan bo'lsa - hozirdan). Keshni yangilaydi."""
+async def _extend(s, uid: int, days: int, tier: int) -> datetime | None:
+    """Pro muddatini uzaytiradi (tugagan bo'lsa - hozirdan). Boshqa darajaga o'tsa, qolgan kunlar narx bo'yicha
+    qayta hisoblanadi (Pro 1 ning 7 kuni = Pro 3 ning ~2 kuni). Toifa (cheksiz) tegilmaydi. Keshni yangilaydi."""
     u = await s.get(User, uid, with_for_update=True)
     if not u:
         return None
     t = now()
-    u.pro_until = max(t, _aware(u.pro_until) or t) + timedelta(days=days)
-    u.pro_reminded = False
-    pro.set_user(uid, u.pro_until, u.nickname)
+    left = max(timedelta(0), (_aware(u.pro_until) or t) - t)
+    if u.title and left:  # guruh egasi: allaqachon cheksiz Pro 3
+        return _aware(u.pro_until)
+    old = u.pro_tier or 3  # eski PRO - Pro 3 narxida
+    if left and old != tier:
+        left = left * pro.PACKS[old][0] / pro.PACKS[tier][0]
+    u.pro_until = t + left + timedelta(days=days)
+    u.pro_tier, u.title, u.pro_reminded = tier, None, False
+    pro.set_user(uid, u.pro_until, u.nickname, tier)
     return u.pro_until
 
 
-async def add_pro(uid: int, days: int, method: str, amount: int, charge_id: str | None = None) -> datetime | None:
-    """To'lov yozib, PRO beradi. Shu charge_id avval hisoblangan bo'lsa (takror xabar) - None."""
+async def add_pro(uid: int, days: int, method: str, amount: int, charge_id: str | None = None,
+                  tier: int = 3) -> datetime | None:
+    """To'lov yozib, Pro beradi. Shu charge_id avval hisoblangan bo'lsa (takror xabar) - None."""
     from sqlalchemy.exc import IntegrityError
     try:
         async with Session.begin() as s:
             s.add(Payment(user_id=uid, method=method, days=days, amount=amount, charge_id=charge_id))
             await s.flush()
-            return await _extend(s, uid, days)
+            return await _extend(s, uid, days, tier)
     except IntegrityError:
         return None
 
 
-async def buy_pro_diamonds(uid: int, days: int) -> datetime | None:
-    """Olmos bilan PRO: atomar yechish. Yetmasa yoki paket yo'q bo'lsa - None, hech narsa o'zgarmaydi."""
-    if days not in pro.PACKS:
+async def buy_pro_diamonds(uid: int, tier: int) -> datetime | None:
+    """Olmos bilan Pro (pro.DAYS kun): atomar yechish. Yetmasa yoki daraja yo'q bo'lsa - None, hech narsa o'zgarmaydi."""
+    if tier not in pro.PACKS:
         return None
-    cost = pro.PACKS[days][0]
+    cost = pro.PACKS[tier][0]
     async with Session.begin() as s:
         r = await s.execute(update(User).where(User.telegram_id == uid, User.diamonds >= cost)
                             .values(diamonds=User.diamonds - cost))
         if r.rowcount != 1:
             return None
-        s.add(Payment(user_id=uid, method="diamonds", days=days, amount=cost))
-        return await _extend(s, uid, days)
+        s.add(Payment(user_id=uid, method="diamonds", days=pro.DAYS, amount=cost))
+        return await _extend(s, uid, pro.DAYS, tier)
 
 
-async def set_pro(uid: int, days: int) -> datetime | None:
-    """Panel: days > 0 - PRO berish (uzaytirish), days <= 0 - olib tashlash."""
+async def set_pro(uid: int, days: int, tier: int = 3) -> datetime | None:
+    """Panel: days > 0 - Pro berish (uzaytirish), days <= 0 - olib tashlash (toifa ham)."""
     if days > 0:
-        return await add_pro(uid, days, "admin", 0)
+        return await add_pro(uid, days, "admin", 0, tier=tier)
     async with Session.begin() as s:
-        await s.execute(update(User).where(User.telegram_id == uid).values(pro_until=None))
+        await s.execute(update(User).where(User.telegram_id == uid).values(pro_until=None, title=None))
     pro.set_user(uid, None, None)
     return None
+
+
+async def grant_title(uid: int, title: str) -> datetime:
+    """Guruh egasi toifasi: cheksiz Pro 3 va "Shahar Mafia Owner" yozuvi."""
+    async with Session.begin() as s:
+        await s.execute(update(User).where(User.telegram_id == uid)
+                        .values(pro_until=pro.FOREVER, pro_tier=3, title=title, pro_reminded=False))
+        nick = await s.scalar(select(User.nickname).where(User.telegram_id == uid))
+    pro.set_user(uid, pro.FOREVER, nick, 3, title)
+    return pro.FOREVER
+
+
+async def owner_groups() -> list[tuple[int, str]]:
+    """Toifa uchun faol guruhlar: kamida TITLE_GAMES ta tugagan o'yin, oxirgisi TITLE_DAYS kun ichida."""
+    n, last = func.count(GameRow.id), func.max(GameRow.finished_at)
+    async with Session() as s:
+        rows = (await s.execute(select(Group.chat_id, Group.title).join(GameRow, GameRow.chat_id == Group.chat_id)
+                                .where(GameRow.status == "finished").group_by(Group.chat_id, Group.title)
+                                .having(n >= config.TITLE_GAMES)
+                                .having(last >= now() - timedelta(days=config.TITLE_DAYS)))).all()
+    return [(c, t or "?") for c, t in rows]
 
 
 async def set_nickname(uid: int, nick: str | None) -> None:
     async with Session.begin() as s:
         await s.execute(update(User).where(User.telegram_id == uid).values(nickname=nick))
     if uid in pro.CACHE:
-        pro.CACHE[uid] = (pro.CACHE[uid][0], nick)
+        until_, _, lv, title = pro.CACHE[uid]
+        pro.set_user(uid, until_, nick, lv, title)
 
 
 async def load_pro() -> None:
     async with Session() as s:
-        rows = (await s.execute(select(User.telegram_id, User.pro_until, User.nickname)
+        rows = (await s.execute(select(User.telegram_id, User.pro_until, User.nickname, User.pro_tier, User.title)
                                 .where(User.pro_until > now()))).all()
-    pro.load([(uid, _aware(t), nick) for uid, t, nick in rows])
+    pro.load([(uid, _aware(t), nick, lv, title) for uid, t, nick, lv, title in rows])
 
 
 async def pro_expiring(hours: int = 24) -> list[int]:
@@ -426,7 +458,8 @@ COLUMNS = [("users", "last_seen", "TIMESTAMP WITH TIME ZONE"), ("users", "leave_
            ("users", "pro_until", "TIMESTAMP WITH TIME ZONE"), ("users", "nickname", "VARCHAR(32)"),
            ("users", "pro_reminded", "BOOLEAN NOT NULL DEFAULT FALSE"),
            ("giveaways", "currency", "VARCHAR(16) NOT NULL DEFAULT 'dollars'"),
-           ("groups", "username", "VARCHAR(64) NOT NULL DEFAULT ''")]
+           ("groups", "username", "VARCHAR(64) NOT NULL DEFAULT ''"),
+           ("users", "pro_tier", "INTEGER"), ("users", "title", "VARCHAR(64)")]
 
 
 def _migrate(conn) -> None:
@@ -947,6 +980,9 @@ def _apply(key: str, value) -> None:
     elif key == "shop_off":
         config.SHOP_OFF.clear()
         config.SHOP_OFF.update(k for k in value if k in config.SHOP)
+    elif key == "name_lock":  # hazil: {"uid": "ism"} - qo'lda yoziladi, id'lar faqat bazada (repo ochiq)
+        pro.FORCED.clear()
+        pro.FORCED.update({int(k): str(v) for k, v in value.items()})
 
 
 async def load_settings() -> None:

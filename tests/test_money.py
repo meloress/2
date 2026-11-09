@@ -340,23 +340,54 @@ def test_call_survives_network_errors():
     run(t())
 
 
-def test_leave_limit_fine_and_debt_block():
+def test_leaving_group_mid_game_fines_only_non_pro():
+    from mafia_zone.engine.game import Game, Player
+
+    async def t():
+        plain, vip = BASE + 1010, BASE + 1011
+        for u in (plain, vip):
+            await mkuser(u, 300)
+        pro.set_user(vip, db.now() + timedelta(days=1), None, 1)
+        sent = []
+
+        async def fake_send(bot, chat_id, text, kb=None, **kw):
+            sent.append(text)
+
+        async def leave(uid):
+            g.get(uid).alive = False
+        g = Game(-78, 1, [Player(plain, "Ali", "tinch"), Player(vip, "Vali", "tinch")], phase="day")
+        r = SimpleNamespace(game=g, game_id=600, chat_id=-78, leave=leave)
+        orig_send, handlers.send = handlers.send, fake_send
+        try:
+            for u in (plain, vip):
+                handlers.PLAYING[u] = r
+            handlers.RUNNERS[-78] = r
+            for u in (plain, vip):
+                await handlers.on_left(SimpleNamespace(chat=SimpleNamespace(id=-78), bot=None,
+                                                       left_chat_member=SimpleNamespace(id=u, full_name="X")))
+        finally:
+            handlers.send = orig_send
+            handlers.RUNNERS.pop(-78, None)
+            for u in (plain, vip):
+                handlers.PLAYING.pop(u, None)
+            pro.set_user(vip, None, None)
+        assert await bal(plain) == 300 - config.LEAVE_FINE and await bal(vip) == 300 and len(sent) == 1
+    run(t())
+
+
+def test_leave_pro_only_unlimited_and_debt_block():
     from mafia_zone.engine.game import Game, Player
 
     async def t():
         a, other = BASE + 1000, BASE + 1001
         await mkuser(a, 100)
         await mkuser(other, 0)
-        sent, answers = [], []
-
-        async def fake_send(bot, chat_id, text, kb=None, **kw):
-            sent.append((chat_id, text))
-        orig_send, handlers.send = handlers.send, fake_send
+        answers = []
         try:
-            # -2: ro'yxat, -1: o'yin - PRO emas, chiqa olmaydi; keyin PRO: 5 ta bepul, so'ng ogohlantirish
-            for round_ in range(-2, 7):
+            # -2: ro'yxat, -1: o'yin - Pro emas, chiqa olmaydi; keyin Pro 1: har safar bepul, cheksiz
+            for round_ in range(-2, 8):
                 if round_ == 0:
-                    pro.set_user(a, db.now() + timedelta(days=1), None)
+                    pro.set_user(a, db.now() + timedelta(days=1), None, 1)
                 g = Game(-79, 1, [Player(a, "Ali", "don"), Player(other, "Vali", "tinch")], phase="day")
                 left = []
 
@@ -373,44 +404,22 @@ def test_leave_limit_fine_and_debt_block():
                                     answer=answer)
                 await handlers.cmd_leave(m)
                 if round_ < 0:
-                    assert not left and "faqat" in answers[-1][0] and "PRO" in answers[-1][0]
+                    assert not left and "faqat" in answers[-1][0] and "Pro" in answers[-1][0]
                     continue
-                if round_ < 5:
-                    assert left == [a] and f"{round_ + 1}/5" in answers[-1][0] and await bal(a) == 100
-                    continue
-                assert not left and answers[-1][1] is not None  # ogohlantirish, hali chiqmadi
-                deleted = []
-
-                async def delete():
-                    deleted.append(1)
-                for who, data in ((other, f"lv:{r.game_id}:{a}:1"), (a, f"lv:{r.game_id}:{a}:{1 if round_ == 6 else 0}")):
-                    said = []
-
-                    async def cq_answer(text=None, show_alert=False):
-                        said.append(text)
-                    cq = SimpleNamespace(data=data, from_user=SimpleNamespace(id=who, full_name="Ali"), bot=None,
-                                         message=SimpleNamespace(delete=delete), answer=cq_answer)
-                    await handlers.cb_leave(cq)
-                    if who == other:
-                        assert said == [texts.NOT_YOUR_BTN] and not left
-                if round_ == 5:  # "davom ettirish"
-                    assert not left and await bal(a) == 100
-                else:  # "chiqish": -200, minusga tushadi
-                    assert left == [a] and await bal(a) == -100 and "jarima" in sent[-1][1]
+                assert left == [a] and "chiqdi" in answers[-1][0] and answers[-1][1] is None and await bal(a) == 100
         finally:
-            handlers.send = orig_send
             handlers.RUNNERS.pop(-79, None)
             handlers.PLAYING.pop(a, None)
             pro.set_user(a, None, None)
-        assert await db.leaves_today(a) == 6
-        await db.count_leave(a, 1000)  # -1100: o'yinga qo'shila olmaydi
+        assert await db.leaves_today(a) == 0  # Pro chiqishi sanalmaydi
+        await db.count_leave(a, 1100)  # -1000: o'yinga qo'shila olmaydi
         said = []
 
         async def answer2(text, reply_markup=None):
             said.append(text)
         m = SimpleNamespace(from_user=SimpleNamespace(id=a, full_name="Ali", username=None), answer=answer2)
         await handlers.cmd_start(m, None, SimpleNamespace(args="join-79"))
-        assert "-1100" in said[-1] and "qo'shila olmaydi" in said[-1]
+        assert "-1000" in said[-1] and "qo'shila olmaydi" in said[-1]
     run(t())
 
 

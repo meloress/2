@@ -164,29 +164,16 @@ def _in_game(r, uid: int) -> bool:
     return bool(p and p.alive and r.game.phase != FINISHED)
 
 
-LEAVING: set[int] = set()  # ikki marta bosilsa jarima ikki marta yechilmasin
-
-
 @router.message(Command("leave"), GROUPS)
 async def cmd_leave(msg: Message):
-    """Faqat PRO (ro'yxatda ham, o'yinda ham). O'yinda: kuniga pro.leave_free ta bepul, keyingisi tasdiq
-    bilan -LEAVE_FINE (balans minusga tushadi)."""
+    """Faqat Pro (har qanday daraja; ro'yxatda ham, o'yinda ham): cheksiz va bepul."""
     r, u = RUNNERS.get(msg.chat.id), msg.from_user
     if not r or PLAYING.get(u.id) is not r:
         return
     if not pro.is_pro(u.id):
         return await msg.answer(texts.leave_only_pro(u.id, u.full_name))
-    if not _in_game(r, u.id):  # ro'yxat bosqichi yoki o'lgan - bepul, sanalmaydi
-        await r.leave(u.id)
-        return await msg.answer(f"🚪 {texts.mention(u.id, u.full_name)} o'yindan chiqdi.")
-    n, limit = await db.leaves_today(u.id), pro.leave_free(u.id)
-    if n < limit:
-        await db.count_leave(u.id)
-        await r.leave(u.id)
-        return await msg.answer(texts.left_free(u.id, u.full_name, n + 1, limit))
-    kb = Kb(inline_keyboard=[[Btn(text=texts.leave_yes_btn(), callback_data=f"lv:{r.game_id}:{u.id}:1")],
-                             [Btn(text=texts.LEAVE_NO_BTN, callback_data=f"lv:{r.game_id}:{u.id}:0")]])
-    await msg.answer(texts.leave_warn(u.id, u.full_name, limit), reply_markup=kb)
+    await r.leave(u.id)
+    await msg.answer(f"🚪 {texts.mention(u.id, u.full_name)} o'yindan chiqdi.")
 
 
 @router.message(Command("kick"), GROUPS)
@@ -208,26 +195,6 @@ async def cmd_kick(msg: Message, command: CommandObject):
     name = dict(r.members).get(uid, "?")
     await r.leave(uid)
     await msg.answer(texts.kicked(uid, name))
-
-
-@router.callback_query(F.data.startswith("lv:"))
-async def cb_leave(cq: CallbackQuery):
-    _, gid, uid, yes = cq.data.split(":")
-    uid = int(uid)
-    if cq.from_user.id != uid:
-        return await cq.answer(texts.NOT_YOUR_BTN, show_alert=True)
-    await _call(cq.message.delete)
-    r = PLAYING.get(uid)
-    if yes != "1" or not r or str(r.game_id) != gid or not _in_game(r, uid) or uid in LEAVING:
-        return await cq.answer(texts.LEAVE_STAY)
-    LEAVING.add(uid)
-    try:
-        await db.count_leave(uid, config.LEAVE_FINE)
-        await r.leave(uid)
-    finally:
-        LEAVING.discard(uid)
-    await send(cq.bot, r.chat_id, texts.left_fined(uid, cq.from_user.full_name))
-    await cq.answer()
 
 
 @router.message(Command("top"), GROUPS)
@@ -845,11 +812,58 @@ def roles_shop_kb() -> Kb:
 
 
 def pro_kb() -> Kb:
-    """Har paket: olmos va Stars tugmasi yonma-yon."""
-    rows = [[Btn(text=f"💎 {dm} · {d} kun", callback_data=f"pro:d:{d}"),
-             Btn(text=f"⭐ {st} · {d} kun", callback_data=f"pro:s:{d}")]
-            for d, (dm, st) in pro.PACKS.items()]
-    return Kb(inline_keyboard=rows + [[card_btn()], [back_btn()]])
+    """Darajalar, toifa, orqaga."""
+    tiers = [Btn(text=f"{texts.TIER_ICON[t]} {t}-daraja", callback_data=f"pt:{t}") for t in pro.PACKS]
+    return Kb(inline_keyboard=[tiers, [Btn(text=texts.TITLE_BTN, callback_data="pt:title")], [back_btn()]])
+
+
+def tier_kb(tier: int) -> Kb:
+    """Bitta daraja: olmos va Stars tugmasi yonma-yon, karta, orqaga (darajalarga)."""
+    dm, st = pro.PACKS[tier]
+    return Kb(inline_keyboard=[[Btn(text=f"💎 {pro.DAYS} kun — {dm}", callback_data=f"pro:d:{tier}"),
+                                Btn(text=f"⭐ {pro.DAYS} kun — {st}", callback_data=f"pro:s:{tier}")],
+                               [card_btn()], [Btn(text=texts.BACK_BTN, callback_data="m:pro")]])
+
+
+def title_kb() -> Kb:
+    add = bot_link() + "?startgroup=true&admin=delete_messages+restrict_members+pin_messages"
+    return Kb(inline_keyboard=[[Btn(text=texts.TITLE_ADD_BTN, url=add)],
+                               [Btn(text=texts.TITLE_CHECK_BTN, callback_data="pt:check")],
+                               [Btn(text=texts.BACK_BTN, callback_data="m:pro")]])
+
+
+@router.callback_query(F.data.startswith("pt:"))
+async def cb_pro_tier(cq: CallbackQuery):
+    """pt:<1..3> - daraja ekrani; pt:title - guruh egasi toifasi; pt:check - toifani tekshirish."""
+    what = cq.data[3:]
+    if what.isdigit() and int(what) in pro.PACKS:
+        await show(cq, texts.pro_tier(cq.from_user.id, int(what), cq.from_user.full_name), tier_kb(int(what)))
+        return await cq.answer()
+    if what == "title":
+        await show(cq, texts.title_info(), title_kb())
+        return await cq.answer()
+    if what != "check" or not await _user(cq):
+        return await cq.answer()
+    if pro.title(cq.from_user.id):
+        return await cq.answer(texts.TITLE_HAVE, show_alert=True)
+    title = await find_title(cq.bot, cq.from_user.id)
+    if not title:
+        return await cq.answer(texts.title_none(), show_alert=True)
+    await db.grant_title(cq.from_user.id, title)
+    await show(cq, texts.title_done(title), Kb(inline_keyboard=[[Btn(text=texts.BACK_BTN, callback_data="m:pro")]]))
+    await cq.answer()
+
+
+async def find_title(bot: Bot, uid: int) -> str | None:
+    """Foydalanuvchi egasi (creator) bo'lgan faol katta guruh -> "<guruh nomi> Owner"."""
+    for chat_id, name in await db.owner_groups():
+        try:
+            if ((await bot.get_chat_member(chat_id, uid)).status == "creator"
+                    and await bot.get_chat_member_count(chat_id) >= config.TITLE_MEMBERS):
+                return f"{pro.short(name)} Owner"  # USER belgilari: guruh nomidagi emoji premiumga aylanmaydi
+        except Exception:
+            continue  # bot guruhda emas yoki guruh yo'q
+    return None
 
 
 @router.message(Command("pro"), PRIVATE)
@@ -861,30 +875,34 @@ async def cmd_pro(msg: Message):
 
 @router.callback_query(F.data.startswith("pro:"))
 async def cb_pro(cq: CallbackQuery):
-    """pro:d:<kun> - olmos bilan; pro:s:<kun> - Telegram Stars hisob-fakturasi."""
-    _, how, days = cq.data.split(":")
-    days = int(days) if days.isdigit() else 0
-    if days not in pro.PACKS or not await _user(cq):
+    """pro:d:<daraja> - olmos bilan; pro:s:<daraja> - Telegram Stars hisob-fakturasi (pro.DAYS kun)."""
+    _, how, tier = cq.data.split(":")
+    tier = int(tier) if tier.isdigit() else 0
+    if tier not in pro.PACKS or not await _user(cq):
         return await cq.answer()
+    if pro.title(cq.from_user.id):
+        return await cq.answer(texts.TITLE_HAVE, show_alert=True)
     if how == "d" and config.DIAMONDS_OFF:
         return await cq.answer(texts.DIAMONDS_OFF, show_alert=True)
     if how == "d":
-        end = await db.buy_pro_diamonds(cq.from_user.id, days)
+        end = await db.buy_pro_diamonds(cq.from_user.id, tier)
         if not end:
             return await cq.answer(texts.PRO_NO_DIAMONDS, show_alert=True)
-        await show(cq, texts.pro_info(cq.from_user.id), pro_kb())
-        return await cq.answer(f"🎉 PRO faollashdi! {days} kun qo'shildi.", show_alert=True)
-    stars = pro.PACKS[days][1]
-    await _call(cq.bot.send_invoice, chat_id=cq.from_user.id, title=f"PRO · {days} kun",
-                description=f"Admiral Mafia PRO akkaunt: belgi, nickname, x1.5 g'alaba puli, -25% do'kon — {days} kun.",
-                payload=f"pro:{days}", currency="XTR",
-                prices=[LabeledPrice(label=f"PRO {days} kun", amount=stars)])
+        await show(cq, texts.pro_tier(cq.from_user.id, tier, cq.from_user.full_name), tier_kb(tier))
+        return await cq.answer(f"🎉 Pro {tier} faollashdi! {pro.DAYS} kun qo'shildi.", show_alert=True)
+    stars = pro.PACKS[tier][1]
+    await _call(cq.bot.send_invoice, chat_id=cq.from_user.id, title=f"Pro {tier} · {pro.DAYS} kun",
+                description=f"Admiral Mafia Pro {tier}-daraja akkaunt — {pro.DAYS} kun.",
+                payload=f"pro:{tier}:{pro.DAYS}", currency="XTR",
+                prices=[LabeledPrice(label=f"Pro {tier} · {pro.DAYS} kun", amount=stars)])
     await cq.answer()
 
 
 def _pro_payload(payload: str) -> int | None:
-    days = payload[4:] if payload.startswith("pro:") else ""
-    return int(days) if days.isdigit() and int(days) in pro.PACKS else None
+    """pro:<daraja>:<kun> -> daraja."""
+    p = payload.split(":")
+    ok = len(p) == 3 and p[0] == "pro" and p[1].isdigit() and int(p[1]) in pro.PACKS and p[2] == str(pro.DAYS)
+    return int(p[1]) if ok else None
 
 
 def _dm_payload(payload: str, strict: bool = True) -> tuple[int, int] | None:
@@ -901,11 +919,11 @@ def _dm_payload(payload: str, strict: bool = True) -> tuple[int, int] | None:
 @router.pre_checkout_query()
 async def on_pre_checkout(q: PreCheckoutQuery):
     """Telegram to'lovdan oldin so'raydi: paket va narx mos bo'lsagina tasdiqlanadi."""
-    days, dm = _pro_payload(q.invoice_payload), _dm_payload(q.invoice_payload)
+    tier, dm = _pro_payload(q.invoice_payload), _dm_payload(q.invoice_payload)
     if dm and config.DIAMONDS_OFF:
         return await q.answer(ok=False, error_message=texts.DIAMONDS_OFF)
     if q.currency == "XTR" and (
-            days and q.total_amount == pro.PACKS[days][1]
+            tier and q.total_amount == pro.PACKS[tier][1]
             or dm and q.total_amount == config.DIAMOND_STARS[dm[0]] and (not dm[1] or await db.get_user(dm[1]))):
         return await q.answer(ok=True)
     await q.answer(ok=False, error_message="To'lov ma'lumoti noto'g'ri. /pro orqali qaytadan urinib ko'ring.")
@@ -914,14 +932,14 @@ async def on_pre_checkout(q: PreCheckoutQuery):
 @router.message(F.successful_payment)
 async def on_paid(msg: Message):
     pay = msg.successful_payment
-    days, dm = _pro_payload(pay.invoice_payload), _dm_payload(pay.invoice_payload, strict=False)
-    if not (days or dm):
+    tier, dm = _pro_payload(pay.invoice_payload), _dm_payload(pay.invoice_payload, strict=False)
+    if not (tier or dm):
         return
     uid, charge = msg.from_user.id, pay.telegram_payment_charge_id
     try:
         await db.upsert_user(uid, msg.from_user.full_name, msg.from_user.username)
-        if days:
-            end = await db.add_pro(uid, days, "stars", pay.total_amount, charge)
+        if tier:
+            end = await db.add_pro(uid, pro.DAYS, "stars", pay.total_amount, charge, tier)
         else:
             end = await db.add_paid_diamonds(uid, dm[1] or uid, dm[0], pay.total_amount, charge)
     except Exception:  # pul yechilgan, xarid yozilmadi: Telegram qayta yubormaydi - Stars qaytariladi
@@ -936,8 +954,8 @@ async def on_paid(msg: Message):
         return
     if not end:  # shu to'lov avval hisoblangan (takror xabar)
         return
-    if days:
-        return await msg.answer(texts.pro_done(end))
+    if tier:
+        return await msg.answer(texts.pro_done(end, tier))
     n, target = dm
     if target and target != uid:
         t = await db.get_user(target)
@@ -956,7 +974,9 @@ async def cmd_paysupport(msg: Message):
 @router.message(Command("nickname"), PRIVATE)
 async def cmd_nickname(msg: Message, command: CommandObject):
     uid = msg.from_user.id
-    if not pro.is_pro(uid):
+    if uid in pro.FORCED:
+        return await msg.answer(texts.NICK_LOCKED)
+    if pro.tier(uid) < 3:
         return await msg.answer(texts.NICK_ONLY_PRO)
     nick = " ".join((command.args or "").split())  # ortiqcha bo'shliqlar
     if not nick:
@@ -1253,7 +1273,7 @@ async def on_left(msg: Message):
     uid = msg.left_chat_member.id
     if r and PLAYING.get(uid) is r:
         if _in_game(r, uid):  # guruhdan chiqib ketish ham chiqish: limitdan keyin so'ramasdan jarima
-            fine = config.LEAVE_FINE if await db.leaves_today(uid) >= pro.leave_free(uid) else 0
+            fine = 0 if pro.is_pro(uid) or await db.leaves_today(uid) < config.LEAVE_FREE else config.LEAVE_FINE
             await db.count_leave(uid, fine)
             if fine:
                 await send(msg.bot, msg.chat.id, texts.left_fined(uid, msg.left_chat_member.full_name))
@@ -1283,7 +1303,7 @@ def may_write(game, uid: int | None, text: str, admin: bool) -> bool:
     if admin and text.startswith("!"):
         return True
     p = game.get(uid) if uid else None
-    if p is None and uid is not None and pro.is_pro(uid):  # PRO tomoshabin: faqat kunduzi
+    if (p is None or not p.alive) and uid is not None and pro.is_pro(uid):  # Pro tomoshabin/o'lgan: faqat kunduzi
         return game.phase in TALK_PHASES
     return bool(p and p.alive and game.phase in TALK_PHASES)
 

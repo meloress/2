@@ -25,7 +25,7 @@ def test_every_diamond_purchase_is_closed():
         async def send_invoice(**kw):
             invoices.append(kw)
         bot = SimpleNamespace(send_invoice=send_invoice)
-        for data in ("pro:d:7", "xd:1", "gm:me", "gm:to", "gs:5:0", "b:mask", "b:votesave", "b:r_don", "m:buy", "m:gem"):
+        for data in ("pro:d:3", "xd:1", "gm:me", "gm:to", "gs:5:0", "b:mask", "b:votesave", "b:r_don", "m:buy", "m:gem"):
             alerts.clear()
             cq = SimpleNamespace(data=data, from_user=SimpleNamespace(id=U, full_name="Ali", username=None),
                                  answer=answer, bot=bot, message=SimpleNamespace(edit_text=edit_text, answer=edit_text))

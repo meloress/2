@@ -221,11 +221,12 @@ def test_start_menu_shows_only_featured_groups():
 
 
 def test_pro_screen_offers_card_payment_via_admin():
-    """PRO ekranida pastda: karta orqali - admin bilan bog'lanish tugmasi. Olmosda karta o'z oqimi bilan."""
+    """Pro daraja ekranida pastda: karta orqali - admin bilan bog'lanish tugmasi. Olmosda karta o'z oqimi bilan."""
     url = f"https://t.me/{config.CARD_ADMIN}"
-    rows = handlers.pro_kb().inline_keyboard
-    assert rows[-2][0].url == url and rows[-2][0].text == texts.CARD_BTN  # orqaga tugmasidan oldin
-    assert texts.CARD_NOTE in texts.pro_info(1) and "@" + config.CARD_ADMIN in texts.pro_info(1)
+    for lv in (1, 2, 3):
+        rows = handlers.tier_kb(lv).inline_keyboard
+        assert rows[-2][0].url == url and rows[-2][0].text == texts.CARD_BTN  # orqaga tugmasidan oldin
+        assert texts.CARD_NOTE in texts.pro_tier(1, lv, "Ali") and "@" + config.CARD_ADMIN in texts.pro_tier(1, lv, "Ali")
     assert cbs(handlers.stars_kb(5))[-1] == "gp:5"  # Stars -> orqaga karta paketlariga
 
 

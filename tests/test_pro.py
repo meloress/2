@@ -1,4 +1,4 @@
-"""PRO obuna: kesh, belgi, imkoniyatlar, xarid."""
+"""Pro obuna (1/2/3-daraja, toifa): kesh, belgi, imkoniyatlar, xarid."""
 import asyncio
 from datetime import timedelta
 from types import SimpleNamespace
@@ -10,6 +10,7 @@ from aiogram.types import InlineKeyboardButton as Btn, InlineKeyboardMarkup as K
 from mafia_zone import config, db, emoji, pro, texts
 
 U = lambda s: s.replace(emoji.USER, "")  # ismlar USER belgisi bilan o'ralgan (premium emojiga almashmasin)
+F = pro.fancy  # Pro ismi qalin kursiv
 
 
 def setup_function():
@@ -26,22 +27,31 @@ def test_game_emoji_plain_but_pro_badge_premium():
 
 
 def test_badge_name_and_expiry():
-    pro.set_user(1, db.now() + timedelta(days=3), "Shoh<b>")
-    assert pro.is_pro(1) and U(pro.name(1, "Ali")) == "Shoh<b>"
+    pro.set_user(1, db.now() + timedelta(days=3), "Shoh<1>")  # daraja None - eski PRO = Pro 3
+    assert pro.is_pro(1) and pro.tier(1) == 3 and U(pro.name(1, "Ali")) == F("Shoh<1>")
     m = texts.mention(1, "Ali")
-    assert pro.BADGE_ID in m and "<b>PRO</b>" in m and "Shoh&lt;b&gt;" in m and "tg://user?id=1" in m
-    # 🌟 PRO <nickname> 🔥
-    assert m.index("5226766493886225846") < m.index("<b>PRO</b>") < m.index("Shoh") < m.index("5220136481720409403")
+    assert pro.BADGE_ID in m and "<b>Pro</b>" in m and F("Shoh") + "&lt;1&gt;" in m and "tg://user?id=1" in m
+    # 🌟 Pro <nickname> 🔥
+    assert m.index(pro.BADGE_ID) < m.index("<b>Pro</b>") < m.index(F("Shoh")) < m.index(pro.TAIL_ID)
     pro.set_user(1, db.now() - timedelta(seconds=1), "Shoh")
     assert not pro.is_pro(1) and U(texts.mention(1, "Ali")) == '<a href="tg://user?id=1">Ali</a>'
 
 
 def test_perks_numbers():
-    pro.set_user(2, db.now() + timedelta(days=1), None)
+    pro.set_user(2, db.now() + timedelta(days=1), None)  # eski PRO: muddati tugaguncha -25%, x1.5
     assert pro.price(2, 100) == 75 and pro.price(3, 100) == 100
-    assert pro.leave_free(2) == 5 and pro.leave_free(3) == config.LEAVE_FREE
     assert pro.win_reward(2) == config.REWARD_WIN * 3 // 2 and pro.win_reward(3) == config.REWARD_WIN
-    assert [(U(t), i) for t, i in (pro.label(2, "Ali"), pro.label(3, "Ali"))] == [("PRO Ali", pro.BADGE_ID), ("Ali", None)]
+    assert [(U(t), i) for t, i in (pro.label(2, "Ali"), pro.label(3, "Ali"))] == [("Pro " + F("Ali"), pro.BADGE_ID),
+                                                                                    ("Ali", None)]
+    w = config.REWARD_WIN
+    for lv, price, win, icon in ((1, 95, w, None), (2, 90, w * 125 // 100, pro.BADGE_ID), (3, 85, w * 3 // 2, pro.BADGE_ID)):
+        pro.set_user(4, db.now() + timedelta(days=1), "Shoh", lv)
+        assert pro.tier(4) == lv and pro.price(4, 100) == price and pro.win_reward(4) == win, lv
+        text = "Pro " + F("Shoh") if lv == 3 else F("Ali")  # nickname faqat Pro 3 da
+        assert (U(pro.label(4, "Ali")[0]), pro.label(4, "Ali")[1]) == (text, icon)
+        m = texts.mention(4, "Ali")  # belgi Pro 2 dan; "Pro" yozuvi Pro 3 da
+        assert (F("Shoh") in m) == (lv == 3) and (pro.BADGE_ID in m) == (lv >= 2) and ("<b>Pro</b>" in m) == (lv == 3)
+        assert "PRO" not in m
 
 
 def test_check_nick():
@@ -77,22 +87,28 @@ def test_pro_purchase_db():
         u = 8_200_001
         await db.upsert_user(u, "Ali", None)
         await db.add_balance(u, 0, 40)
-        until1 = await db.buy_pro_diamonds(u, 7)
-        assert until1 and pro.is_pro(u) and (await db.get_user(u)).diamonds == 10
-        assert await db.buy_pro_diamonds(u, 7) is None and (await db.get_user(u)).diamonds == 10  # yetmaydi
-        assert await db.buy_pro_diamonds(u, 8) is None  # bunday paket yo'q
-        until2 = await db.add_pro(u, 15, "stars", 150, "ch-1")
-        assert round((until2 - until1).total_seconds() / 86400) == 15  # ustiga qo'shiladi
-        assert await db.add_pro(u, 15, "stars", 150, "ch-1") is None  # takror to'lov
+        until1 = await db.buy_pro_diamonds(u, 3)
+        assert until1 and pro.tier(u) == 3 and (await db.get_user(u)).diamonds == 11
+        assert round((until1 - db.now()).total_seconds() / 86400) == pro.DAYS
+        assert await db.buy_pro_diamonds(u, 3) is None and (await db.get_user(u)).diamonds == 11  # yetmaydi
+        assert await db.buy_pro_diamonds(u, 4) is None  # bunday daraja yo'q
+        until2 = await db.add_pro(u, 15, "stars", 150, "ch-1", 3)
+        assert round((until2 - until1).total_seconds() / 86400) == 15  # o'sha daraja - ustiga qo'shiladi
+        assert await db.add_pro(u, 15, "stars", 150, "ch-1", 3) is None  # takror to'lov
         await db.set_nickname(u, "Shoh")
         pro.CACHE.clear()
         await db.load_pro()
-        assert U(pro.name(u, "Ali")) == "Shoh"
-        assert await db.pro_expiring(24 * 30) == [u] and await db.pro_expiring(24 * 30) == []  # bir marta
+        assert U(pro.name(u, "Ali")) == F("Shoh") and pro.tier(u) == 3
+        # Pro 3 (22 kun qolgan) -> Pro 1: qolgan kunlar narx bo'yicha (29/9) + 7 kun; nickname Pro 1 da ko'rinmaydi
+        left = (pro.until(u) - db.now()).total_seconds() / 86400
+        until3 = await db.buy_pro_diamonds(u, 1)
+        assert pro.tier(u) == 1 and abs((until3 - db.now()).total_seconds() / 86400 - (left * 29 / 9 + 7)) < 0.01
+        assert U(pro.name(u, "Ali")) == F("Ali")
+        assert await db.pro_expiring(24 * 200) == [u] and await db.pro_expiring(24 * 200) == []  # bir marta
         await db.set_pro(u, 0)
         assert not pro.is_pro(u) and (await db.get_user(u)).pro_until is None
         await db.set_pro(u, 3)
-        assert pro.is_pro(u) and U(pro.name(u, "Ali")) == "Shoh"
+        assert pro.tier(u) == 3 and U(pro.name(u, "Ali")) == F("Shoh")
     asyncio.run(t())
 
 
@@ -111,26 +127,27 @@ def test_pro_perks_reward_and_shop():
         await db.add_balance(p, 1000)
         before = (await db.get_user(p)).dollars
         assert await db.buy(p, "shield")
-        assert before - (await db.get_user(p)).dollars == config.SHOP["shield"] * 3 // 4
-        assert "-25%" in texts.shop(500, p) and "-25%" not in texts.shop(500, o)
+        assert before - (await db.get_user(p)).dollars == config.SHOP["shield"] * 85 // 100  # Pro 3: -15%
+        assert "-15%" in texts.shop(500, p) and "-15%" not in texts.shop(500, o)
         from mafia_zone import handlers
         label = lambda uid: next(b.text for r in handlers.shop_kb(uid).inline_keyboard for b in r
                                  if b.callback_data == "b:shield")  # narx tugmada
-        assert f"({config.SHOP['shield'] * 3 // 4}💵)" in label(p) and f"({config.SHOP['shield']}💵)" in label(o)
+        assert f"({config.SHOP['shield'] * 85 // 100}💵)" in label(p) and f"({config.SHOP['shield']}💵)" in label(o)
     asyncio.run(t())
 
 
-def test_pro_spectator_writes_only_by_day():
+def test_pro_spectator_and_dead_write_only_by_day():
     from mafia_zone import handlers
     from mafia_zone.engine.game import DAY, NIGHT, Game, Player
     pro.set_user(77, db.now() + timedelta(days=1), None)
     g = Game(-1, 1, [Player(1, "a", "tinch"), Player(2, "b", "don", alive=False)], phase=DAY)
-    assert handlers.may_write(g, 77, "salom", False)          # PRO tomoshabin kunduzi
+    assert handlers.may_write(g, 77, "salom", False)          # Pro tomoshabin kunduzi
     assert not handlers.may_write(g, 78, "salom", False)      # oddiy tomoshabin
-    pro.set_user(2, db.now() + timedelta(days=1), None)
-    assert not handlers.may_write(g, 2, "salom", False)       # o'lgan PRO ham yo'q
+    assert not handlers.may_write(g, 2, "salom", False)       # o'lgan oddiy o'yinchi
+    pro.set_user(2, db.now() + timedelta(days=1), None, 1)
+    assert handlers.may_write(g, 2, "salom", False)           # o'lgan Pro (1-daraja ham) - kunduzi yozadi
     g.phase = NIGHT
-    assert not handlers.may_write(g, 77, "salom", False)      # tunda yo'q
+    assert not handlers.may_write(g, 77, "salom", False) and not handlers.may_write(g, 2, "salom", False)  # tunda yo'q
 
 
 def test_pro_buttons_profile_and_lobby_name():
@@ -145,12 +162,12 @@ def test_pro_buttons_profile_and_lobby_name():
     r.game_id = 3
     rows = r.vote_kb(4).inline_keyboard
     b = rows[0][0]
-    assert U(b.text) == "2. 🤵🏼 PRO Shoh" and b.icon_custom_emoji_id == pro.BADGE_ID
+    assert U(b.text) == "2. 🤵🏼 Pro " + F("Shoh") and b.icon_custom_emoji_id == pro.BADGE_ID
     assert U(rows[1][0].text) == "3. Hasan" and rows[1][0].icon_custom_emoji_id is None
     r.close()
     u = SimpleNamespace(telegram_id=5, full_name="Ali", wins=0, dollars=0, diamonds=0, games=0)
     card = texts.profile_card(u, [])
-    assert pro.BADGE_ID in card and "Shoh" in card and "gacha" in card
+    assert pro.BADGE_ID in card and F("Shoh") in card and "Pro 3" in card and "gacha" in card
     assert "gacha" not in texts.profile_card(SimpleNamespace(telegram_id=6, full_name="H", wins=0, dollars=0,
                                                              diamonds=0, games=0), [])
 
@@ -169,16 +186,17 @@ def test_stars_payment_flow():
 
         async def pcq_answer(ok_=None, error_message=None, **kw):
             ok.append(kw.get("ok", ok_))
-        for amount, payload in ((100, "pro:7"), (1, "pro:7"), (100, "pro:8"), (100, "xyz")):
+        for amount, payload in ((150, "pro:3:7"), (50, "pro:1:7"), (1, "pro:3:7"), (150, "pro:4:7"), (150, "pro:3:30"),
+                                (100, "pro:7"), (150, "xyz")):  # "pro:7" - eski (darajasiz) hisob-faktura
             await handlers.on_pre_checkout(SimpleNamespace(invoice_payload=payload, total_amount=amount, currency="XTR",
                                                            from_user=SimpleNamespace(id=u), answer=pcq_answer))
-        assert ok == [True, False, False, False]
-        pay = SimpleNamespace(invoice_payload="pro:7", total_amount=100, currency="XTR", telegram_payment_charge_id="c9")
+        assert ok == [True, True, False, False, False, False, False]
+        pay = SimpleNamespace(invoice_payload="pro:3:7", total_amount=150, currency="XTR", telegram_payment_charge_id="c9")
         m = SimpleNamespace(from_user=SimpleNamespace(id=u, full_name="Ali", username=None), successful_payment=pay,
                             answer=answer)
         await handlers.on_paid(m)
         await handlers.on_paid(m)  # Telegram takror yuborsa - ikkinchi marta hisoblanmaydi
-        assert pro.is_pro(u) and len(said) == 1 and "PRO" in said[0]
+        assert pro.tier(u) == 3 and len(said) == 1 and "Pro 3" in said[0]
         assert round((pro.until(u) - db.now()).total_seconds() / 86400) == 7
     asyncio.run(t())
 
@@ -201,13 +219,22 @@ def test_pro_menu_diamonds_and_nickname():
                                           message=SimpleNamespace(edit_text=edit_text), answer=cq_answer, bot=None)
         await handlers.cb_menu(cq("m:pro"))
         text, kb = shown[-1]
-        assert "PRO AKKAUNT" in text and "x1.5" in text
+        assert "Pro AKKAUNT" in text and "darajani tanlang" in text
         cbs = [b.callback_data for row in kb.inline_keyboard for b in row]
-        assert {"pro:d:7", "pro:s:7", "pro:d:30", "pro:s:30", "m:home"} <= set(cbs)
-        await handlers.cb_pro(cq("pro:d:7"))  # olmos yo'q
+        assert cbs == ["pt:1", "pt:2", "pt:3", "pt:title", "m:home"]
+        for lv in (1, 2, 3):
+            await handlers.cb_pro_tier(cq(f"pt:{lv}"))
+            text, kb = shown[-1]
+            assert f"Pro {lv}" in text and F("Ali") in text and f"({pro.DISCOUNT[lv]}%)" in text and "/leave" in text
+            assert ("/nickname" in text) == (lv == 3) and ("x1.5" in text) == (lv == 3) and ("x1.25" in text) == (lv == 2)
+            assert ("<b>Pro</b>" in text) == (lv == 3) and (pro.BADGE_ID in text) == (lv >= 2) and "PRO" not in text
+            cbs = [b.callback_data for row in kb.inline_keyboard for b in row]
+            assert [c for c in cbs if c] == [f"pro:d:{lv}", f"pro:s:{lv}", "m:pro"]
+            assert kb.inline_keyboard[0][0].text == f"💎 7 kun — {pro.PACKS[lv][0]}"
+        await handlers.cb_pro(cq("pro:d:3"))  # olmos yo'q
         assert alerts[-1] == texts.PRO_NO_DIAMONDS and not pro.is_pro(u)
-        await db.add_balance(u, 0, 30)
-        await handlers.cb_pro(cq("pro:d:7"))
+        await db.add_balance(u, 0, 29)
+        await handlers.cb_pro(cq("pro:d:3"))
         assert pro.is_pro(u) and (await db.get_user(u)).diamonds == 0
         said = []
 
@@ -217,11 +244,14 @@ def test_pro_menu_diamonds_and_nickname():
             SimpleNamespace(from_user=SimpleNamespace(id=u, full_name="Ali", username=None), answer=answer),
             SimpleNamespace(args=args))
         await nick("@shoh")
-        assert "❌" in said[-1] and U(pro.name(u, "Ali")) == "Ali"
+        assert "❌" in said[-1] and U(pro.name(u, "Ali")) == F("Ali")
         await nick("Shoh")
-        assert U(pro.name(u, "Ali")) == "Shoh" and (await db.get_user(u)).nickname == "Shoh"
+        assert U(pro.name(u, "Ali")) == F("Shoh") and (await db.get_user(u)).nickname == "Shoh"
         await nick(None)
-        assert U(pro.name(u, "Ali")) == "Ali"
+        assert U(pro.name(u, "Ali")) == F("Ali")
+        await db.set_pro(u, 7, 2)  # Pro 2: laqab yo'q
+        await nick("Shoh")
+        assert said[-1] == texts.NICK_ONLY_PRO
         await db.set_pro(u, 0)
         await nick("Shoh")
         assert said[-1] == texts.NICK_ONLY_PRO
@@ -237,9 +267,9 @@ def test_fix_nickname_not_frozen_into_game():
     assert r.members[-1] == (9, "Ali")  # haqiqiy ism saqlanadi, nickname ko'rsatishda qo'yiladi
     r.close()
     g = Game(-1, 1, [Player(9, "Ali", "don"), Player(10, "Vali", "mafiya")])
-    assert U(texts.nm(g, 9)) == "Shoh" and "Shoh" in texts.role_card(g, 10)
-    pro.set_user(9, db.now() - timedelta(seconds=1), "Shoh")  # PRO tugadi
-    assert U(texts.nm(g, 9)) == "Ali" and "Shoh" not in texts.role_card(g, 10)
+    assert U(texts.nm(g, 9)) == F("Shoh") and F("Shoh") in texts.role_card(g, 10)
+    pro.set_user(9, db.now() - timedelta(seconds=1), "Shoh")  # Pro tugadi
+    assert U(texts.nm(g, 9)) == "Ali" and F("Shoh") not in texts.role_card(g, 10)
     assert "Shoh" not in texts.role_alert(g, 10)
 
 
@@ -277,7 +307,7 @@ def test_fix_paid_db_failure_refunds_and_paysupport():
             raise RuntimeError("db down")
         db.add_pro = boom
         try:
-            pay = SimpleNamespace(invoice_payload="pro:7", total_amount=100, currency="XTR", telegram_payment_charge_id="c77")
+            pay = SimpleNamespace(invoice_payload="pro:3:7", total_amount=150, currency="XTR", telegram_payment_charge_id="c77")
             m = SimpleNamespace(from_user=SimpleNamespace(id=u, full_name="Ali", username=None), successful_payment=pay,
                                 answer=answer, bot=SimpleNamespace(refund_star_payment=refund))
             await handlers.on_paid(m)
@@ -314,9 +344,9 @@ def test_owner_badge_only_for_bot_owner():
     try:
         pro.set_user(owner, db.now() + timedelta(days=1), "Shoh")
         m = texts.mention(owner, "Ali")
-        assert pro.OWNER_ID in m and pro.OWNER_TAIL_ID in m and "<b>Creator</b>" in m and "Shoh" in m
-        assert pro.BADGE_ID not in m and "<b>PRO</b>" not in m
-        assert pro.label(owner, "Ali") == ("Creator " + pro.short("Shoh"), pro.OWNER_ID)
+        assert pro.OWNER_ID in m and pro.OWNER_TAIL_ID in m and "<b>Creator</b>" in m and F("Shoh") in m
+        assert pro.BADGE_ID not in m and "<b>Pro</b>" not in m
+        assert pro.label(owner, "Ali") == ("Creator " + pro.short(F("Shoh")), pro.OWNER_ID)
         pro.set_user(owner, None, None)  # PRO tugasa ham egasi Creator
         assert "<b>Creator</b>" in texts.mention(owner, "Ali")
         assert U(texts.mention(other, "👑 OWNER Vali 👍")) == '<a href="tg://user?id=77500002">Vali</a>'
@@ -325,3 +355,82 @@ def test_owner_badge_only_for_bot_owner():
     finally:
         config.ADMIN_IDS.clear(), config.ADMIN_IDS.update(old)
         pro.set_user(owner, None, None)
+
+
+def test_group_owner_title():
+    """Toifa: faol katta guruh egasi -> cheksiz Pro 3 + "<guruh> Owner"; Pro xaridi uni buzmaydi."""
+    from mafia_zone import handlers
+
+    async def t():
+        await db.init()
+        u, chat = 8_200_050, -100_777
+        await db.upsert_user(u, "Ali", None)
+        await db.group_settings(chat, "Shahar Mafia 🌟")
+        for _ in range(config.TITLE_GAMES - 1):
+            await db.finish_game(await db.create_game(chat, {}), chat, "finished", "town", [])
+        status, members = ["creator"], [config.TITLE_MEMBERS]
+
+        async def get_chat_member(chat_id, user_id):
+            return SimpleNamespace(status=status[0])
+
+        async def get_chat_member_count(chat_id):
+            return members[0]
+        bot = SimpleNamespace(get_chat_member=get_chat_member, get_chat_member_count=get_chat_member_count)
+        assert await handlers.find_title(bot, u) is None  # o'yin yetmaydi
+        await db.finish_game(await db.create_game(chat, {}), chat, "finished", "town", [])
+        title = await handlers.find_title(bot, u)
+        assert U(title) == "Shahar Mafia 🌟 Owner"
+        members[0] -= 1
+        assert await handlers.find_title(bot, u) is None  # a'zo kam
+        members[0], status[0] = config.TITLE_MEMBERS, "administrator"
+        assert await handlers.find_title(bot, u) is None  # egasi emas
+        await db.grant_title(u, title)
+        pro.CACHE.clear()
+        await db.load_pro()
+        assert pro.tier(u) == 3 and pro.title(u) == title and pro.until(u) == pro.FOREVER
+        m = texts.mention(u, "Ali")
+        assert f"<b>{title}</b>" in m and pro.BADGE_ID in m and "<b>Pro</b>" not in m
+        assert U(pro.label(u, "Ali")[0]) == "Shahar Mafia 🌟 Owner " + F("Ali")
+        assert await db.add_pro(u, 7, "admin", 0, tier=1) == pro.FOREVER and pro.tier(u) == 3  # toifa tegilmaydi
+        alerts = []
+
+        async def cq_answer(text=None, show_alert=False):
+            alerts.append(text)
+        cq = SimpleNamespace(data="pro:d:1", from_user=SimpleNamespace(id=u, full_name="Ali", username=None),
+                             answer=cq_answer, bot=None)
+        await handlers.cb_pro(cq)
+        assert alerts[-1] == texts.TITLE_HAVE
+        card = texts.profile_card(SimpleNamespace(telegram_id=u, full_name="Ali", wins=0, dollars=0, diamonds=0,
+                                                  games=0), [])
+        assert "cheksiz" in card and "2100" not in card
+        await db.set_pro(u, 0)
+        assert not pro.is_pro(u) and (await db.get_user(u)).title is None
+    asyncio.run(t())
+
+
+def test_name_lock_prank():
+    """settings "name_lock" = {"uid": "ism"}: hamma joyda shu ism (laqab va haqiqiy ism o'rniga), /nickname qulf."""
+    from mafia_zone import handlers
+
+    async def t():
+        await db.init()
+        u = 8_200_060
+        await db.upsert_user(u, "Ali", None)
+        await db.save_settings({"name_lock": {str(u): "Creator's"}})
+        try:
+            await db.load_settings()
+            assert U(pro.name(u, "Ali")) == "Creator's" and "Creator&#x27;s" in texts.mention(u, "Ali")
+            pro.set_user(u, db.now() + timedelta(days=1), "Shoh", 3)
+            assert U(pro.name(u, "Ali")) == F("Creator's") and U(pro.label(u, "Ali")[0]) == "Pro " + F("Creator's")
+            said = []
+
+            async def answer(text=None, **kw):
+                said.append(text)
+            await handlers.cmd_nickname(SimpleNamespace(from_user=SimpleNamespace(id=u, full_name="Ali", username=None),
+                                                        answer=answer), SimpleNamespace(args="Boshqa"))
+            assert said[-1] == texts.NICK_LOCKED and (await db.get_user(u)).nickname is None
+        finally:
+            await db.save_settings({"name_lock": {}})
+            await db.load_settings()
+        assert U(pro.name(u, "Ali")) == F("Shoh")
+    asyncio.run(t())
