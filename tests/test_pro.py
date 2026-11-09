@@ -303,4 +303,4 @@ def test_long_and_weird_names_are_shortened_everywhere():
     uid = 77_123_001
     assert long not in texts.mention(uid, long) and "…" in texts.mention(uid, long)
     assert pro.label(uid, long)[0] == pro.short(long)
-    assert long not in texts.ref_joined(long)
+    assert long not in texts.ref_bonus(long)

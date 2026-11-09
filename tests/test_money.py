@@ -143,7 +143,7 @@ def test_send_command():
     async def t():
         a, b = BASE + 500, BASE + 501
         await mkuser(a, 100)
-        await set_games(a, config.SEND_GAMES)
+        await set_games(a, 0)
         bot = FakeBot()
         cmd = lambda args: SimpleNamespace(args=args)
 
@@ -423,33 +423,39 @@ def test_rob_negative_balance_steals_nothing():
     run(t())
 
 
-def test_new_accounts_cannot_send_or_claim_and_ref_paid_after_games():
+def test_new_accounts_send_and_claim_ref_paid_at_once():
+    """O'yin talablari yo'q: yangi profil yuboradi va tarqatmadan oladi; qayta bosish - oyna; taklif bonusi darhol."""
     async def t():
         a, b, inviter, friend = BASE + 1100, BASE + 1101, BASE + 1102, BASE + 1103
         await mkuser(a, 100)
         await mkuser(inviter, 0)
-        await set_games(a, config.SEND_GAMES - 1)
-        bot = FakeBot()
+        await set_games(a, 0)
+
+        class Members(FakeBot):
+            async def get_chat_member(self, chat_id, uid):
+                return SimpleNamespace(status="member")
+        bot = Members()
         m, _ = fake_msg(a)
         await handlers.cmd_send(m, bot, SimpleNamespace(args="10"))
-        assert await bal(a) == 100 and "🔒" in bot.sent[-1]  # yopiq: pul yechilmadi
-        await set_games(a, config.SEND_GAMES)
-        await handlers.cmd_send(m, bot, SimpleNamespace(args="10"))
+        assert await bal(a) == 90
         gid = max(g.id for g in [await db.get_giveaway(i) for i in range(1, 500)] if g)
-        await mkuser(b, 0)  # 0 ta o'yin - tarqatmadan ololmaydi
+        handlers._shown[gid] = 0.0  # avto-bosish tekshiruvi o'tsin
+        await mkuser(b, 0)  # 0 ta o'yin - baribir oladi
         said = []
 
         async def answer(text=None, show_alert=False):
-            said.append(text)
+            said.append((text, show_alert))
         cq = SimpleNamespace(data=f"g:{gid}", from_user=SimpleNamespace(id=b, full_name="b", username=None),
                              answer=answer, message=SimpleNamespace(chat=SimpleNamespace(id=-5), message_id=1))
         await handlers.cb_giveaway(cq, bot)
-        assert "🔒" in said[-1] and await bal(b) == 0
-        # taklif: bonus darhol emas, REF_GAMES ta o'yindan keyin, bir marta
+        assert await bal(b) == 10
+        await handlers.cb_giveaway(cq, bot)  # ikkinchi bosish: "allaqachon olgansiz" - oynada
+        assert said[-1] == (texts.GIVEAWAY_TAKEN, True) and await bal(b) == 10
+        if task := handlers._refresh.pop(gid, None):  # 3 s keyingi tahrir test uchun kerak emas
+            task.cancel()
+        # taklif: bonus darhol (o'yin kutilmaydi), bir marta
         await mkuser(friend, 0)
         await db.set_referrer(friend, inviter)
-        assert await db.pay_referrals([friend]) == [] and await bal(inviter) == 0
-        await set_games(friend, config.REF_GAMES)
         assert await db.pay_referrals([friend]) == [(inviter, f"u{friend}")]
         assert await db.pay_referrals([friend]) == [] and await bal(inviter) == config.REF_BONUS
     run(t())
@@ -460,7 +466,7 @@ def test_fast_clicker_locked_out_of_giveaway():
     async def t():
         a, bot_user, human, outsider = BASE + 1200, BASE + 1201, BASE + 1202, BASE + 1203
         await mkuser(a, 100)
-        await set_games(a, config.SEND_GAMES)
+        await set_games(a, 0)
 
         class Members(FakeBot):
             async def get_chat_member(self, chat_id, uid):
@@ -468,7 +474,7 @@ def test_fast_clicker_locked_out_of_giveaway():
         tg = Members()
         for u in (bot_user, human, outsider):
             await mkuser(u, 0)
-            await set_games(u, config.CLAIM_GAMES)
+            await set_games(u, 0)
         m, _ = fake_msg(a)
         await handlers.cmd_send(m, FakeBot(), SimpleNamespace(args="20 10"))
         gid = max(handlers._shown)
@@ -520,7 +526,7 @@ def test_give_command_diamonds():
         await mkuser(a, 100)
         await mkuser(b, 0)
         await db.add_balance(a, 0, 10)
-        await set_games(a, config.SEND_GAMES)
+        await set_games(a, 0)
         bot = FakeBot()
         cmd = lambda args: SimpleNamespace(args=args, command="give")
         m, _ = fake_msg(a, reply_uid=b)  # reply + /give 3

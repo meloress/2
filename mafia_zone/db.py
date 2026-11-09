@@ -505,13 +505,12 @@ async def set_referrer(uid: int, inviter: int) -> None:
 
 
 async def pay_referrals(uids: list[int]) -> list[tuple[int, str]]:
-    """config.REF_GAMES ta o'yin o'ynagan taklif qilinganlar uchun taklif qilganga bonus (bir marta, atomar).
+    """Taklif qilinganlar uchun taklif qilganga bonus (bir marta, atomar; o'yin talabi yo'q - /start da darhol).
     [(inviter, taklif qilingan ism)]"""
     out = []
     async with Session.begin() as s:
         rows = (await s.execute(select(User.telegram_id, User.full_name, User.referred_by).where(
-            User.telegram_id.in_(uids), User.referred_by.is_not(None), User.ref_paid.is_(False),
-            User.games >= config.REF_GAMES))).all()
+            User.telegram_id.in_(uids), User.referred_by.is_not(None), User.ref_paid.is_(False)))).all()
         for uid, name, inviter in rows:
             r = await s.execute(update(User).where(User.telegram_id == uid, User.ref_paid.is_(False))
                                 .values(ref_paid=True))

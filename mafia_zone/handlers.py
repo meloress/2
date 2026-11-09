@@ -347,8 +347,6 @@ async def cmd_send(msg: Message, bot: Bot, command: CommandObject):
     args = (command.args or "").split()
     nums = [int(a) for a in args] if args and all(a.isdigit() for a in args) else []
     me = await _user(msg) if nums and len(nums) <= 2 and all(0 < x <= MAX_AMOUNT for x in nums) else None
-    if me and me.games < config.SEND_GAMES:  # yangi (ko'pincha soxta) profillardan pul to'plashga qarshi
-        return await send(bot, msg.chat.id, texts.send_locked(me.games))
     if me:
         u, reply = msg.from_user, msg.reply_to_message
         target = reply.from_user if reply and not getattr(reply, "sender_chat", None) else None  # kanal posti - odam emas
@@ -376,8 +374,6 @@ async def cmd_send(msg: Message, bot: Bot, command: CommandObject):
 async def cb_giveaway(cq: CallbackQuery, bot: Bot):
     gid = int(cq.data[2:])
     me = await _user(cq)
-    if me and me.games < config.CLAIM_GAMES:
-        return await cq.answer(texts.claim_locked(), show_alert=True)
     key = (gid, cq.from_user.id)
     if key in _early or time.monotonic() - _shown.get(gid, 0) < config.CLAIM_DELAY:
         _early.add(key)  # keyin qayta bosib ham ololmaydi
@@ -387,8 +383,9 @@ async def cb_giveaway(cq: CallbackQuery, bot: Bot):
     if not m or m.status in ("left", "kicked") or (m.status == "restricted" and not getattr(m, "is_member", True)):
         return await cq.answer(texts.GIVEAWAY_MEMBERS, show_alert=True)
     g = await db.claim(gid, cq.from_user.id) if me else None
-    if not g:
-        return await cq.answer(texts.GIVEAWAY_NO)
+    if not g:  # oyna bo'lib chiqadi: olgan bo'lsa - shuni, bo'lmasa - tugagan
+        took = any(uid == cq.from_user.id for uid, _ in await db.giveaway_takers(gid))
+        return await cq.answer(texts.GIVEAWAY_TAKEN if took else texts.GIVEAWAY_NO, show_alert=True)
     await cq.answer(texts.GIVEAWAY_GOT.format(g.per, texts.CUR[g.currency or "dollars"]), show_alert=True)
     if gid not in _refresh:  # ko'p bosilganda 3 s da bir marta tahrirlash (guruh limiti)
         _refresh[gid] = asyncio.create_task(_refresh_giveaway(bot, cq.message.chat.id, cq.message.message_id, gid))
@@ -563,9 +560,10 @@ async def cmd_start(msg: Message, bot: Bot, command: CommandObject):
         return await msg.answer(texts.BANNED)
     if is_new and arg.startswith("ref") and arg[3:].isdigit() and int(arg[3:]) != msg.from_user.id:
         inviter = int(arg[3:])
-        if await db.get_user(inviter):  # bonus darhol emas: do'st REF_GAMES ta o'yin o'ynagach (pay_referrals)
+        if await db.get_user(inviter):  # bonus darhol: do'st botga kirishi bilan (bir marta, pay_referrals)
             await db.set_referrer(msg.from_user.id, inviter)
-            await send(bot, inviter, texts.ref_joined(msg.from_user.full_name))
+            for who, name in await db.pay_referrals([msg.from_user.id]):
+                await send(bot, who, texts.ref_bonus(name))
     if arg == "panel":
         return await send_panel_link(msg)
     if arg.startswith("join"):
@@ -626,11 +624,8 @@ async def cb_menu(cq: CallbackQuery):
         if not (u := await _user(cq)):
             return await cq.answer(texts.BANNED, show_alert=True)
         kb = Kb(inline_keyboard=[[prof_back()]])
-        if u.games < config.SEND_GAMES:  # /send bilan bir xil: yangi profillardan pul yig'ishga qarshi
-            await show(cq, texts.send_locked(u.games), kb)
-        else:
-            ASK[u.telegram_id] = "dollars" if what == "pay" else "diamonds"
-            await show(cq, texts.ask_send(ASK[u.telegram_id]), kb)
+        ASK[u.telegram_id] = "dollars" if what == "pay" else "diamonds"
+        await show(cq, texts.ask_send(ASK[u.telegram_id]), kb)
     elif what in ("profile", "shop"):
         if not (u := await _user(cq)):
             return await cq.answer(texts.BANNED, show_alert=True)
@@ -827,8 +822,6 @@ async def _answer_ask(msg: Message, ask: str) -> None:
         return await msg.answer(texts.WALLET_SELF)
     if not (me := await _user(msg)):
         return await msg.answer(texts.BANNED)
-    if me.games < config.SEND_GAMES:
-        return await msg.answer(texts.send_locked(me.games))
     n = int(parts[1])
     if not await db.transfer(uid, t.telegram_id, n, ask):
         return await msg.answer(texts.NO_MONEY if ask == "dollars" else texts.NO_DIAMONDS)

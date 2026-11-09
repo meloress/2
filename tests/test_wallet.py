@@ -151,8 +151,7 @@ def test_private_send_money_and_diamonds():
         log = []
         await set_games(a, 0)
         await handlers.cb_menu(cq(a, "m:pay", log))
-        assert texts.send_locked(0) in [x[1] for x in log]  # yangi profil yubora olmaydi
-        await set_games(a, config.SEND_GAMES)
+        assert texts.ask_send("dollars") in [x[1] for x in log]  # yangi profil ham yubora oladi
         sent = []
 
         async def fake_send(bot, chat_id, text, *a_, **kw):

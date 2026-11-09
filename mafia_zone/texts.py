@@ -690,7 +690,8 @@ def giveaway(sender: str, sender_id: int, per: int, parts: int, takers: list[tup
 
 GIVEAWAY_BTN = "💰 Olish"
 GIVEAWAY_GOT = "🎉 +{} {} oldingiz!"
-GIVEAWAY_NO = "😔 Tugagan yoki siz allaqachon olgansiz"
+GIVEAWAY_NO = "😔 Bu tarqatma tugagan"
+GIVEAWAY_TAKEN = "✅ Siz bu tarqatmadan allaqachon olgansiz"
 GIVEAWAY_MEMBERS = "👥 Tarqatmadan faqat shu guruh a'zolari oladi. Avval guruhga qo'shiling."
 LATE_VOTE = "⌛️ Kechikdingiz: ovoz berish vaqti tugagan"
 LATE_NIGHT = "⌛️ Kechikdingiz: tun tugagan, harakat qabul qilinmadi"
@@ -857,27 +858,12 @@ INVITE_TEXT = "🎭 Admiral Mafia — Telegramdagi mafiya o'yini! Men bilan o'yn
 def profile(u, inv) -> str:
     return (profile_card(u, inv)
             + "\n\n<i>🟢 ON bo'lgan buyumlar o'yinda o'zi ishlatiladi, 🔴 OFF (chizilgan) — saqlanib turadi</i>"
-            + f"\n\n🤝 Har bir taklif qilingan do'st uchun <b>+{config.REF_BONUS} 💵</b>"
-              f"\n<i>(do'stingiz {config.REF_GAMES} ta o'yin o'ynagach beriladi)</i>")
-
-
-def ref_joined(name: str) -> str:
-    return (f"🤝 <b>{escape(pro.short(name))}</b> sizning taklifingiz bilan qo'shildi!\n"
-            f"U <b>{config.REF_GAMES} ta</b> o'yin o'ynagach, sizga <b>+{config.REF_BONUS} 💵</b> beriladi.")
+            + f"\n\n🤝 Har bir taklif qilingan do'st uchun <b>+{config.REF_BONUS} 💵</b>")
 
 
 def ref_bonus(name: str) -> str:
-    return (f"🎉 <b>{escape(pro.short(name))}</b> {config.REF_GAMES} ta o'yin o'ynadi!\n"
+    return (f"🎉 <b>{escape(pro.short(name))}</b> sizning taklifingiz bilan qo'shildi!\n"
             f"Taklif uchun hisobingizga <b>+{config.REF_BONUS} 💵</b> tushdi.")
-
-
-def send_locked(games: int) -> str:
-    return (f"🔒 Pul/olmos o'tkazish va tarqatish <b>{config.SEND_GAMES} ta</b> o'yindan keyin ochiladi.\n"
-            f"Siz hozircha <b>{games} ta</b> o'yin o'ynagansiz.")
-
-
-def claim_locked() -> str:
-    return f"🔒 Tarqatmadan olish uchun kamida {config.CLAIM_GAMES} ta o'yin o'ynagan bo'lishingiz kerak."
 
 
 def shop(dollars: int, uid: int | None = None, diamonds: int | None = None) -> str:
