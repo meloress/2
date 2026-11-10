@@ -209,15 +209,15 @@ async def cmd_rules(msg: Message):
 
 
 # ---------- sozlamalar ----------
-TIMERS = {"lobby": ("👥 Ro'yxat", [60, 90, 120, 180, 300]), "night": ("🌙 Tun", [30, 45, 60, 90, 120]),
-          "day": ("🌆 Kun", [30, 45, 60, 90, 120, 180]), "vote": ("🗳 Ovoz", [30, 45, 60, 90])}
+TIMERS = {"lobby": "👥 Ro'yxat", "night": "🌙 Tun", "day": "🌆 Kun", "vote": "🗳 Ovoz"}  # chegara/qadam: config.TIMER_RANGES
 
 
 FLAGS = ("items", "afk", "confirm")
 
 
 def settings_kb(s: dict) -> Kb:
-    rows = [[Btn(text=f"{label}: {s[k]} s", callback_data=f"s:{k}")] for k, (label, _) in TIMERS.items()]
+    rows = [[Btn(text="➖", callback_data=f"s:{k}:-"), Btn(text=f"{label}: {texts.dur(s[k])}", callback_data=f"s:{k}:+"),
+             Btn(text="➕", callback_data=f"s:{k}:+")] for k, label in TIMERS.items()]
     rows.append([Btn(text=f"🎒 Buyumlar: {'✅' if s['items'] else '❌'}", callback_data="s:items")])
     rows.append([Btn(text=f"😴 AFK chiqarish: {'✅' if s['afk'] else '❌'}", callback_data="s:afk")])
     rows.append([Btn(text=f"🪢 Osishni tasdiqlash: {'✅' if s['confirm'] else '❌'}", callback_data="s:confirm")])
@@ -250,9 +250,12 @@ async def cb_settings(cq: CallbackQuery, bot: Bot):
     s = await db.group_settings(chat)
     parts = cq.data.split(":")
     key = parts[1]
-    if key in TIMERS:
-        vals = TIMERS[key][1]
-        s[key] = vals[(vals.index(s[key]) + 1) % len(vals)] if s[key] in vals else vals[0]
+    if key in TIMERS:  # ➖/➕: istalgan qiymat, qadam bilan, chegaradan chiqmaydi
+        lo, hi, step = config.TIMER_RANGES[key]
+        new = min(hi, max(lo, s[key] + (-step if parts[-1] == "-" else step)))
+        if new == s[key]:
+            return await cq.answer(f"Chegara: {texts.dur(lo)} – {texts.dur(hi)}")
+        s[key] = new
     elif key in FLAGS:
         s[key] = not s.get(key)
     elif key == "r":

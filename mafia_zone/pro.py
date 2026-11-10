@@ -102,6 +102,9 @@ def short(s: str) -> str:
     s = "".join(out).strip()
     if len(s) > NAME_MAX:
         s = s[:NAME_MAX - 1].rstrip() + "…"
+    if any(unicodedata.bidirectional(c) in ("R", "AL") for c in s):
+        # arabcha/ibroniycha ism: alohida "orolcha" LRM + (FSI..PDI) + LRM - ro'yxatdagi vergul va keyingi ismlar aralashmaydi
+        s = "\u200e\u2068" + s + "\u2069\u200e"
     return f"{USER}{s or '?'}{USER}"
 
 

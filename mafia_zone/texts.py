@@ -87,11 +87,24 @@ def team_label(team: str) -> str:
     return f"{emoji} {bold(name)}"
 
 
+def dur(secs: int) -> str:
+    """Vaqt: 45 soniya / 2 daqiqa / 1 daqiqa 30 soniya."""
+    m, s = divmod(int(secs), 60)
+    if not m:
+        return f"{s} soniya"
+    return f"{m} daqiqa" + (f" {s} soniya" if s else "")
+
+
+def left_str(secs: int) -> str:
+    """Qolgan vaqt: 1 daqiqadan ko'p bo'lsa - daqiqada (yuqoriga yaxlitlab), kam bo'lsa - soniyada."""
+    return f"{-(-secs // 60)} daqiqa" if secs >= 60 else f"{secs} soniya"
+
+
 # ---------- lobby ----------
 def lobby(members: list[tuple[int, str]], left: int) -> str:
     body = ", ".join(mention(u, n) for u, n in members)  # chapdan o'ngga, raqamsiz; bo'sh bo'lsa qator yo'q
     return (f"🎮 <b>ADMIRAL MAFIA</b> — ro'yxatdan o'tish boshlandi!\n\n"
-            f"👥 <b>O'yinchilar ({len(members)}):</b>{chr(10) + body if body else ''}\n\n⏳ Qoldi: <b>{left}</b> soniya")
+            f"👥 <b>O'yinchilar ({len(members)}):</b>{chr(10) + body if body else ''}\n\n⏳ Qoldi: <b>{left_str(left)}</b>")
 
 
 JOIN_BTN = "🤝 Qo'shilish"
@@ -122,7 +135,7 @@ def couple_lobby(members: list[tuple[int, str]], partners: dict[int, int], left:
     body = "\n".join(rows) or "— hali hech qaysi para yo'q —"
     wait = "\n\n" + "\n".join(waiting) if waiting else ""
     return ("❤️❤️ <b>PARALAR O'YINI</b> ❤️❤️\n<b>Ro'yxatdan o'tish boshlandi!</b>\n\n"
-            f"❤️ <b>Paralar ({len(rows)}):</b>\n{body}{wait}\n\n⏳ Qoldi: <b>{left}</b> soniya")
+            f"❤️ <b>Paralar ({len(rows)}):</b>\n{body}{wait}\n\n⏳ Qoldi: <b>{left_str(left)}</b>")
 
 
 def couple_dropped(dropped: list[tuple[int, str]]) -> str:
@@ -537,9 +550,8 @@ def morning(g: Game, ev: list[Event]) -> tuple[list[str], list[tuple[int, str]]]
         elif k == "stolen":
             priv.append((e.target, "🤹 Kimdir sizning tungi rejangizni o'g'irlab ketdi!"))
             priv.append((e.uid, f"🤹 Ajoyib fokus! {n(e.target)}ning harakatini o'zlashtirdingiz."))
-        elif k == "saw_role":
-            priv.append((e.uid, f"🤹 {n(e.target)}da o'g'irlaydigan harakat yo'q edi, lekin uning sirini bildingiz: "
-                                f"{role(e.data['role'])}"))
+        elif k == "steal_empty":
+            priv.append((e.uid, f"🤹 {n(e.target)}da bu tun o'g'irlaydigan harakat yo'q edi — qo'lingiz bo'sh qoldi."))
         elif k == "checked":
             text = f"🔍 Tekshiruv natijasi: {n(e.target)} — {role(e.data['result'])}"
             if [e.uid, e.target] not in g.hunt:  # Ovchiga - "💀 O'ldirish" tugmali alohida xabar (runner, hunt_pm)
@@ -623,12 +635,12 @@ def hunt_pm(g: Game, target: int, shown: str) -> str:
 def day_start(g: Game, secs: int) -> str:
     """Kunduzgi GIF'dan keyingi xabar: tiriklar, tarkib, muhokama vaqti."""
     return (f"☀️ <b>{g.day}-kun</b>\n\n{alive_list(g)}\n\n{alive_composition(g)}\n\n"
-            f"🗣 Muhokama uchun <b>{secs}</b> soniya")
+            f"🗣 Muhokama uchun <b>{dur(secs)}</b>")
 
 
 def vote_prompt(g: Game, secs: int) -> str:
     return (f"⚖️ <b>Aybdorni aniqlash va jazolash vaqti keldi!</b>\n"
-            f"🗳 Ovoz berish uchun botga o'ting.\n⏳ Vaqt: <b>{secs}</b> soniya")
+            f"🗳 Ovoz berish uchun botga o'ting.\n⏳ Vaqt: <b>{dur(secs)}</b>")
 
 
 SKIP_BTN = "🤐 Hech kimga ovoz bermayman"
@@ -636,7 +648,7 @@ SKIP_BTN = "🤐 Hech kimga ovoz bermayman"
 
 def confirm_prompt(g: Game, secs: int) -> str:
     return (f"🪢 Rostdan ham <b>{pm(g, g.candidate)}</b> ni osishni xohlaysizmi?\n\n"
-            f"⏳ Tasdiqlash uchun vaqt: <b>{secs}</b> soniya")
+            f"⏳ Tasdiqlash uchun vaqt: <b>{dur(secs)}</b>")
 
 
 def confirm_pm(g: Game) -> str:

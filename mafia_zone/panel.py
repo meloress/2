@@ -538,7 +538,7 @@ async def api_groups(req: web.Request) -> web.Response:
     return ok({"items": rows, "total": total, "page": page, "size": 20})
 
 
-SETTING_RANGES = {"lobby": (30, 600), "night": (15, 300), "day": (15, 600), "vote": (15, 300)}
+SETTING_RANGES = {k: (lo, hi) for k, (lo, hi, _) in config.TIMER_RANGES.items()}
 
 
 async def api_group_settings(req: web.Request) -> web.Response:

@@ -316,7 +316,6 @@ class Game:
 
         # 1b. Aferist
         mafia_stolen = False
-        peeked: list[tuple[int, int]] = []  # o'g'irlaydigan harakat yo'q: rolini ko'radi (3-bosqichda, niqobdan keyin)
         for u in [u for u, a in acts.items() if a[0] == "steal"]:
             _, t, _ = acts.pop(u)
             stolen = acts.get(t)
@@ -326,8 +325,8 @@ class Game:
                 del acts[t]
                 acts[u] = stolen
                 ev.append(Event("stolen", u, t, {"kind": stolen[0]}))
-            else:
-                peeked.append((u, t))
+            else:  # o'g'irlaydigan harakat yo'q: qo'li bo'sh (rol ko'rsatilmaydi - Aferist faqat harakat o'g'irlaydi)
+                ev.append(Event("steal_empty", u, t))
 
         # 1b. Qaroqchi (himoyadan oldin: o'g'irlangan qalqon shu tun ishlamaydi)
         for u, (k, t, _) in acts.items():
@@ -369,8 +368,6 @@ class Game:
                 visitors.setdefault(t, []).append(u)
         docced: set[int] = set()  # shu tun Hujjat ko'rsatganlar: boshqa tekshiruvda ham Tinch
         collapsed: dict[int, int] = {}  # Konchi -> tunnel raqami (qazishda halok bo'ldi)
-        for u, t in peeked:
-            ev.append(Event("saw_role", u, t, {"role": self._appear(t, disguised, docced, ev)}))
         for u, (k, t, _) in acts.items():
             if k == "check":
                 if self.get(t).team != self.get(u).team:  # haqiqiy jamoa bo'yicha (niqob ballga ta'sir qilmaydi)

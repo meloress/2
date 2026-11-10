@@ -141,7 +141,7 @@ def test_morning_renders_every_event_kind():
             texts.morning(g, ev)
             seen |= {e.kind for e in ev}
         json.dumps(g.to_dict())
-    expected = {"blocked", "stolen", "saw_role", "robbed", "checked", "interview", "dug", "saved", "item_used",
+    expected = {"blocked", "stolen", "steal_empty", "robbed", "checked", "interview", "dug", "saved", "item_used",
                 "killed", "revenge", "linked", "transformed", "promoted", "hunted", "witness",
                 "hanged", "no_hang", "guard_saved", "tulki", "game_over"}
     assert expected <= seen, expected - seen

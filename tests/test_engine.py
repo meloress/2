@@ -945,7 +945,7 @@ def test_don_target_left_falls_back_to_mafia_votes():
 def test_simulate_leaves_never_hit_left_players():
     """Har fazada kimdir chiqib ketadi: chiqqan o'yinchi osilmaydi, tekshirilmaydi, o'g'irlanmaydi."""
     from mafia_zone.engine.game import CONFIRM, NIGHT, VOTING
-    DEATH = {"killed", "hanged", "tulki", "checked", "interview", "robbed", "saw_role", "stolen", "vote_saved",
+    DEATH = {"killed", "hanged", "tulki", "checked", "interview", "robbed", "steal_empty", "stolen", "vote_saved",
              "guard_saved", "candidate", "mafia_result", "afk"}
     bad = []
     for seed in range(1500):
@@ -1010,20 +1010,16 @@ def test_aferist_cannot_steal_block():
     g.submit(2, "block", 4)
     g.submit(3, "steal", 2)
     ev = g.resolve_night()
-    assert "stolen" not in kinds(ev) and "saw_role" in kinds(ev)
+    assert "stolen" not in kinds(ev) and "steal_empty" in kinds(ev)
     assert any(e.kind == "blocked" and e.uid == 4 for e in ev)
 
 
-def test_aferist_saw_role_respects_disguise_and_sotqin():
-    """Aferist ko'rgan rol Komissar tekshiruvi bilan bir xil: niqob va Sotqin - Tinch aholi."""
-    g = mk("don", "mafiya", "advokat", "aferist", "sotqin", "tinch", "tinch", "tinch")
-    g.submit(3, "disguise", 2)
-    g.submit(4, "steal", 2)
+def test_aferist_never_sees_role():
+    """Aferist faqat harakat o'g'irlaydi: harakatsiz odamni tanlasa qo'li bo'sh, rol hech qachon ko'rinmaydi."""
+    g = mk("don", "aferist", "tinch", "tinch", "tinch", "tinch")
+    g.submit(2, "steal", 3)
     ev = g.resolve_night()
-    assert [e.data["role"] for e in ev if e.kind == "saw_role"] == ["tinch"]
-    g2 = mk("don", "aferist", "sotqin", "tinch", "tinch", "tinch")
-    ev = g2.resolve_night() if not g2.submit(2, "steal", 3) else g2.resolve_night()
-    assert [e.data["role"] for e in ev if e.kind == "saw_role"] == ["tinch"]
+    assert [(e.kind, e.data) for e in ev if e.uid == 2] == [("steal_empty", {})]
 
 
 def test_qotil_immune_to_aka_uka():

@@ -305,7 +305,9 @@ class Runner:
         last_edit = time.time()
         while time.time() < self.lobby_deadline and len(self.members) < MAX_PLAYERS:
             await asyncio.sleep(1)
-            if self.lobby_msg and (self.lobby_dirty and time.time() - last_edit > 5 or time.time() - last_edit > 30):
+            # oxirgi daqiqada soniya sanaladi: har 10 s yangilanadi (guruh xabar limitini yemasin)
+            every = 10 if self.lobby_deadline - time.time() < 70 else 30
+            if self.lobby_msg and (self.lobby_dirty and time.time() - last_edit > 5 or time.time() - last_edit > every):
                 self.lobby_dirty, last_edit = False, time.time()
                 await self._refresh_lobby()
         await self._start_game()
