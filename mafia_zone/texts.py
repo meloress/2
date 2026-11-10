@@ -772,6 +772,11 @@ def result_pm(won: bool, reward: int, u=None, inv=()) -> str:
 NEXT_OK = "🔔 Bu guruhda keyingi o'yin boshlanganda sizga xabar beraman."
 
 
+def join_greet(uid: int, name: str) -> str:
+    """Guruhga yangi kelgan odamga shaxsiy salom (rasm izohi)."""
+    return f"𝘼𝙨𝙨𝙖𝙡𝙤𝙢𝙪 𝙖𝙡𝙖𝙮𝙠𝙪𝙢 𝙝𝙪𝙧𝙢𝙖𝙩𝙡𝙞 {mention(uid, name)} 𝙗𝙞𝙯𝙣𝙞𝙣𝙜 𝙧𝙖𝙨𝙢𝙞𝙮 𝙜𝙪𝙧𝙪𝙝𝙞𝙢𝙞𝙯𝙜𝙖 𝙭𝙪𝙨𝙝 𝙠𝙚𝙡𝙞𝙗𝙨𝙞𝙯!"
+
+
 def next_game(title: str) -> str:
     return f"🎮 <b>{escape(title)}</b> guruhida yangi o'yin boshlandi! Qo'shilish uchun tugmani bosing 👇"
 

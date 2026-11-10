@@ -2,11 +2,12 @@ import asyncio
 import logging
 import re
 import time
+from pathlib import Path
 
 from aiogram import Bot, F, Router
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command, CommandObject, CommandStart
-from aiogram.types import CallbackQuery, ChatMemberUpdated, CopyTextButton, ErrorEvent, LabeledPrice, PreCheckoutQuery, InlineKeyboardButton as Btn, InlineKeyboardMarkup as Kb, Message
+from aiogram.types import CallbackQuery, ChatMemberUpdated, CopyTextButton, ErrorEvent, FSInputFile, LabeledPrice, PreCheckoutQuery, InlineKeyboardButton as Btn, InlineKeyboardMarkup as Kb, Message
 
 from . import config, db, pro, texts
 from .engine.game import CONFIRM, DAY, FINISHED, NIGHT, VOTING
@@ -209,7 +210,7 @@ async def cmd_rules(msg: Message):
 
 # ---------- sozlamalar ----------
 TIMERS = {"lobby": ("👥 Ro'yxat", [60, 90, 120, 180, 300]), "night": ("🌙 Tun", [30, 45, 60, 90, 120]),
-          "day": ("🌆 Kun", [30, 60, 90, 120, 180]), "vote": ("🗳 Ovoz", [30, 45, 60, 90])}
+          "day": ("🌆 Kun", [30, 45, 60, 90, 120, 180]), "vote": ("🗳 Ovoz", [30, 45, 60, 90])}
 
 
 FLAGS = ("items", "afk", "confirm")
@@ -1264,6 +1265,26 @@ async def on_migrate(msg: Message):
     """Guruh supergroup'ga aylandi: o'yin yangi chat ID ga ko'chadi."""
     if r := RUNNERS.get(msg.chat.id):
         await r.move(msg.migrate_to_chat_id)
+
+
+WELCOME_IMG = Path(__file__).resolve().parent / "welcome.jpg"
+_welcome_id: list[str] = []  # Telegram file_id (rasm bir marta yuklanadi)
+
+
+@router.message(GROUPS, F.new_chat_members)
+async def on_join(msg: Message):
+    """Guruhga yangi kelgan odamga salom: faqat o'ziga (shaxsiy chatda). Guruhda hech kim ko'rmaydi;
+    botni hali ochmagan odamga Telegram yozishga ruxsat bermaydi - unda salom yuborilmaydi.
+    "... qo'shildi" xizmat xabari guruhdan o'chiriladi (botda o'chirish huquqi bo'lsa)."""
+    await _call(msg.delete)
+    for u in msg.new_chat_members:
+        if u.is_bot:
+            continue
+        cap = texts.join_greet(u.id, u.full_name).replace(texts.USER_MARK, "")  # send_photo PremiumEmoji'dan o'tmaydi
+        m = await _call(msg.bot.send_photo, u.id, _welcome_id[0] if _welcome_id else FSInputFile(WELCOME_IMG),
+                        caption=cap)
+        if m and m.photo and not _welcome_id:
+            _welcome_id.append(m.photo[-1].file_id)
 
 
 # ---------- umumiy guruh xabarlari (eng oxirida bo'lishi shart) ----------

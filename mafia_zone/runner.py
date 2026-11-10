@@ -447,8 +447,8 @@ class Runner:
         if ph == NIGHT:
             await send_gif(self.bot, self.chat_id, "tun.mp4", texts.NIGHT_CAPTION,
                            Kb(inline_keyboard=[[Btn(text="🌙 Botga o'tish", url=bot_link())]]))
-            if g.day == 1:  # o'yin boshi: "O'YIN BOSHLANDI" -> Tun -> tirik o'yinchilar va tarkib (kunduzigidek)
-                await send(self.bot, self.chat_id, f"{texts.alive_list(g)}\n\n{texts.alive_composition(g)}")
+            # har tun: Tun -> tirik o'yinchilar va tarkib (kunduzigidek)
+            await send(self.bot, self.chat_id, f"{texts.alive_list(g)}\n\n{texts.alive_composition(g)}")
             for p in g.night_actors():
                 if kb := self.night_kb(p.uid):
                     self._prompt(p.uid, await send(self.bot, p.uid, texts.night_prompt(g, p.uid), kb))
