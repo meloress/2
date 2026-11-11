@@ -15,6 +15,7 @@ GROUP_COMMANDS = [  # guruhdagi buyruqlar menyusi; is_ephemeral - buyruq va javo
     BotCommand(command="extend", description="⏳ Ro'yxatni uzaytirish (daqiqa): /extend yoki /extend 5"),
     BotCommand(command="start", description="▶️ Darhol boshlash (admin)"),
     BotCommand(command="couplegame", description="💞 Paralar o'yini"),
+    BotCommand(command="groupgame", description="⚪⚫ Oq-Qora o'yini (ikki jamoa)"),
     BotCommand(command="couplestart", description="❤️ Paralar o'yinini boshlash"),
     BotCommand(command="couplestop", description="💔 Paralar o'yinini to'xtatish (admin)"),
     BotCommand(command="stop", description="🛑 O'yinni to'xtatish (admin)"),

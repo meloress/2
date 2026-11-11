@@ -49,7 +49,8 @@ def rank(wins: int) -> str:
 WINNER = {TOWN: "👨 Tinch aholi g'alaba qildi!", MAFIA: "🤵 Mafiya g'alaba qildi!",
           "qotil": "🔪 Qotil yakka g'alaba qildi!", "vampir": "🧛 Vampir yakka g'alaba qildi!",
           "gazabkor": "🧟 G'azabkor yakka g'alaba qildi!",
-          DRAW: "🤝 Durang!", "couple": "💞 Sevishganlar g'alaba qildi!"}
+          DRAW: "🤝 Durang!", "couple": "💞 Sevishganlar g'alaba qildi!",
+          "oq": "⚪ Oq jamoa g'alaba qildi!", "qora": "⚫ Qora jamoa g'alaba qildi!"}
 
 
 def mention(uid: int, name: str) -> str:
@@ -106,6 +107,38 @@ def lobby(members: list[tuple[int, str]], left: int) -> str:
     body = ", ".join(mention(u, n) for u, n in members)  # chapdan o'ngga, raqamsiz; bo'sh bo'lsa qator yo'q
     return (f"🎮 <b>ADMIRAL MAFIA</b> — ro'yxatdan o'tish boshlandi!\n\n"
             f"{body + chr(10) + chr(10) if body else ''}Jami: <b>{len(members)} ta</b> | Kutish vaqti: <b>{left_str(left)}</b>")
+
+
+# ---------- ⚪⚫ Oq-Qora o'yini (/groupgame) ----------
+SIDE = {"oq": "⚪", "qora": "⚫"}
+SIDE_NAME = {"oq": "⚪ Oq", "qora": "⚫ Qora"}
+TEAM_BTN = {"oq": "⚪ Oqqa qo'shilish", "qora": "⚫ Qoraga qo'shilish"}
+TEAM_PICK = "⚪⚫ Bu Oq-Qora o'yini: guruhdagi ro'yxatda jamoa tugmasini bosing."
+
+
+def side_mark(g: Game, uid: int) -> str:
+    """Ism oldidagi ⚪/⚫ (faqat Oq-Qora o'yinida)."""
+    s = g.side(uid)
+    return f"{SIDE[s]} " if s else ""
+
+
+def team_joined(side: str) -> str:
+    return (f"✅ Siz <b>{SIDE_NAME[side]}</b> jamoasidasiz!\nGuruhga qayting va o'yin boshlanishini kuting. "
+            "Boshqa jamoa tugmasini bossangiz - o'sha jamoaga o'tasiz.")
+
+
+def teams_lobby(members: list[tuple[int, str]], sides: dict[int, str], left: int) -> str:
+    rows = []
+    for s in ("oq", "qora"):
+        ps = [mention(u, n) for u, n in members if sides.get(u) == s]
+        rows.append(f"{SIDE_NAME[s]} ({len(ps)}): " + (", ".join(ps) or "—"))
+    return (f"⚪⚫ <b>ADMIRAL MAFIA</b> — Oq-Qora o'yini, ro'yxatdan o'tish boshlandi!\n\n" + "\n\n".join(rows)
+            + f"\n\nJami: <b>{len(members)} ta</b> | Kutish vaqti: <b>{left_str(left)}</b>")
+
+
+def teams_unequal(oq: int, qora: int) -> str:
+    why = "Jamoalar teng emas" if oq != qora else "Har jamoada kamida 2 kishi kerak"
+    return f"⚖️ {why} (⚪ {oq} : ⚫ {qora}).\n<b>O'yin bekor qilindi.</b>"
 
 
 JOIN_BTN = "🤝 Qo'shilish"
@@ -234,8 +267,10 @@ RULE = {  # rol kartasida ⚠️ qatori: tavsifda yozilmagan cheklovlar
 def role_card(g: Game, uid: int) -> str:
     p = g.get(uid)
     team = ROLES[p.role].team
-    text = (f"Siz — {role(p.role)} siz!\n{TEAM_DOT[team]} Jamoa: <b>{bold(TEAM[team].split(' ', 1)[1])}</b>\n"
-            f"🎯 Vazifa: {ROLES[p.role].about}")
+    side = g.side(uid)
+    head = (f"Jamoangiz: <b>{SIDE_NAME[side]}</b>" if side  # Oq-Qora: rolning tomoni emas, o'yinchining jamoasi
+            else f"{TEAM_DOT[team]} Jamoa: <b>{bold(TEAM[team].split(' ', 1)[1])}</b>")
+    text = f"Siz — {role(p.role)} siz!\n{head}\n🎯 Vazifa: {ROLES[p.role].about}"
     if p.role in RULE:
         text += f"\n⚠️ {RULE[p.role]}"
     mates = g.teammates(uid)
@@ -679,7 +714,7 @@ def ghost(name: str, text: str) -> str:
 
 
 def players(g: Game) -> str:
-    dead = "\n".join(f"💀 {who(g, p.uid)}" for p in g.players if not p.alive)
+    dead = "\n".join(f"💀 {side_mark(g, p.uid)}{who(g, p.uid)}" for p in g.players if not p.alive)
     return (f"{alive_list(g)}\n\n{alive_composition(g)}"
             + (f"\n\n☠️ <b>Halok bo'lganlar:</b>\n{dead}" if dead else ""))
 
@@ -760,6 +795,8 @@ WINNER_STORY = {
     "gazabkor": "G'azab shaharni yutib yubordi. Kul ustida faqat G'azabkor qoldi... 🔥",
     DRAW: "Hech kim g'olib bo'lmadi. Shahar xarobaga aylandi... 🌫",
     "couple": "Shaharda faqat ikki yurak qoldi. Ular qo'l ushlashib, tongni birga kutib olishdi... 💞",
+    "oq": "Qora jamoadan hech kim qolmadi. Oqlar g'alabani birga nishonlamoqda! ⚪",
+    "qora": "Oq jamoadan hech kim qolmadi. Qoralar shaharni egalladi! ⚫",
 }
 
 
@@ -771,10 +808,11 @@ def game_over(g: Game, minutes: int | None = None) -> str:
     if g.winner in WINNER:  # qaysi tomon yutgani
         lines += [f"<b>{WINNER[g.winner]}</b>", f"<i>{WINNER_STORY[g.winner]}</i>"]
     lines += ["", "🏆 <b>G'oliblar:</b>"]
-    lines += [f"    {i}. {pm(g, p.uid)} — {role(p.role)}" for i, p in enumerate(won, 1)] or ["    —"]
+    lines += [f"    {i}. {side_mark(g, p.uid)}{pm(g, p.uid)} — {role(p.role)}" for i, p in enumerate(won, 1)] or ["    —"]
     if rest:
         lines += ["", "<b>Qolgan o'yinchilar:</b>"]
-        lines += [f"    {i}. {pm(g, p.uid)} — {role(p.role)}" for i, p in enumerate(rest, len(won) + 1)]
+        lines += [f"    {i}. {side_mark(g, p.uid)}{pm(g, p.uid)} — {role(p.role)}"
+                  for i, p in enumerate(rest, len(won) + 1)]
     if minutes is not None:
         lines += ["", f"⏱ O'yin <b>{minutes}</b> daqiqa davom etdi"]
     return "\n".join(lines)
@@ -1227,7 +1265,7 @@ def alive_composition(g: Game) -> str:
 
 def alive_list(g: Game) -> str:
     return "<b>Tirik o'yinchilar:</b>\n" + "\n".join(
-        f"{g.num(p.uid)}. {mention(p.uid, p.name)}" for p in g.alive())  # boshidagi raqam saqlanadi
+        f"{g.num(p.uid)}. {side_mark(g, p.uid)}{mention(p.uid, p.name)}" for p in g.alive())  # raqam saqlanadi
 
 
 def vote_pm(g: Game) -> str:

@@ -1255,3 +1255,36 @@ def test_bot_pin_notice_deleted():
             await handlers.on_pinned(msg)
     asyncio.run(go())
     assert gone == [42]
+
+
+def test_groupgame_lobby_switch_and_unequal_cancel():
+    """⚪⚫ Oq-Qora: jamoa tanlab qo'shiladi, almashtirsa o'tadi; teng bo'lmasa bekor, teng bo'lsa o'ynaladi."""
+    settings = {"lobby": 0, "night": 0, "day": 0, "vote": 0, "items": False, "disabled": []}
+
+    async def go():
+        await db.init()
+        bot = FakeBot()
+        r = AutoRunner(bot, -9101, settings, teams=True)
+        for uid in range(9101, 9107):
+            runner.PLAYING.pop(uid, None)
+            await db.upsert_user(uid, f"p{uid}", None)
+        assert r.join(9101, "a") == texts.TEAM_PICK and not r.members  # jamoasiz qo'shilib bo'lmaydi
+        for uid in range(9101, 9107):
+            r.join(uid, f"p{uid}", "oq" if uid < 9104 else "qora")
+        r.join(9101, "a", "qora")  # almashtirdi: 2 : 4
+        assert len(r.members) == 6 and r.sides[9101] == "qora"
+        assert "⚪ Oq (2)" in r._lobby_text() and "⚫ Qora (4)" in r._lobby_text()
+        await r._start_game()
+        assert r.game is None and bot.sent[-1] == (-9101, texts.teams_unequal(2, 4)) and -9101 not in runner.RUNNERS
+        r = AutoRunner(bot, -9102, settings, teams=True)
+        for uid in range(9101, 9107):
+            runner.PLAYING.pop(uid, None)
+            r.join(uid, f"p{uid}", "oq" if uid % 2 else "qora")
+        await r._start_game()
+        g = r.game
+        assert g.phase == FINISHED and set(g.sides.values()) == {"oq", "qora"}
+        if g.winner in ("oq", "qora"):
+            assert {p.uid for p in g.players if p.won} == {u for u, s in g.sides.items() if s == g.winner}
+        for _, text in bot.sent:
+            assert_telegram_html(text)
+    asyncio.run(go())

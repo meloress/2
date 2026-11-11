@@ -239,14 +239,20 @@ def grid(btns: list[Btn], cols: int | None = None) -> list[list[Btn]]:
     return [btns[i:i + cols] for i in range(0, len(btns), cols)]
 
 
+JOIN_CODE = {"oq": "oq", "qora": "qr"}  # deep link: join<kod><chat>
+
+
 def bot_link(payload: str = "") -> str:
     return f"https://t.me/{BOT_USERNAME}" + (f"?start={payload}" if payload else "")
 
 
 class Runner:
-    def __init__(self, bot: Bot, chat_id: int, settings: dict, title: str = "", couple: bool = False):
+    def __init__(self, bot: Bot, chat_id: int, settings: dict, title: str = "", couple: bool = False,
+                 teams: bool = False):
         self.bot, self.chat_id, self.s, self.title = bot, chat_id, settings, title
         self.couple = couple  # 💞 paralar o'yini (/couplegame)
+        self.teams = teams  # ⚪⚫ Oq-Qora o'yini (/groupgame)
+        self.sides: dict[int, str] = {}  # ro'yxatda: uid -> "oq"/"qora" (almashtirsa - yangilanadi)
         # javob berilmagan tugmali shaxsiy so'rovlar (tun/ovoz/👍👎): uid -> msg_id; faza tugagach o'chiriladi.
         # Xotirada: restartdan keyin qolganlari bosilganda o'chadi (handlers._late)
         self.prompts: dict[int, int] = {}
@@ -314,9 +320,14 @@ class Runner:
 
     def _lobby_text(self) -> str:
         left = max(0, int(self.lobby_deadline - time.time()))
+        if self.teams:
+            return texts.teams_lobby(self.members, self.sides, left)
         return texts.couple_lobby(self.members, self.partners, left) if self.couple else texts.lobby(self.members, left)
 
     def _lobby_kb(self) -> Kb:
+        if self.teams:  # ikki tugma: qaysi jamoaga (shaxsiy chatda /start joinoq<chat> / joinqr<chat>)
+            return Kb(inline_keyboard=[[Btn(text=texts.TEAM_BTN[s], url=bot_link(f"join{JOIN_CODE[s]}{self.chat_id}"))
+                                        for s in ("oq", "qora")]])
         if self.couple:  # 💞 qizil tugma
             return Kb(inline_keyboard=[[Btn(text=texts.COUPLE_JOIN_BTN, url=bot_link(f"join{self.chat_id}"))]])
         return Kb(inline_keyboard=[[Btn(text=texts.JOIN_BTN, url=bot_link(f"join{self.chat_id}"))]])
@@ -337,9 +348,11 @@ class Runner:
         if not await edit(self.bot, self.chat_id, self.lobby_msg, self._lobby_text(), self._lobby_kb()):
             await self.repost_lobby()
 
-    def join(self, uid: int, name: str) -> str:
+    def join(self, uid: int, name: str, side: str | None = None) -> str:
         if self.game:
             return texts.NO_LOBBY
+        if self.teams and side not in ("oq", "qora"):
+            return texts.TEAM_PICK
         if PLAYING.get(uid) not in (None, self):
             return texts.ALREADY_IN_GAME
         if len(self.members) >= MAX_PLAYERS:
@@ -349,6 +362,10 @@ class Runner:
             self.members.append((uid, name))  # nickname ko'rsatishda qo'yiladi (PRO tugasa - darhol yo'qoladi)
             PLAYING[uid] = self
             self.lobby_dirty = True
+        if self.teams:  # yangi qo'shildi yoki jamoasini almashtirdi
+            self.lobby_dirty |= self.sides.get(uid) != side
+            self.sides[uid] = side
+            return texts.team_joined(side)
         return texts.JOINED
 
     def extend(self, secs: int = 60) -> None:
@@ -370,6 +387,13 @@ class Runner:
                 await send(self.bot, u, texts.COUPLE_DROPPED)
             if dropped:
                 await send(self.bot, self.chat_id, texts.couple_dropped(dropped))
+        sides = {u: self.sides[u] for u, _ in self.members if u in self.sides}
+        oq, qora = (sum(1 for s in sides.values() if s == x) for x in ("oq", "qora"))
+        if self.teams and (oq != qora or oq < 2):  # ⚪⚫ jamoalar teng bo'lmasa - bekor
+            await self._drop_lobby_msg()
+            await send(self.bot, self.chat_id, texts.teams_unequal(oq, qora))
+            self.close()
+            return
         if len(self.members) < MIN_PLAYERS:  # ro'yxat xabari o'chadi, bekor qilingani alohida yoziladi
             await self._drop_lobby_msg()
             await send(self.bot, self.chat_id, texts.NEED_COUPLES if self.couple else texts.NEED_PLAYERS)
@@ -384,6 +408,8 @@ class Runner:
                                 self.s.get("confirm", True))
         if self.couple:
             self.game.pairs, self.game.couple_mode = pairs, True
+        if self.teams:
+            self.game.sides = sides
         spent = self.game.use_role_picks() + [(u, "ticket") for u in self.game.use_tickets()]
         self.meta["started"] = time.time()
         self.game_id = await db.create_game(self.chat_id, self.state())
@@ -602,7 +628,8 @@ class Runner:
 
         def label(t: int) -> tuple[str, str | None]:
             text, icon = pro.label(t, g.get(t).name)
-            return f"{g.num(t)}. " + (f"{mates[t]} {text}" if t in mates else text), icon  # raqam - ro'yxatdagi
+            mark = texts.side_mark(g, t)  # ⚪/⚫ Oq-Qora o'yinida
+            return f"{g.num(t)}. {mark}" + (f"{mates[t]} {text}" if t in mates else text), icon  # raqam - ro'yxatdagi
         return label
 
     def _btn(self, lab: tuple[str, str | None], data: str) -> Btn:

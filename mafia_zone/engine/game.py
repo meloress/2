@@ -105,6 +105,7 @@ class Game:
     bros: list = field(default_factory=list)  # Aka va Uka uid'lari: biri Don bo'lsa ham bog'lanish qoladi
     bomb: int | None = None  # kunduzi osilgan Afsungar: keyingi tunda tong otguncha 1 kishini olib ketadi
     hunt: list = field(default_factory=list)  # [[Ovchi, nishon]]: tongda roli ochildi - kunduzi o'ldirishi mumkin
+    sides: dict = field(default_factory=dict)  # ⚪⚫ Oq-Qora o'yini: uid -> "oq"/"qora"; bo'sh - oddiy o'yin
 
     # ---------- yaratish va saqlash ----------
     @classmethod
@@ -158,13 +159,22 @@ class Game:
     def from_dict(cls, d: dict) -> "Game":
         d = dict(d)
         d["players"] = [Player(**p) for p in d["players"]]
-        for k in ("actions", "mafia_votes", "votes", "confirms", "pairs"):
+        for k in ("actions", "mafia_votes", "votes", "confirms", "pairs", "sides"):
             d[k] = {int(u): v for u, v in d.get(k, {}).items()}
         return cls(**d)
 
     # ---------- yordamchilar ----------
     def get(self, uid: int) -> Player | None:
         return next((p for p in self.players if p.uid == uid), None)
+
+    def side(self, uid: int) -> str | None:
+        """⚪⚫ Oq-Qora o'yinida o'yinchining jamoasi (oddiy o'yinda None)."""
+        return self.sides.get(uid)
+
+    @property
+    def sideless(self) -> bool:
+        """Rolning tomoni hisobga olinmaydi (paralar va Oq-Qora o'yini): nishon - o'zidan boshqa hamma."""
+        return self.couple_mode or bool(self.sides)
 
     def num(self, uid: int) -> int:
         """O'yin boshidagi tartib raqami (1..n): o'yinchilar o'lsa ham o'zgarmaydi."""
@@ -214,8 +224,8 @@ class Game:
         if kind == "disguise":
             return [x.uid for x in alive if x.team == MAFIA]
         if kind in ("mafia_kill", "hit", "pair"):
-            if self.couple_mode:  # tomonlar yo'q: o'zi va juftidan boshqa hamma
-                return [x.uid for x in alive if x.uid not in (uid, self.pairs.get(uid))]
+            if self.sideless:  # tomonlar yo'q: o'zi (va paralar o'yinida jufti) dan boshqa hamma
+                return [x.uid for x in alive if x.uid not in (uid, self.pairs.get(uid) if self.couple_mode else None)]
             return [x.uid for x in alive if x.team != MAFIA]
         return [x.uid for x in alive if x.uid != uid]
 
@@ -553,7 +563,7 @@ class Game:
         self.hunt.remove(pair)
         v = self.get(pair[1])
         v.alive = False
-        town = v.team == TOWN and not self.couple_mode  # paralar o'yinida tomonlar yo'q - jarima ham yo'q
+        town = v.team == TOWN and not self.sideless  # paralar va Oq-Qora o'yinida jarima yo'q
         fine = random.Random(f"{self.seed}:{self.day}:hunt").randint(*HUNT_FINE) if town else 0
         self.get(uid).score += -3 if town else 3
         ev = [Event("hunted", uid, v.uid, {"role": v.role, "fine": fine})]
@@ -686,7 +696,7 @@ class Game:
             if x == t:
                 self.get(u).score += 2 if self.get(u).team != v.team else -1
         ev.append(Event("hanged", target=t, data={**data, "role": v.role}))
-        if v.role == "podshoh" and not self.couple_mode:
+        if v.role == "podshoh" and not self.sideless:
             self.guarded = None
             self._after_deaths(ev)  # jufti ham chiqadi - g'oliblar qatoriga tushmasin
             self._finish(MAFIA, ev, podshoh=True)
@@ -738,6 +748,17 @@ class Game:
         alive = self.alive()
         killers = [p for p in alive if p.role in ("qotil", "vampir", "gazabkor")]  # tirik ekan tinch aholi yutmaydi
         mafia = [p for p in alive if p.team == MAFIA]
+        if self.sides:  # ⚪⚫ bir jamoaning hammasi o'lsa - ikkinchisi yutadi
+            left = {self.sides.get(p.uid) for p in alive}
+            if not left:
+                w = DRAW
+            elif len(left) == 1:
+                w = left.pop()
+            elif self.day > self.max_days:
+                w = DRAW
+            else:
+                return
+            return self._finish(w, ev)
         if self.couple_mode:  # faqat juftlar: hamma tirik - bitta juft bo'lsa, o'sha yutadi
             if not alive:
                 w = DRAW
@@ -768,6 +789,12 @@ class Game:
         """G'olib jamoadan faqat tiriklar yutadi. O'lib yutganlar (Suitsid, Tulki, G'azabkor) won=True ni
         o'limi paytida oladi va u saqlanadi."""
         self.winner, self.phase = w, FINISHED
+        if self.sides:  # g'olib jamoaning hammasi (o'liklar ham); rollarning shaxsiy g'alabasi yo'q
+            for p in self.players:
+                p.won = self.sides.get(p.uid) == w
+                p.score += 2 if p.alive else 0
+            ev.append(Event("game_over", data={"winner": w, "winners": [p.uid for p in self.players if p.won]}))
+            return
         if self.couple_mode:  # o'lib yutish (Suitsid, Tulki...) yo'q: faqat oxirgi tirik juft
             for p in self.players:
                 p.won = w == COUPLE and p.alive

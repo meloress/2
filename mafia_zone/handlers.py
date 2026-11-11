@@ -14,7 +14,7 @@ from . import config, db, pro, texts, vidjet
 from .engine.game import CONFIRM, DAY, FINISHED, NIGHT, VOTING
 from .engine.roles import ROLES
 from .engine.setup import CORE
-from .runner import (NEXT, PLAYING, RUNNERS, Runner, _call, spawn, back_btn, pro_btn, bot_link, edit, eph, grid,
+from .runner import (JOIN_CODE, NEXT, PLAYING, RUNNERS, Runner, _call, spawn, back_btn, pro_btn, bot_link, edit, eph, grid,
                      invite_url, profile_kb, send, send_eph)
 
 log = logging.getLogger(__name__)
@@ -120,12 +120,13 @@ async def is_admin(bot: Bot, chat_id: int, uid: int, msg: Message | None = None)
 
 
 # ============ GURUH ============
-@router.message(Command("game", "couplegame"), GROUPS)
+@router.message(Command("game", "couplegame", "groupgame"), GROUPS)
 async def cmd_game(msg: Message, bot: Bot, command: CommandObject | None = None):
-    """/game - oddiy o'yin; /couplegame - 💞 paralar o'yini (faqat /couple juftlari)."""
+    """/game - oddiy o'yin; /couplegame - 💞 paralar o'yini (faqat /couple juftlari); /groupgame - ⚪⚫ Oq-Qora."""
     couple = getattr(command, "command", "") == "couplegame"
+    teams = getattr(command, "command", "") == "groupgame"
     if r := RUNNERS.get(msg.chat.id):
-        if not r.game and r.couple == couple:  # ro'yxat hali ochiq: pastga qayta chiqariladi
+        if not r.game and r.couple == couple and r.teams == teams:  # ro'yxat hali ochiq: pastga qayta chiqariladi
             return await r.repost_lobby()
         return await answer_me(msg, texts.GAME_EXISTS if r.game else texts.OTHER_LOBBY)
     me = await bot.get_chat_member(msg.chat.id, bot.id)
@@ -134,7 +135,7 @@ async def cmd_game(msg: Message, bot: Bot, command: CommandObject | None = None)
     settings = await db.group_settings(msg.chat.id, msg.chat.title or "", msg.chat.username or "")
     if msg.chat.id in RUNNERS:  # await paytida boshqasi ochgan bo'lishi mumkin
         return
-    r = Runner(bot, msg.chat.id, settings, msg.chat.title or "", couple=couple)
+    r = Runner(bot, msg.chat.id, settings, msg.chat.title or "", couple=couple, teams=teams)
     r.opener = msg.from_user.id if msg.from_user else None
     await r.open_lobby()
 
@@ -536,14 +537,14 @@ async def cmd_couple(msg: Message, bot: Bot, command: CommandObject):
         return
     target = await _couple_target(msg, command)
     if not target:
-        return await answer_me(msg, texts.COUPLE_HOW if not command.args else texts.COUPLE_NOT_FOUND, reply=True)
+        return await msg.reply(texts.COUPLE_HOW if not command.args else texts.COUPLE_NOT_FOUND)
     uid, name = target
     if uid == me.telegram_id:
-        return await answer_me(msg, texts.COUPLE_SELF, reply=True)
+        return await msg.reply(texts.COUPLE_SELF)
     if await db.partner(me.telegram_id):
-        return await answer_me(msg, texts.COUPLE_YOU_TAKEN, reply=True)
+        return await msg.reply(texts.COUPLE_YOU_TAKEN)
     if await db.partner(uid):
-        return await answer_me(msg, texts.COUPLE_THEY_TAKEN, reply=True)
+        return await msg.reply(texts.COUPLE_THEY_TAKEN)
     kb = Kb(inline_keyboard=[[
         Btn(text="✅ Tasdiqlash", callback_data=f"cp:{me.telegram_id}:{uid}:1"),
         Btn(text="❌ Bekor qilish", callback_data=f"cp:{me.telegram_id}:{uid}:0")]])
@@ -575,10 +576,10 @@ async def cmd_uncouple(msg: Message):
         return
     lock = await db.couple_lock()  # hazil qulfi: bazadagi qator o'chirilguncha bu juft uzolmaydi
     if lock and {me.telegram_id, await db.partner(me.telegram_id)} == lock:
-        return await answer_me(msg, texts.COUPLE_LOCKED, reply=True)
+        return await msg.reply(texts.COUPLE_LOCKED)
     p = await db.break_couple(me.telegram_id)
     if not p:
-        return await answer_me(msg, texts.COUPLE_NONE, reply=True)
+        return await msg.reply(texts.COUPLE_NONE)
     await msg.reply(texts.couple_broken(me.telegram_id, me.full_name, p, await _name(p)))
 
 
@@ -589,7 +590,7 @@ async def cmd_mycouple(msg: Message):
         return
     p = await db.partner(me.telegram_id)
     if not p:
-        return await answer_me(msg, texts.COUPLE_NONE, reply=True)
+        return await msg.reply(texts.COUPLE_NONE)
     await msg.reply(texts.couple_show(me.telegram_id, me.full_name, p, await _name(p)))  # para - hammaga ko'rinadi
 
 
@@ -653,12 +654,16 @@ async def cmd_start(msg: Message, bot: Bot, command: CommandObject):
         u = await db.get_user(msg.from_user.id)
         if u and u.dollars <= config.DEBT_LIMIT:
             return await msg.answer(texts.debt_block(u.dollars))
-        r = RUNNERS.get(int(arg[4:])) if arg[4:].lstrip("-").isdigit() else None
+        rest, side = arg[4:], None
+        for s, code in JOIN_CODE.items():  # ⚪⚫ joinoq<chat> / joinqr<chat>
+            if rest.startswith(code):
+                rest, side = rest[len(code):], s
+        r = RUNNERS.get(int(rest)) if rest.lstrip("-").isdigit() else None
         if r and r.couple and not r.game:  # 💞 faqat jufti borlar
             if not (p := await db.partner(msg.from_user.id)):
                 return await msg.answer(texts.NO_COUPLE_JOIN)
             r.partners[msg.from_user.id] = p
-        return await msg.answer(r.join(msg.from_user.id, msg.from_user.full_name) if r else texts.NO_LOBBY)
+        return await msg.answer(r.join(msg.from_user.id, msg.from_user.full_name, side) if r else texts.NO_LOBBY)
     await msg.answer(texts.welcome(), reply_markup=start_kb(msg.from_user.id))
 
 
