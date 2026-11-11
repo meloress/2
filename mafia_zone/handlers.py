@@ -4,7 +4,6 @@ import re
 import time
 from html import escape
 from pathlib import Path
-from types import SimpleNamespace
 
 from aiogram import Bot, F, Router
 from aiogram.exceptions import TelegramBadRequest
@@ -32,7 +31,7 @@ _TAPS: dict[tuple[int, str], float] = {}
 async def drop_double_taps(handler, cq: CallbackQuery, data):
     now = time.monotonic()
     key = (cq.from_user.id, cq.data or "")
-    if now - _TAPS.get(key, -TAP_GAP) < TAP_GAP:
+    if now - _TAPS.get(key, -TAP_GAP) < TAP_GAP and not key[1].startswith("s:"):  # sozlamalar ➖/➕ - ketma-ket bosiladi
         return await cq.answer()
     _TAPS[key] = now
     if len(_TAPS) > 5000:  # eskilarini tozalash
@@ -161,12 +160,12 @@ async def cmd_next(msg: Message):
     await answer_me(msg, texts.NEXT_OK, reply=True)
 
 
-EXTEND_MAX_MIN = 60
+EXTEND_MAX_MIN = 1440  # = ro'yxatning eng ko'p vaqti (24 soat)
 
 
 @router.message(Command("extend"), GROUPS)
 async def cmd_extend(msg: Message, bot: Bot, command: CommandObject):
-    """/extend - 1 daqiqa, /extend 5 - 5 daqiqa (son - daqiqa). Faqat adminlar va /game bosgan.
+    """/extend - 1 daqiqa, /extend 5 - 5 daqiqa (son - daqiqa, ko'pi bilan 24 soat). Faqat adminlar va /game bosgan.
     Jami cheklov yo'q; bitta buyruq ko'pi bilan EXTEND_MAX_MIN daqiqa (/extend 99999 adashib yozilsa)."""
     r = RUNNERS.get(msg.chat.id)
     if r and not r.game:
@@ -264,8 +263,14 @@ TIMERS = {"lobby": "👥 Ro'yxat", "night": "🌙 Tun", "day": "🌆 Kun", "vote
 FLAGS = ("items", "afk", "confirm")
 
 
+def settings_text(s: dict) -> str:
+    lines = "\n".join(f"{label}: <b>{texts.dur(s[k])}</b>" for k, label in TIMERS.items())
+    return f"⚙️ <b>Guruh sozlamalari</b> (keyingi o'yindan kuchga kiradi)\n\n{lines}"
+
+
 def settings_kb(s: dict) -> Kb:
-    rows = [[Btn(text="➖", callback_data=f"s:{k}:-"), Btn(text=f"{label}: {texts.dur(s[k])}", callback_data=f"s:{k}:+"),
+    # telefonda o'rtadagi tugma kichik: qiymat sig'maydi - u xabar matnida (settings_text), tugmada faqat nom
+    rows = [[Btn(text="➖", callback_data=f"s:{k}:-"), Btn(text=label, callback_data=f"s:{k}:i"),
              Btn(text="➕", callback_data=f"s:{k}:+")] for k, label in TIMERS.items()]
     rows.append([Btn(text=f"🎒 Buyumlar: {'✅' if s['items'] else '❌'}", callback_data="s:items")])
     rows.append([Btn(text=f"😴 AFK chiqarish: {'✅' if s['afk'] else '❌'}", callback_data="s:afk")])
@@ -289,7 +294,7 @@ async def cmd_settings(msg: Message, bot: Bot):
     if not await is_admin(bot, msg.chat.id, msg.from_user.id, msg):
         return await answer_me(msg, texts.ONLY_ADMIN)
     s = await db.group_settings(msg.chat.id, msg.chat.title or "")
-    text, kb = "⚙️ <b>Guruh sozlamalari</b> (keyingi o'yindan kuchga kiradi)", settings_kb(s)
+    text, kb = settings_text(s), settings_kb(s)
     if msg.from_user and not msg.sender_chat:  # faqat shu adminga ko'rinadi (yashirin admin - oddiy xabar)
         if m := await send_eph(bot, msg.chat.id, msg.from_user.id, text, kb):
             SET_EPH[msg.from_user.id] = (msg.chat.id, getattr(m, "ephemeral_message_id", None))
@@ -300,10 +305,22 @@ async def cmd_settings(msg: Message, bot: Bot):
 SET_EPH: dict[int, tuple[int, int | None]] = {}  # admin -> (guruh, ephemeral sozlamalar xabari) - tahrir uchun
 
 
-async def _settings_kb(cq: CallbackQuery, chat: int, kb: Kb) -> None:
-    saved = SET_EPH.get(cq.from_user.id)
-    r = SimpleNamespace(eph={cq.from_user.id: saved[1]}, chat_id=chat) if saved and saved[0] == chat else None
-    await cq_edit(cq, r, None, kb)
+async def _settings_kb(cq: CallbackQuery, chat: int, kb: Kb, s: dict) -> None:
+    """Sozlamalar xabarini yangilash (matn + tugmalar). Faqat adminga ko'rinadigani tahrirlanmasa (eskirgan) -
+    o'chirib, yangisini yuboramiz: sozlash hech qachon "osilib" qolmasin."""
+    m, uid, text = cq.message, cq.from_user.id, settings_text(s)
+    saved = SET_EPH.get(uid)
+    eid = getattr(m, "ephemeral_message_id", None) or (saved[1] if saved and saved[0] == chat else None)
+    if not eid:
+        if m and getattr(m, "message_id", 0):
+            await _call(m.edit_text, text, reply_markup=kb)
+        return
+    if await _call(cq.bot.edit_ephemeral_message_text, chat_id=chat, receiver_user_id=uid, ephemeral_message_id=eid,
+                   text=text, reply_markup=kb):
+        return
+    await _call(cq.bot.delete_ephemeral_message, chat_id=chat, receiver_user_id=uid, ephemeral_message_id=eid)
+    if n := await send_eph(cq.bot, chat, uid, text, kb):
+        SET_EPH[uid] = (chat, getattr(n, "ephemeral_message_id", None))
 
 
 @router.callback_query(F.data.startswith("s:"))
@@ -327,6 +344,8 @@ async def cb_settings(cq: CallbackQuery, bot: Bot):
     s = await db.group_settings(chat)
     if key in TIMERS:  # ➖/➕: istalgan qiymat, qadam bilan, chegaradan chiqmaydi
         lo, hi, step = config.TIMER_RANGES[key]
+        if parts[-1] == "i":  # o'rtadagi tugma - joriy qiymat
+            return await cq.answer(f"{TIMERS[key]}: {texts.dur(s[key])}")
         v = s[key]  # qadam kattalashadi: 5 daqiqagacha - asl qadam, 1 soatgacha - 1 daqiqa, undan keyin - 10 daqiqa
         big = lambda x: step if x < 300 else 60 if x < 3600 else 600
         new = min(hi, max(lo, v - big(v - 1) if parts[-1] == "-" else v + big(v)))
@@ -342,14 +361,14 @@ async def cb_settings(cq: CallbackQuery, bot: Bot):
         s["disabled"] = sorted(dis)
     if key in TIMERS or key in FLAGS:
         await db.save_group_settings(chat, s)
-        await _settings_kb(cq, chat, settings_kb(s))
+        await _settings_kb(cq, chat, settings_kb(s), s)
     elif key == "r":
         await db.save_group_settings(chat, s)
-        await _settings_kb(cq, chat, roles_kb(s))
+        await _settings_kb(cq, chat, roles_kb(s), s)
     elif key == "roles":
-        await _settings_kb(cq, chat, roles_kb(s))
+        await _settings_kb(cq, chat, roles_kb(s), s)
     else:
-        await _settings_kb(cq, chat, settings_kb(s))
+        await _settings_kb(cq, chat, settings_kb(s), s)
     await cq.answer()
 
 

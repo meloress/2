@@ -1210,8 +1210,9 @@ def test_settings_and_denials_only_for_caller():
     from mafia_zone import config, handlers
 
     class Bot(FakeBot):
-        async def edit_ephemeral_message_reply_markup(self, **kw):
+        async def edit_ephemeral_message_text(self, **kw):
             self.eph_kb = kw
+            return True
 
     async def go():
         await db.init()
@@ -1228,6 +1229,7 @@ def test_settings_and_denials_only_for_caller():
         before = (await db.group_settings(chat))["lobby"]
         await handlers.cb_settings(cq, bot)
         assert (await db.group_settings(chat))["lobby"] > before and bot.eph_kb["ephemeral_message_id"] == eid
+        assert texts.dur(before + 30) in bot.eph_kb["text"]  # qiymat matnda (telefonda tugmaga sig'maydi)
         cq.data = "s:close"
         await handlers.cb_settings(cq, bot)  # ❌ Yopish - xabar o'chadi
         assert bot.eph_deleted[-1] == (chat, admin, eid) and admin not in handlers.SET_EPH

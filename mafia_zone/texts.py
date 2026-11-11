@@ -98,13 +98,13 @@ def dur(secs: int) -> str:
 
 def left_str(secs: int) -> str:
     """Qolgan vaqt: 1 daqiqadan ko'p bo'lsa - daqiqada (yuqoriga yaxlitlab), kam bo'lsa - soniyada."""
-    return dur(-(-secs // 60) * 60) if secs >= 60 else f"{secs} soniya"
+    return f"{-(-secs // 60)} daqiqa" if secs >= 60 else f"{secs} soniya"  # soatsiz: 283 daqiqa
 
 
 # ---------- lobby ----------
 def lobby(members: list[tuple[int, str]], left: int) -> str:
     body = ", ".join(mention(u, n) for u, n in members)  # chapdan o'ngga, raqamsiz; bo'sh bo'lsa qator yo'q
-    return (f"🎮 <b>ADMIRAL MAFIA</b> — ro'yxatdan o'tish boshlandi!\n👥 <b>O'yinchilar:</b>\n\n"
+    return (f"🎮 <b>ADMIRAL MAFIA</b> — ro'yxatdan o'tish boshlandi!\n\n"
             f"{body + chr(10) + chr(10) if body else ''}Jami: <b>{len(members)} ta</b> | Kutish vaqti: <b>{left_str(left)}</b>")
 
 
