@@ -95,12 +95,16 @@ def test_user_text_kept_as_sent():
     text = "xayr 💣 do'stlar 😎"
     at = u16(text[:text.index("😎")])
     ents = [MessageEntity(type="custom_emoji", offset=at, length=2, custom_emoji_id="999"),
-            MessageEntity(type="bold", offset=0, length=4)]  # boshqa formatlash o'tmaydi
+            MessageEntity(type="bold", offset=0, length=4),  # o'yinchi formatlashi saqlanadi
+            MessageEntity(type="text_link", offset=5, length=2, url="https://x.y")]  # havola - yo'q
     said = texts.said(text, ents)
-    assert '<tg-emoji emoji-id="999">😎</tg-emoji>' in said and "<b>" not in said
+    assert '<tg-emoji emoji-id="999">😎</tg-emoji>' in said and "<b>xayr</b>" in said and "x.y" not in said
+    long = texts.said("a" * 600, [MessageEntity(type="italic", offset=0, length=3),
+                                  MessageEntity(type="bold", offset=490, length=50)])
+    assert "<i>aaa</i>" in long and "<b>" not in long  # kesilgan joydan oshgan formatlash tashlanadi
     out = emoji.premiumize("💣 " + texts.ghost("Ali", said))
     assert out.startswith('<tg-emoji emoji-id="777">💣</tg-emoji>')  # botning o'z matni - almashtiriladi
-    assert "xayr 💣 do'stlar" in out and 'emoji-id="999"' in out and texts.USER_MARK not in out
+    assert "<b>xayr</b> 💣 do'stlar" in out and 'emoji-id="999"' in out and texts.USER_MARK not in out
     assert texts.USER_MARK not in emoji.premiumize(texts.said("salom"))
     assert texts.said("<b>x</b>") == f"{texts.USER_MARK}&lt;b&gt;x&lt;/b&gt;{texts.USER_MARK}"
     cut = texts.said("+  " + text, [MessageEntity(type="custom_emoji", offset=3 + at, length=2, custom_emoji_id="999")],

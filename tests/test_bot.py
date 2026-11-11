@@ -161,7 +161,7 @@ def assert_telegram_html(text):
 
     class P(HTMLParser):
         def handle_starttag(self, tag, attrs):
-            assert tag in ("b", "i", "a", "code"), (tag, text)
+            assert tag in ("b", "i", "a", "code", "u", "s", "tg-spoiler", "pre", "blockquote"), (tag, text)
             stack.append(tag)
 
         def handle_endtag(self, tag):

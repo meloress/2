@@ -453,16 +453,22 @@ USER_MARK = "\u2063"  # = emoji.USER: o'yinchi yozgan qism animatsion emoji'ga a
 MAX_SAID = 500
 
 
+KEEP_FORMAT = {"custom_emoji", "bold", "italic", "underline", "strikethrough", "spoiler", "code", "pre",
+               "blockquote", "expandable_blockquote"}  # havolalar (text_link/text_mention) o'tmaydi
+
+
 def said(text: str, entities=None, skip: int = 0) -> str:
-    """O'yinchi yozgan matn guruhga/boshqalarga: HTML-xavfsiz, premium (custom) emoji saqlanadi, boshqa formatlash yo'q.
-    skip - boshidan tashlanadigan belgilar (masalan, juftga xabardagi "+")."""
+    """O'yinchi yozgan matn guruhga/boshqalarga: HTML-xavfsiz, o'zi qanday yozgan bo'lsa shunday - premium emoji,
+    qalin/qiya/chiziq/spoiler/kod/iqtibos saqlanadi (havolalar emas). skip - boshidan tashlanadigan belgilar ("+")."""
     from aiogram.utils.text_decorations import html_decoration
-    shift = len(text[:skip].encode("utf-16-le")) // 2  # Telegram ofsetlari UTF-16 birliklarida
+    u16 = lambda s: len(s.encode("utf-16-le")) // 2  # Telegram ofsetlari UTF-16 birliklarida
+    shift = u16(text[:skip])
     text = text[skip:]
+    if len(text) > MAX_SAID:
+        text = text[:MAX_SAID]
+    end = u16(text)  # kesilgan joydan oshib ketgan formatlash tashlanadi
     ents = [e.model_copy(update={"offset": e.offset - shift}) for e in entities or ()
-            if e.type == "custom_emoji" and e.offset >= shift]
-    if len(text) > MAX_SAID:  # kesilsa ofsetlar buziladi - oddiy matn
-        text, ents = text[:MAX_SAID], []
+            if e.type in KEEP_FORMAT and e.offset >= shift and e.offset - shift + e.length <= end]
     return USER_MARK + (html_decoration.unparse(text, ents) if ents else escape(text)) + USER_MARK
 
 
@@ -495,7 +501,7 @@ def victims(ev: list[Event]) -> list[int]:
 
 
 def last_words(g: Game, uid: int, text: str) -> str:
-    return f"🕯 <b>{nm(g, uid)}</b>ning so'nggi so'zlari:\n<i>«{text}»</i>"
+    return f"🕯 {pm(g, uid)}ning so'nggi so'zlari:\n«{text}»"  # ism - Pro/Vip/Creator ko'rinishida; matn - o'zi yozgandek
 
 
 SAVED = ["💉 Kimdir bu tun o'lim yoqasidan qaytdi! Ajal bu safar quruq ketdi.",
