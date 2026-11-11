@@ -1288,3 +1288,48 @@ def test_groupgame_lobby_switch_and_unequal_cancel():
         for _, text in bot.sent:
             assert_telegram_html(text)
     asyncio.run(go())
+
+
+def test_top_groups_and_donate():
+    """TOP guruhlar: 4 o'yin = 1 ball, 1 💎 = 2 ball; /donate olmosni guruhga o'tkazadi (yetmasa - faqat yozganga);
+    guruh nomi havola: ochiq - t.me/username, yopiq - bot yaratgan taklif havolasi (bir marta, bazada saqlanadi)."""
+    from mafia_zone import handlers
+
+    class Bot(FakeBot):
+        made = 0
+
+        async def create_chat_invite_link(self, chat_id, name=None, **kw):
+            Bot.made += 1
+            return SimpleNamespace(invite_link=f"https://t.me/+inv{-chat_id}")
+
+    async def go():
+        await db.init()
+        bot, uid = Bot(), 7_771_001
+        await db.upsert_user(uid, "Donor", None)
+        await db.add_balance(uid, 0, 5 - (await db.get_user(uid)).diamonds)
+        await db.group_settings(-7771, "Ochiq <guruh>", "ochiqguruh")
+        await db.group_settings(-7772, "Yopiq guruh", "")
+        user = SimpleNamespace(id=uid, full_name="Donor", username=None)
+        msg = SimpleNamespace(bot=bot, chat=SimpleNamespace(id=-7772, type="supergroup", title="Yopiq guruh", username=None),
+                              from_user=user, sender_chat=None, answer=None)
+        replies = []
+        msg.reply = lambda text, **kw: asyncio.sleep(0, replies.append(text))
+        await handlers.cmd_donate(msg, bot, SimpleNamespace(args="3"))
+        assert (await db.get_user(uid)).diamonds == 2 and "+6 ball" in bot.sent[-1][1]
+        await handlers.cmd_donate(msg, bot, SimpleNamespace(args="3"))  # 2 ta qoldi - yetmaydi
+        assert (await db.get_user(uid)).diamonds == 2 and replies[-1] == texts.NO_DIAMONDS  # hammaga ko'rinadi
+        await handlers.cmd_donate(msg, bot, SimpleNamespace(args=""))
+        assert replies[-1] == texts.DONATE_HOW
+        await db.donate(uid, -7771, 1)
+        rows = {r["chat_id"]: r for r in await db.top_groups(None)}
+        assert rows[-7772]["points"] >= 6 and rows[-7771]["points"] >= 2
+        mine = lambda: [r for r in rows.values() if r["chat_id"] in (-7771, -7772)]  # boshqa testlar guruhlari ham bor
+        text = texts.top_groups(await handlers._link_groups(bot, mine()))
+        rows = {r["chat_id"]: r for r in await db.top_groups(None)}
+        await handlers._link_groups(bot, mine())
+        assert 'href="https://t.me/ochiqguruh"' in text and "&lt;guruh&gt;" in text
+        assert 'href="https://t.me/+inv7772"' in text and Bot.made == 1  # havola bir marta yaratiladi
+        assert rows[-7772]["gems"] == 3 and rows[-7772]["donors"][0][0] == uid and "Homiylar" in text
+        assert "Donor" in text and "(3)" in text
+        assert_telegram_html(text)
+    asyncio.run(go())

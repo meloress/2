@@ -697,6 +697,10 @@ async def cb_menu(cq: CallbackQuery):
         await show(cq, texts.pro_info(cq.from_user.id), pro_kb())
     elif what in ("top", "topall"):  # oylik mavsum (standart) yoki umumiy
         await show(cq, *await top_view(cq.from_user.id, monthly=what == "top"))
+    elif what == "topgroups":
+        await show(cq, await top_groups_text(getattr(cq, "bot", None)), Kb(inline_keyboard=[
+            [Btn(text=texts.TOP_MONTH_BTN, callback_data="m:top"), Btn(text=texts.TOP_ALL_BTN, callback_data="m:topall")],
+            [back_btn()]]))
     elif what in ("buy", "gem") and config.DIAMONDS_OFF:
         return await alert(cq, texts.DIAMONDS_OFF)
     elif what == "buy":
@@ -707,7 +711,7 @@ async def cb_menu(cq: CallbackQuery):
                                                           Btn(text=texts.OTHER_BTN, callback_data="gm:to")],
                                                          [prof_back()]]))
     elif what == "groups":
-        await show(cq, texts.top_groups(await db.top_groups()), Kb(inline_keyboard=[[prof_back()]]))
+        await show(cq, await top_groups_text(getattr(cq, "bot", None)), Kb(inline_keyboard=[[prof_back()]]))
     elif what in ("pay", "gift"):
         if not (u := await _user(cq)):
             return await alert(cq, texts.BANNED)
@@ -1191,8 +1195,52 @@ async def top_view(uid: int, monthly: bool = True) -> tuple[str, Kb]:
     mark = lambda on, label: ("✅ " + label) if on else label
     kb = Kb(inline_keyboard=[[Btn(text=mark(monthly, texts.TOP_MONTH_BTN), callback_data="m:top"),
                               Btn(text=mark(not monthly, texts.TOP_ALL_BTN), callback_data="m:topall")],
+                             [Btn(text=texts.TOP_GROUPS_BTN, callback_data="m:topgroups")],
                              [back_btn()]])
     return text, kb
+
+
+async def _link_groups(bot: Bot | None, rows: list[dict]) -> list[dict]:
+    """Yopiq guruhga havola: bir marta bot yaratadi (admin, "taklif qilish" huquqi kerak) va bazada saqlanadi."""
+    for r in rows:
+        if bot and not r["username"] and not r["invite"]:
+            link = await _call(bot.create_chat_invite_link, r["chat_id"], name="TOP guruhlar")
+            if link:
+                r["invite"] = link.invite_link
+                await db.set_invite(r["chat_id"], link.invite_link)
+    return rows
+
+
+async def top_groups_text(bot: Bot | None) -> str:
+    return texts.top_groups(await _link_groups(bot, await db.top_groups()))
+
+
+@router.message(Command("topgroups"))
+async def cmd_topgroups(msg: Message, bot: Bot):
+    """TOP 5 guruh: guruhda hammaga ko'rinadi (raqobat), botda - oddiy javob."""
+    await send(bot, msg.chat.id, await top_groups_text(bot))  # guruh xabar limiti orqali
+
+
+@router.message(Command("donate"), GROUPS)
+async def cmd_donate(msg: Message, bot: Bot, command: CommandObject):
+    """/donate 5 - 5 olmos shu guruh balliga (1 💎 = 2 ball). Hamma javob guruhda hammaga ko'rinadi."""
+    me = await _user(msg)
+    if not me:
+        return
+    arg = (command.args or "").strip()
+    if not arg.isdigit() or not 0 < int(arg) <= MAX_AMOUNT:
+        return await msg.reply(texts.DONATE_HOW)
+    n = int(arg)
+    await db.group_settings(msg.chat.id, msg.chat.title or "", msg.chat.username or "")  # guruh qatori va nomi
+    if not await db.donate(me.telegram_id, msg.chat.id, n):
+        return await msg.reply(texts.NO_DIAMONDS)
+    r = next((x for x in await db.top_groups(None) if x["chat_id"] == msg.chat.id), None)
+    await send(bot, msg.chat.id, texts.donated(me.telegram_id, me.full_name, n, r))
+
+
+@router.message(Command("donate"), PRIVATE)
+async def cmd_donate_pm(msg: Message):
+    await msg.answer(texts.DONATE_PM)
 
 
 async def season_payouts(bot: Bot) -> None:

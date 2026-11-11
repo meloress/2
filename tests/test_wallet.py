@@ -201,8 +201,11 @@ def test_top_groups():
         await db.group_settings(-100777, "Admiral guruh")
         gid = await db.create_game(-100777, {})
         await db.finish_game(gid, -100777, "finished", "town", [])
-        rows = await db.top_groups()
-        assert any(title == "Admiral guruh" and n >= 1 for title, n in rows)
+        for _ in range(3):
+            gid = await db.create_game(-100777, {})
+            await db.finish_game(gid, -100777, "finished", "town", [])
+        rows = await db.top_groups(None)  # 4 o'yin = 1 ball
+        assert any(r["title"] == "Admiral guruh" and r["games"] >= 4 and r["points"] >= 1 for r in rows)
         assert "Admiral guruh" in texts.top_groups(rows)
     run(t())
 

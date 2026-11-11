@@ -1177,12 +1177,6 @@ def _top(title: str, entries: list[str]) -> str:
     return f"{head}\n\n" + ("\n".join(entries) if entries else "— hali o'yinlar yo'q —")
 
 
-def top_groups(rows) -> str:
-    """Guruh nomi ham ism kabi qisqaradi (pro.short)."""
-    return _top("Top guruhlar", [f"{_place(i)} <b>{escape(pro.short(t or '?'))}</b>\n"
-                                 f"└ 🎮 {f'{n:,}'.replace(',', ' ')} ta o'yin" for i, (t, n) in enumerate(rows)])
-
-
 def top(rows, title: str, me: tuple[int, int, int] | None = None, show_me: bool = False, head: str = "") -> str:
     """me: (o'rin, g'alaba, o'yin) - so'ragan odamning o'rni (show_me: botdagi reytingda, guruhda emas)."""
     entries = []
@@ -1203,6 +1197,36 @@ def top(rows, title: str, me: tuple[int, int, int] | None = None, show_me: bool 
 
 MONTHS = ["Yanvar", "Fevral", "Mart", "Aprel", "May", "Iyun", "Iyul", "Avgust", "Sentabr", "Oktabr", "Noyabr", "Dekabr"]
 TOP_MONTH_BTN, TOP_ALL_BTN = "📅 Oylik", "🏆 Umumiy"
+TOP_GROUPS_BTN = "👥 Top guruhlar"
+DONATE_HOW = ("💎 <b>Guruhga olmos</b>: <code>/donate 5</code> — 5 olmosingiz guruh balliga o'tadi.\n"
+              "1 💎 = <b>2 ball</b>, har 4 ta o'yin = <b>1 ball</b>. Reyting: /topgroups")
+DONATE_PM = "💎 Olmosni guruhga berish uchun o'sha guruhda <code>/donate 5</code> yozing."
+
+
+def group_link(r: dict) -> str:
+    """Guruh nomi - bosilsa guruh ochiladi (ochiq: t.me/username, yopiq: taklif havolasi); havola yo'q - oddiy nom."""
+    name = escape(pro.short(r["title"]))
+    url = f"https://t.me/{r['username']}" if r.get("username") else r.get("invite")
+    return f'<a href="{escape(url)}">{name}</a>' if url else f"<b>{name}</b>"
+
+
+def top_groups(rows: list[dict]) -> str:
+    medal = {1: "🥇", 2: "🥈", 3: "🥉"}
+    lines = ["🏆 <b>TOP 5 guruh</b>", ""]
+    for r in rows:
+        lines.append(f"{medal.get(r['place'], str(r['place']) + '.')} {group_link(r)} — <b>{r['points']} ball</b>\n"
+                     f"      🎮 {r['games']} o'yin · 💎 {r['gems']}")
+        if r.get("donors"):  # eng ko'p olmos berganlar
+            lines.append("      💎 Homiylar: " + ", ".join(f"{mention(u, n)} ({g})" for u, n, g in r["donors"]))
+    if not rows:
+        lines.append("Hali hech bir guruh ball to'plamagan.")
+    lines += ["", "ℹ️ Har 4 ta o'yin = <b>1 ball</b>, 1 💎 = <b>2 ball</b>.", "Guruhingizga olmos: guruhda <code>/donate 5</code>"]
+    return "\n".join(lines)
+
+
+def donated(uid: int, name: str, n: int, r: dict | None) -> str:
+    where = f"\n🏆 Guruh: <b>{r['points']} ball</b>, reytingda <b>{r['place']}-o'rin</b>" if r else ""
+    return f"💎 {mention(uid, name)} guruhga <b>{n} olmos</b> sovg'a qildi! <b>+{n * 2} ball</b>{where}"
 
 
 def month_name(key: str) -> str:

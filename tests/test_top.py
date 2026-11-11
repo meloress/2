@@ -16,6 +16,8 @@ def test_top_compact_two_lines_per_player():
 
 
 def test_top_groups_compact():
-    text = texts.top_groups([("Admiral guruh", 1234), ("<b>", 5), ("A, B", 1)]).replace(texts.USER_MARK, "")
-    assert "🥇 <b>Admiral guruh</b>\n└ 🎮 1 234 ta o'yin" in text and "&lt;b&gt;" in text
-    assert "<b>A, B</b>" in text  # nomdagi vergul raqam ajratgichi bilan almashmaydi
+    row = lambda p, t, u="", inv="": {"place": p, "title": t, "username": u, "invite": inv, "points": 9, "games": 4, "gems": 4}
+    text = texts.top_groups([row(1, "Admiral guruh", "adm"), row(2, "<b>"), row(4, "A, B", inv="https://t.me/+x")])
+    text = text.replace(texts.USER_MARK, "")
+    assert '🥇 <a href="https://t.me/adm">Admiral guruh</a> — <b>9 ball</b>' in text and "&lt;b&gt;" in text
+    assert '4. <a href="https://t.me/+x">A, B</a>' in text  # havolasiz guruh - oddiy qalin nom

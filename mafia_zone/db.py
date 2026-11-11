@@ -68,6 +68,7 @@ class Group(Base):
     chat_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     title: Mapped[str] = mapped_column(String(256), default="")
     username: Mapped[str] = mapped_column(String(64), default="")  # ochiq guruh: t.me/<username> (bosh menyudagi top)
+    invite: Mapped[str] = mapped_column(String(128), default="")  # yopiq guruh uchun bot yaratgan taklif havolasi
     settings: Mapped[dict] = mapped_column(Json, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
@@ -153,6 +154,16 @@ async def transfer(src: int, dst: int, amount: int, currency: str = "dollars") -
     except _Rollback:
         return False
     return True
+
+
+class Donation(Base):
+    """/donate: guruhga berilgan olmoslar jurnali - TOP guruhlar balli va homiylar ro'yxati shundan."""
+    __tablename__ = "donations"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    chat_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    gems: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
 class Transfer(Base):
@@ -460,7 +471,7 @@ COLUMNS = [("users", "last_seen", "TIMESTAMP WITH TIME ZONE"), ("users", "leave_
            ("giveaways", "currency", "VARCHAR(16) NOT NULL DEFAULT 'dollars'"),
            ("groups", "username", "VARCHAR(64) NOT NULL DEFAULT ''"),
            ("users", "pro_tier", "INTEGER"), ("users", "title", "VARCHAR(64)"),
-           ("card_orders", "msg_id", "BIGINT")]
+           ("card_orders", "msg_id", "BIGINT"), ("groups", "invite", "VARCHAR(128) NOT NULL DEFAULT ''")]
 
 
 def _migrate(conn) -> None:
@@ -665,16 +676,6 @@ async def approve_card_order(oid: int, admin: int) -> CardOrder | None:
         if r.rowcount != 1:  # qabul qiluvchi yo'q: hammasi qaytariladi, buyurtma "paid" bo'lib qoladi
             raise LookupError(f"qabul qiluvchi yo'q: {o.target}")
         return o
-
-
-async def top_groups(limit: int = 10) -> list[tuple[str, int]]:
-    """[(guruh nomi, tugagan o'yinlar)] - eng faol guruhlar."""
-    n = func.count(GameRow.id)
-    async with Session() as s:
-        rows = (await s.execute(select(Group.title, n).join(GameRow, GameRow.chat_id == Group.chat_id)
-                                .where(GameRow.status == "finished").group_by(Group.chat_id, Group.title)
-                                .order_by(n.desc()).limit(limit))).all()
-    return [(t or "?", int(c)) for t, c in rows]
 
 
 async def rob_dollars(victim: int, thief: int) -> int:
@@ -896,6 +897,60 @@ async def group_settings(chat_id: int, title: str = "", username: str | None = N
         except IntegrityError:
             continue
     return dict(config.DEFAULT_SETTINGS)
+
+
+GAMES_PER_POINT, GEM_POINTS = 4, 2  # TOP guruhlar: 4 ta tugagan o'yin = 1 ball, 1 💎 = 2 ball
+
+
+async def donate(uid: int, chat_id: int, n: int) -> bool:
+    """Olmosni guruhga (TOP guruhlar balli, donations jurnali): yetmasa hech narsa o'zgarmaydi."""
+    if n <= 0:
+        return False
+    async with Session.begin() as s:
+        r = await s.execute(update(User).where(User.telegram_id == uid, User.diamonds >= n,
+                                               User.banned.is_(False)).values(diamonds=User.diamonds - n))
+        if r.rowcount != 1:
+            return False
+        s.add(Donation(chat_id=chat_id, user_id=uid, gems=n))  # shu tranzaksiyada
+    return True
+
+
+DONORS_SHOWN = 3  # har guruh ostida eng ko'p olmos bergan homiylar
+
+
+async def top_groups(limit: int | None = 5) -> list[dict]:
+    """Guruhlar reytingi (umumiy): ball = tugagan o'yinlar // 4 + 2 * olmos. /testgame o'yinlari sanalmaydi.
+    donors: [(uid, ism, olmos)] - eng ko'p berganlar."""
+    from .runner import FAKE_BASE
+    fake = select(GamePlayer.game_id).where(GamePlayer.user_id >= FAKE_BASE)
+    async with Session() as s:
+        games = dict((await s.execute(select(GameRow.chat_id, func.count(GameRow.id))
+                                      .where(GameRow.status == "finished", GameRow.id.not_in(fake))
+                                      .group_by(GameRow.chat_id))).all())
+        groups = (await s.scalars(select(Group))).all()
+        given = func.sum(Donation.gems)
+        don = (await s.execute(select(Donation.chat_id, Donation.user_id, User.full_name, given)
+                               .join(User, User.telegram_id == Donation.user_id)
+                               .group_by(Donation.chat_id, Donation.user_id, User.full_name)
+                               .order_by(given.desc(), Donation.user_id))).all()
+    donors: dict[int, list] = {}
+    for chat, uid, name, n in don:
+        donors.setdefault(chat, []).append((uid, name or "?", int(n)))
+    rows = [{"chat_id": g.chat_id, "title": g.title or "?", "username": g.username, "invite": g.invite,
+             "games": games.get(g.chat_id, 0), "gems": sum(n for *_, n in donors.get(g.chat_id, [])),
+             "donors": donors.get(g.chat_id, [])[:DONORS_SHOWN]} for g in groups]
+    for r in rows:
+        r["points"] = r["games"] // GAMES_PER_POINT + GEM_POINTS * r["gems"]
+    rows = [r for r in rows if r["points"] > 0]
+    rows.sort(key=lambda r: (-r["points"], -r["games"], r["chat_id"]))
+    for i, r in enumerate(rows, 1):
+        r["place"] = i
+    return rows if limit is None else rows[:limit]  # ponytail: hamma guruh xotirada saralanadi; minglab guruh bo'lsa SQL'da
+
+
+async def set_invite(chat_id: int, link: str) -> None:
+    async with Session.begin() as s:
+        await s.execute(update(Group).where(Group.chat_id == chat_id).values(invite=link[:128]))
 
 
 async def save_group_settings(chat_id: int, settings: dict) -> None:
