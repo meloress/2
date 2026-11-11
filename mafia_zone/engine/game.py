@@ -50,6 +50,8 @@ def dig_loot(rng: random.Random) -> tuple[int, int]:
     return dollars, gems
 
 
+NO_AFSUNGAR = ("shield", "verbena", "votesave")  # Afsungarda ishlamaydigan himoyalar (buyum o'zida qoladi)
+
 @dataclass
 class Event:
     kind: str
@@ -268,6 +270,8 @@ class Game:
 
     def _use(self, p: Player, item: str, ev: list) -> bool:
         if p.items.get(item, 0) <= 0 or item in p.used:  # nechta bo'lsa ham, bir o'yinda bir marta
+            return False
+        if p.role == "afsungar" and item in NO_AFSUNGAR:  # o'lsa ham qotilini olib ketadi - himoya kerak emas, yechilmaydi
             return False
         p.items[item] -= 1
         p.used.append(item)
@@ -674,6 +678,8 @@ class Game:
             ev.append(Event("vote_saved", target=t))
             return False
         v.alive = False
+        if self._use(v, "mask", ev):  # 🎭 Maska faqat osilganda: guruhga roli ochilmaydi (o'yin oxirigacha)
+            data = {**data, "masked": True}
         if v.role == "afsungar":  # keyingi tunda tong otguncha bir kishini olib ketadi
             self.bomb = t
         for u, x in self.votes.items():  # dushmanni osishga ovoz +2, jamoadoshni -1

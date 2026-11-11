@@ -4,6 +4,7 @@ import re
 import time
 from html import escape
 from pathlib import Path
+from types import SimpleNamespace
 
 from aiogram import Bot, F, Router
 from aiogram.exceptions import TelegramBadRequest
@@ -85,10 +86,10 @@ async def alert(cq: CallbackQuery, text: str) -> None:
 
 async def answer_me(msg: Message, text: str, kb: Kb | None = None, reply: bool = False):
     """Guruh buyrug'iga javob faqat yozgan odamga (ephemeral); bo'lmasa - odatdagi javob."""
-    if getattr(msg.chat, "type", None) in GROUP_TYPES and msg.from_user and not getattr(msg, "sender_chat", None):
+    if getattr(getattr(msg, "chat", None), "type", None) in GROUP_TYPES and msg.from_user and not getattr(msg, "sender_chat", None):
         if await send_eph(msg.bot, msg.chat.id, msg.from_user.id, text, kb):
             return
-    await (msg.reply if reply else msg.answer)(text, reply_markup=kb)
+    await (msg.reply if reply else msg.answer)(text, **({"reply_markup": kb} if kb else {}))
 
 
 async def cq_edit(cq: CallbackQuery, r, text: str | None = None, kb: Kb | None = None) -> bool:
@@ -127,7 +128,7 @@ async def cmd_game(msg: Message, bot: Bot, command: CommandObject | None = None)
     if r := RUNNERS.get(msg.chat.id):
         if not r.game and r.couple == couple:  # ro'yxat hali ochiq: pastga qayta chiqariladi
             return await r.repost_lobby()
-        return await msg.answer(texts.GAME_EXISTS if r.game else texts.OTHER_LOBBY)
+        return await answer_me(msg, texts.GAME_EXISTS if r.game else texts.OTHER_LOBBY)
     me = await bot.get_chat_member(msg.chat.id, bot.id)
     if me.status != "administrator":
         await msg.answer(texts.NOT_ADMIN_WARN)
@@ -143,7 +144,7 @@ async def cmd_game(msg: Message, bot: Bot, command: CommandObject | None = None)
 async def cmd_testgame(msg: Message, bot: Bot, command: CommandObject):
     """Bot egasi uchun: siz + bot-o'yinchilar. /testgame 8"""
     if msg.chat.id in RUNNERS:
-        return await msg.answer(texts.GAME_EXISTS)
+        return await answer_me(msg, texts.GAME_EXISTS)
     n = int(command.args) if (command.args or "").strip().isdigit() else 8
     n = max(4, min(30, n))
     settings = await db.group_settings(msg.chat.id, msg.chat.title or "")  # haqiqiy o'yindagi vaqtlar
@@ -170,23 +171,27 @@ async def cmd_extend(msg: Message, bot: Bot, command: CommandObject):
     r = RUNNERS.get(msg.chat.id)
     if r and not r.game:
         if msg.from_user.id != r.opener and not await is_admin(bot, msg.chat.id, msg.from_user.id, msg):
-            return await msg.answer(texts.ONLY_STARTER_EXTEND)
+            return await answer_me(msg, texts.ONLY_STARTER_EXTEND)
         arg = (command.args or "").strip()
         mins = min(EXTEND_MAX_MIN, max(1, int(arg))) if arg.isdigit() else 1
         r.extend(mins * 60)
         await msg.answer(f"⏳ Ro'yxatdan o'tish {mins} daqiqaga uzaytirildi.")
+    else:  # o'yin ketyapti yoki ro'yxat yo'q - faqat yozganga
+        await answer_me(msg, texts.GAME_EXISTS if r else texts.NO_LOBBY)
 
 
 @router.message(Command("start", "begin", "couplestart"), GROUPS)  # /begin - eski nomi, menyuda yo'q
 async def cmd_begin(msg: Message, bot: Bot, command: CommandObject | None = None):
     r = RUNNERS.get(msg.chat.id)
     if r and not r.game and getattr(command, "command", "") == "couplestart" and not r.couple:
-        return await msg.answer(texts.NOT_COUPLE_LOBBY)
+        return await answer_me(msg, texts.NOT_COUPLE_LOBBY)
     if r and not r.game:
         uid = msg.from_user.id
         if uid != r.opener and not await is_admin(bot, msg.chat.id, uid, msg):
-            return await msg.answer(texts.ONLY_STARTER)
+            return await answer_me(msg, texts.ONLY_STARTER)
         r.force_start()
+    else:
+        await answer_me(msg, texts.GAME_EXISTS if r else texts.NO_LOBBY_START)
 
 
 @router.message(Command("stop", "couplestop"), GROUPS)
@@ -194,11 +199,13 @@ async def cmd_stop(msg: Message, bot: Bot, command: CommandObject | None = None)
     """/stop - har qanday o'yin yoki ro'yxat; /couplestop - faqat 💞 paralar o'yini (oddiy o'yinni tasodifan to'xtatmasin)."""
     r = RUNNERS.get(msg.chat.id)
     if r and getattr(command, "command", "") == "couplestop" and not r.couple:
-        return await msg.answer(texts.NOT_COUPLE_GAME)
+        return await answer_me(msg, texts.NOT_COUPLE_GAME)
     if r:
         if not await is_admin(bot, msg.chat.id, msg.from_user.id, msg):
-            return await msg.answer(texts.ONLY_ADMIN)
+            return await answer_me(msg, texts.ONLY_ADMIN)
         await r.abort()
+    else:
+        await answer_me(msg, texts.NO_GAME_HERE)
 
 
 def _in_game(r, uid: int) -> bool:
@@ -212,9 +219,9 @@ async def cmd_leave(msg: Message):
     """Faqat Pro (har qanday daraja; ro'yxatda ham, o'yinda ham): cheksiz va bepul."""
     r, u = RUNNERS.get(msg.chat.id), msg.from_user
     if not r or PLAYING.get(u.id) is not r:
-        return
+        return await answer_me(msg, texts.NOT_IN_GAME)
     if not pro.is_pro(u.id):
-        return await msg.answer(texts.leave_only_pro(u.id, u.full_name))
+        return await answer_me(msg, texts.leave_only_pro(u.id, u.full_name))
     await r.leave(u.id)
     await msg.answer(f"🚪 {texts.mention(u.id, u.full_name)} o'yindan chiqdi.")
 
@@ -232,7 +239,7 @@ async def cmd_kick(msg: Message, command: CommandObject):
         people = [p.uid for p in r.game.players] if r.game else [u for u, _ in r.members]
         uid = people[int(arg) - 1] if 1 <= int(arg) <= len(people) else None
     if uid is None or PLAYING.get(uid) is not r:
-        return await msg.answer(texts.KICK_HOW)
+        return await answer_me(msg, texts.KICK_HOW)
     if r.game:
         return await r.leave(uid, kicked=True)  # guruhga e'lon - ertalabki "left" matni orqali
     name = dict(r.members).get(uid, "?")
@@ -264,6 +271,7 @@ def settings_kb(s: dict) -> Kb:
     rows.append([Btn(text=f"😴 AFK chiqarish: {'✅' if s['afk'] else '❌'}", callback_data="s:afk")])
     rows.append([Btn(text=f"🪢 Osishni tasdiqlash: {'✅' if s['confirm'] else '❌'}", callback_data="s:confirm")])
     rows.append([Btn(text="🎭 Rollar", callback_data="s:roles")])
+    rows.append([Btn(text="❌ Yopish", callback_data="s:close")])
     return Kb(inline_keyboard=rows)
 
 
@@ -279,22 +287,49 @@ def roles_kb(s: dict) -> Kb:
 @router.message(Command("settings"), GROUPS)
 async def cmd_settings(msg: Message, bot: Bot):
     if not await is_admin(bot, msg.chat.id, msg.from_user.id, msg):
-        return await msg.answer(texts.ONLY_ADMIN)
+        return await answer_me(msg, texts.ONLY_ADMIN)
     s = await db.group_settings(msg.chat.id, msg.chat.title or "")
-    await msg.answer("⚙️ <b>Guruh sozlamalari</b> (keyingi o'yindan kuchga kiradi)", reply_markup=settings_kb(s))
+    text, kb = "⚙️ <b>Guruh sozlamalari</b> (keyingi o'yindan kuchga kiradi)", settings_kb(s)
+    if msg.from_user and not msg.sender_chat:  # faqat shu adminga ko'rinadi (yashirin admin - oddiy xabar)
+        if m := await send_eph(bot, msg.chat.id, msg.from_user.id, text, kb):
+            SET_EPH[msg.from_user.id] = (msg.chat.id, getattr(m, "ephemeral_message_id", None))
+            return
+    await msg.answer(text, reply_markup=kb)
+
+
+SET_EPH: dict[int, tuple[int, int | None]] = {}  # admin -> (guruh, ephemeral sozlamalar xabari) - tahrir uchun
+
+
+async def _settings_kb(cq: CallbackQuery, chat: int, kb: Kb) -> None:
+    saved = SET_EPH.get(cq.from_user.id)
+    r = SimpleNamespace(eph={cq.from_user.id: saved[1]}, chat_id=chat) if saved and saved[0] == chat else None
+    await cq_edit(cq, r, None, kb)
 
 
 @router.callback_query(F.data.startswith("s:"))
 async def cb_settings(cq: CallbackQuery, bot: Bot):
-    chat = cq.message.chat.id
+    m = cq.message
+    chat = m.chat.id if getattr(m, "chat", None) else SET_EPH.get(cq.from_user.id, (None,))[0]
+    if chat is None:
+        return await cq.answer("Qaytadan /settings yozing")
     if not await is_admin(bot, chat, cq.from_user.id):
         return await alert(cq, texts.ONLY_ADMIN)
-    s = await db.group_settings(chat)
     parts = cq.data.split(":")
     key = parts[1]
+    if key == "close":  # sozlamalar xabari o'chadi (ephemeral yoki oddiy)
+        eid = getattr(m, "ephemeral_message_id", None) or (SET_EPH.get(cq.from_user.id, (0, None))[1] if not m else None)
+        if eid:
+            await _call(bot.delete_ephemeral_message, chat_id=chat, receiver_user_id=cq.from_user.id, ephemeral_message_id=eid)
+            SET_EPH.pop(cq.from_user.id, None)
+        elif m and getattr(m, "message_id", 0):
+            await _call(m.delete)
+        return await cq.answer()
+    s = await db.group_settings(chat)
     if key in TIMERS:  # ➖/➕: istalgan qiymat, qadam bilan, chegaradan chiqmaydi
         lo, hi, step = config.TIMER_RANGES[key]
-        new = min(hi, max(lo, s[key] + (-step if parts[-1] == "-" else step)))
+        v = s[key]  # qadam kattalashadi: 5 daqiqagacha - asl qadam, 1 soatgacha - 1 daqiqa, undan keyin - 10 daqiqa
+        big = lambda x: step if x < 300 else 60 if x < 3600 else 600
+        new = min(hi, max(lo, v - big(v - 1) if parts[-1] == "-" else v + big(v)))
         if new == s[key]:
             return await cq.answer(f"Chegara: {texts.dur(lo)} – {texts.dur(hi)}")
         s[key] = new
@@ -307,14 +342,14 @@ async def cb_settings(cq: CallbackQuery, bot: Bot):
         s["disabled"] = sorted(dis)
     if key in TIMERS or key in FLAGS:
         await db.save_group_settings(chat, s)
-        await cq.message.edit_reply_markup(reply_markup=settings_kb(s))
+        await _settings_kb(cq, chat, settings_kb(s))
     elif key == "r":
         await db.save_group_settings(chat, s)
-        await cq.message.edit_reply_markup(reply_markup=roles_kb(s))
+        await _settings_kb(cq, chat, roles_kb(s))
     elif key == "roles":
-        await cq.message.edit_reply_markup(reply_markup=roles_kb(s))
+        await _settings_kb(cq, chat, roles_kb(s))
     else:
-        await cq.message.edit_reply_markup(reply_markup=settings_kb(s))
+        await _settings_kb(cq, chat, settings_kb(s))
     await cq.answer()
 
 
@@ -482,14 +517,14 @@ async def cmd_couple(msg: Message, bot: Bot, command: CommandObject):
         return
     target = await _couple_target(msg, command)
     if not target:
-        return await msg.reply(texts.COUPLE_HOW if not command.args else texts.COUPLE_NOT_FOUND)
+        return await answer_me(msg, texts.COUPLE_HOW if not command.args else texts.COUPLE_NOT_FOUND, reply=True)
     uid, name = target
     if uid == me.telegram_id:
-        return await msg.reply(texts.COUPLE_SELF)
+        return await answer_me(msg, texts.COUPLE_SELF, reply=True)
     if await db.partner(me.telegram_id):
-        return await msg.reply(texts.COUPLE_YOU_TAKEN)
+        return await answer_me(msg, texts.COUPLE_YOU_TAKEN, reply=True)
     if await db.partner(uid):
-        return await msg.reply(texts.COUPLE_THEY_TAKEN)
+        return await answer_me(msg, texts.COUPLE_THEY_TAKEN, reply=True)
     kb = Kb(inline_keyboard=[[
         Btn(text="✅ Tasdiqlash", callback_data=f"cp:{me.telegram_id}:{uid}:1"),
         Btn(text="❌ Bekor qilish", callback_data=f"cp:{me.telegram_id}:{uid}:0")]])
@@ -521,9 +556,11 @@ async def cmd_uncouple(msg: Message):
         return
     lock = await db.couple_lock()  # hazil qulfi: bazadagi qator o'chirilguncha bu juft uzolmaydi
     if lock and {me.telegram_id, await db.partner(me.telegram_id)} == lock:
-        return await msg.reply(texts.COUPLE_LOCKED)
+        return await answer_me(msg, texts.COUPLE_LOCKED, reply=True)
     p = await db.break_couple(me.telegram_id)
-    await msg.reply(texts.couple_broken(me.telegram_id, me.full_name, p, await _name(p)) if p else texts.COUPLE_NONE)
+    if not p:
+        return await answer_me(msg, texts.COUPLE_NONE, reply=True)
+    await msg.reply(texts.couple_broken(me.telegram_id, me.full_name, p, await _name(p)))
 
 
 @router.message(Command("mycouple"))
@@ -532,8 +569,15 @@ async def cmd_mycouple(msg: Message):
     if not me:
         return
     p = await db.partner(me.telegram_id)
-    await answer_me(msg, texts.couple_show(me.telegram_id, me.full_name, p, await _name(p)) if p else texts.COUPLE_NONE,
-                    reply=True)
+    if not p:
+        return await answer_me(msg, texts.COUPLE_NONE, reply=True)
+    await msg.reply(texts.couple_show(me.telegram_id, me.full_name, p, await _name(p)))  # para - hammaga ko'rinadi
+
+
+@router.message(Command("profile", "shop", "role", "pro", "nickname", "paysupport"), GROUPS)
+async def cmd_pm_only(msg: Message):
+    """Faqat botning shaxsiy chatidagi buyruq guruhda yozilsa - yo'l-yo'riq faqat yozganga."""
+    await answer_me(msg, texts.PM_ONLY, Kb(inline_keyboard=[[Btn(text="🤖 Botga o'tish", url=bot_link())]]))
 
 
 @router.message(Command("players"), GROUPS)
@@ -1377,6 +1421,13 @@ async def on_join(msg: Message):
              or await _call(msg.bot.send_photo, u.id, photo, caption=cap))
         if m and m.photo and not _welcome_id:
             _welcome_id.append(m.photo[-1].file_id)
+
+
+@router.message(GROUPS, F.pinned_message)
+async def on_pinned(msg: Message):
+    """Bot o'zi qadagan xabar (ro'yxat, tarqatma) haqidagi "... qadadi" xizmat xabari o'chiriladi; odamlarniki qoladi."""
+    if msg.from_user and msg.from_user.id == msg.bot.id:
+        await _call(msg.delete)
 
 
 # ---------- umumiy guruh xabarlari (eng oxirida bo'lishi shart) ----------

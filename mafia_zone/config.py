@@ -18,7 +18,7 @@ _url = os.environ.get("DATABASE_URL") or "sqlite+aiosqlite:///mafia.db"
 DATABASE_URL = _url.replace("postgres://", "postgresql://", 1).replace("postgresql://", "postgresql+asyncpg://", 1)
 
 # guruh vaqtlari (soniya): eng kam/ko'p qiymat va /settings dagi ➖/➕ qadami
-TIMER_RANGES = {"lobby": (30, 3600, 30), "night": (15, 600, 15), "day": (15, 1800, 15), "vote": (15, 600, 15)}
+TIMER_RANGES = {"lobby": (30, 86400, 30), "night": (15, 3600, 15), "day": (15, 10800, 15), "vote": (15, 3600, 15)}
 DEFAULT_SETTINGS = {"lobby": 120, "night": 60, "day": 60, "vote": 45, "items": True, "afk": True, "confirm": True, "disabled": []}
 
 # Iqtisod (spec, 7-bo'lim)

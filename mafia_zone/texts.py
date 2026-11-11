@@ -15,7 +15,7 @@ ITEM_ABOUT = {
     "shield": "tunda hujumdan 1 marta saqlaydi (osilishdan emas — buning uchun ⚖️ Ovoz himoyasi)",
     "verbena": "faqat Vampir tishlashidan 1 marta saqlaydi (Vampir 12+ kishilik o'yinlarda chiqadi)",
     "doc": "mafiya yoki yakka rol bo'lsangiz, tekshiruvda 1 marta \"Tinch\" ko'rsatadi",
-    "mask": "bir o'yin davomida rolingiz guruhga ochilmaydi — o'lganingizda ham",
+    "mask": "osilsangiz, rolingiz guruhga ochilmaydi (bir o'yinda bir marta)",
     "votesave": "kunduzi osilishdan 1 marta saqlaydi (bir o'yinda bir marta)",
     "ticket": "keyingi o'yinda oddiy Tinch o'rniga maxsus rol kafolatlanadi",
     "ironshield": "faqat Konchi uchun: tunnel qulaganda 1 marta omon qoldiradi (bir o'yinda bir marta)",
@@ -34,10 +34,10 @@ ALWAYS_SHOWN = ("shield", "verbena", "doc", "mask", "votesave")  # profilda 0 ta
 MASKED = "🎭 Maskali"
 
 
-def shown_role(g: Game, uid: int, code: str | None = None) -> str:
-    """Guruhga ko'rinadigan rol: Maskali o'yinchining roli o'yin davomida yashirin."""
+def shown_role(g: Game, uid: int, code: str | None = None, masked: bool = False) -> str:
+    """Guruhga ko'rinadigan rol. 🎭 Maska faqat osilganda ishlaydi (hanged.masked): o'sha e'londa rol yashirin."""
     p = g.get(uid)
-    if p and p.items.get("mask", 0) > 0 and g.phase != "finished":
+    if (masked or (p and "mask" in p.used)) and g.phase != "finished":  # maska ishlatilgan = osilgan: /players da ham
         return f"<b>{MASKED}</b>"
     return role(code or (p.role if p else "tinch"))
 RANKS = [(0, "🔰 Yangi boshlovchi"), (3, "🔫 Ko'cha bezori"), (10, "🕶 Gangster"), (25, "💼 Kapo"),
@@ -89,22 +89,23 @@ def team_label(team: str) -> str:
 
 def dur(secs: int) -> str:
     """Vaqt: 45 soniya / 2 daqiqa / 1 daqiqa 30 soniya."""
-    m, s = divmod(int(secs), 60)
-    if not m:
+    h, rest = divmod(int(secs), 3600)
+    m, s = divmod(rest, 60)
+    if not h and not m:
         return f"{s} soniya"
-    return f"{m} daqiqa" + (f" {s} soniya" if s else "")
+    return " ".join(x for x in (h and f"{h} soat", m and f"{m} daqiqa", s and f"{s} soniya") if x)
 
 
 def left_str(secs: int) -> str:
     """Qolgan vaqt: 1 daqiqadan ko'p bo'lsa - daqiqada (yuqoriga yaxlitlab), kam bo'lsa - soniyada."""
-    return f"{-(-secs // 60)} daqiqa" if secs >= 60 else f"{secs} soniya"
+    return dur(-(-secs // 60) * 60) if secs >= 60 else f"{secs} soniya"
 
 
 # ---------- lobby ----------
 def lobby(members: list[tuple[int, str]], left: int) -> str:
     body = ", ".join(mention(u, n) for u, n in members)  # chapdan o'ngga, raqamsiz; bo'sh bo'lsa qator yo'q
-    return (f"🎮 <b>ADMIRAL MAFIA</b> — ro'yxatdan o'tish boshlandi!\n\n"
-            f"👥 <b>O'yinchilar ({len(members)}):</b>{chr(10) + body if body else ''}\n\n⏳ Qoldi: <b>{left_str(left)}</b>")
+    return (f"🎮 <b>ADMIRAL MAFIA</b> — ro'yxatdan o'tish boshlandi!\n👥 <b>O'yinchilar:</b>\n\n"
+            f"{body + chr(10) + chr(10) if body else ''}Jami: <b>{len(members)} ta</b> | Kutish vaqti: <b>{left_str(left)}</b>")
 
 
 JOIN_BTN = "🤝 Qo'shilish"
@@ -135,7 +136,7 @@ def couple_lobby(members: list[tuple[int, str]], partners: dict[int, int], left:
     body = "\n".join(rows) or "— hali hech qaysi para yo'q —"
     wait = "\n\n" + "\n".join(waiting) if waiting else ""
     return ("❤️❤️ <b>PARALAR O'YINI</b> ❤️❤️\n<b>Ro'yxatdan o'tish boshlandi!</b>\n\n"
-            f"❤️ <b>Paralar ({len(rows)}):</b>\n{body}{wait}\n\n⏳ Qoldi: <b>{left_str(left)}</b>")
+            f"❤️ <b>Paralar:</b>\n\n{body}{wait}\n\nJami: <b>{len(rows)} para</b> | Kutish vaqti: <b>{left_str(left)}</b>")
 
 
 def couple_dropped(dropped: list[tuple[int, str]]) -> str:
@@ -162,6 +163,9 @@ NOT_ADMIN_WARN = ("⚠️ Bot guruhda admin emas. O'yin bo'ladi, lekin tunda va 
 JOINED = "✅ " + "𝐌𝐮𝐯𝐚𝐟𝐟𝐚𝐪𝐢𝐲𝐚𝐭𝐥𝐢 𝐫𝐨'𝐲𝐱𝐚𝐭𝐝𝐚𝐧 𝐨'𝐭𝐝𝐢𝐧𝐠𝐢𝐳!" + "\nGuruhga qayting va o'yin boshlanishini kuting."
 ALREADY_IN_GAME = "⚠️ Siz allaqachon boshqa o'yindasiz."
 NO_LOBBY = "⚠️ Bu guruhda ro'yxatdan o'tish ketmayapti."
+NO_LOBBY_START = "⚠️ Ro'yxat ochiq emas. Avval /game bilan ro'yxatni oching."
+NO_GAME_HERE = "🎮 Hozir bu guruhda o'yin yo'q. /game bilan boshlang!"
+PM_ONLY = "🤖 Bu buyruq botning shaxsiy chatida ishlaydi — botga o'ting."
 LOBBY_FULL = ("⚠️ O'yin to'lgan (60 kishi). Sizni keyingi o'yin navbatiga yozdim — "
               "ro'yxat ochilishi bilan xabar beraman 🔔")
 BANNED = "⛔️ Siz botdan foydalanishdan chetlatilgansiz."
@@ -527,7 +531,7 @@ def morning(g: Game, ev: list[Event]) -> tuple[list[str], list[tuple[int, str]]]
             score = (f"📊 <b>Tasdiqlash natijalari:</b>\n{e.data['yes']} 👍 | {e.data['no']} 👎\n\n"
                      if "yes" in e.data else "")
             pub.append(score + f"🪢 <b>{pm(g, e.target)}</b> kunduzgi yig'ilish qarori bilan osildi.\n"
-                               f"U {shown_role(g, e.target, e.data['role'])} edi.")
+                               f"U {shown_role(g, e.target, e.data['role'], e.data.get('masked'))} edi.")
         elif k == "vote_saved":
             pub.append(f"⚖️ Arqon tortilay deganda <b>{pm(g, e.target)}</b> {ITEMS['votesave']}ni ko'rsatdi "
                        "va dordan omon qoldi!")
@@ -580,6 +584,8 @@ def morning(g: Game, ev: list[Event]) -> tuple[list[str], list[tuple[int, str]]]
         elif k == "dig_saved":
             pub.append(f"{role('konchi')} {ITEMS['ironshield'].split(' ', 1)[1].lower()}dan foydalandi va kondan "
                        "omon chiqdi!")
+        elif k == "item_used" and e.data["item"] == "mask":
+            priv.append((e.uid, f"{ITEMS['mask']} ishladi: osilganingizda rolingiz guruhga ochilmadi."))
         elif k == "item_used":
             used = ITEM_USED.get(e.data["item"]) or ITEM_ABOUT[e.data["item"]]
             priv.append((e.uid, f"{ITEMS[e.data['item']]} sizni qutqardi: {used}."))
@@ -607,8 +613,7 @@ def morning(g: Game, ev: list[Event]) -> tuple[list[str], list[tuple[int, str]]]
             pub.append(f"🏹 Bugun noxush hodisa yuz berdi: aholidan {victim}ning murdasi topildi.\n"
                        f"Aytishlaricha, bu {role('ovchi')}ning ishi.")
             if fine := e.data["fine"]:
-                if shown_role(g, e.target, e.data["role"]) != f"<b>{MASKED}</b>":  # maska: jarima ham rolni ochmasin
-                    pub.append(f"💸 {role('ovchi')} tinch fuqaroni o'ldirgani uchun <b>{fine} 💵</b> jarima to'ladi.")
+                pub.append(f"💸 {role('ovchi')} tinch fuqaroni o'ldirgani uchun <b>{fine} 💵</b> jarima to'ladi.")
                 priv.append((e.uid, f"💸 Siz tinch fuqaroni o'ldirdingiz: <b>{fine} 💵</b> jarima — pul "
                                     f"<b>{n(e.target)}</b>ga o'tdi."))
                 priv.append((e.target, f"💵 Ovchi jarimasi: <b>{fine} 💵</b> hisobingizga tushdi."))
@@ -1207,10 +1212,9 @@ VERBS = ["vahshiylarcha o'ldirildi.", "shafqatsizlarcha o'ldirildi.", "tongni ko
 
 def alive_composition(g: Game) -> str:
     out = []
-    masked = [p for p in g.alive() if p.items.get("mask", 0) > 0]
     # Ko'rinish: "🤵🏻 Mafiya - 8" sarlavha, ostida "🤵🏼 𝐌𝐚𝐟𝐢𝐲𝐚 - 6, 🤵🏻 𝐃𝐨𝐧" (bir xil rollar soni bilan)
     for team, label in ((MAFIA, "🤵🏻 Mafiya"), (NEUTRAL, "🪙 Yakka rollar"), (TOWN, "🏘 Tinch aholilar")):
-        ps = [p for p in g.alive() if p.team == team and p not in masked]
+        ps = [p for p in g.alive() if p.team == team]
         if not ps:
             continue
         counts: dict[str, int] = {}
@@ -1218,8 +1222,6 @@ def alive_composition(g: Game) -> str:
             counts[p.role] = counts.get(p.role, 0) + 1
         roles = ", ".join(role(c) + (f" - {k}" if k > 1 else "") for c, k in counts.items())
         out.append(f"<b>{label} - {len(ps)}</b>\n{roles}")  # sarlavha - oddiy Telegram qalin, rollar - matematik
-    if masked:  # jamoasi ham ko'rinmaydi
-        out.append(f"<b>{MASKED} - {len(masked)}</b>")
     return "\n\n".join(out) + f"\n\n<b>Jami: {len(g.alive())}</b>"
 
 

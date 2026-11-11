@@ -385,7 +385,6 @@ class Runner:
         if self.couple:
             self.game.pairs, self.game.couple_mode = pairs, True
         spent = self.game.use_role_picks() + [(u, "ticket") for u in self.game.use_tickets()]
-        spent += [(p.uid, "mask") for p in self.game.players if p.items.get("mask", 0) > 0]  # maska shu o'yinga
         self.meta["started"] = time.time()
         self.game_id = await db.create_game(self.chat_id, self.state())
         if self.game_id is None:  # o'yin yaratilmadi - buyumlar yechilmaydi

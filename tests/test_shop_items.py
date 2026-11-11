@@ -47,21 +47,38 @@ def test_every_role_pick_lands_when_role_dealt():
             assert sorted(p.role for p in g.players) == before
 
 
-def test_mask_hides_role_everywhere_public():
+def test_mask_only_hides_role_when_hanged():
+    """🎭 Maska faqat osilganda ishlaydi: ro'yxat/tarkibda "Maskali" yo'q, tunda o'ldirilsa roli ochiladi
+    (maska sarflanmaydi); osilsa - roli yashirin, maska bir marta yechiladi; o'yin oxirida haqiqiy rol."""
     g = mk("don", "komissar", "tinch", "tinch", "tinch", "tinch", p2={"mask": 1})
     comp = texts.alive_composition(g)
     kom, don = texts.role("komissar"), texts.role("don")
-    assert kom not in comp and "🎭" in comp and "Jami: 6" in comp
+    assert kom in comp and "🎭" not in comp and "Jami: 6" in comp
     ev = night(g, (1, "mafia_kill", 2))
     pub, _ = texts.morning(g, ev)
-    assert kom not in "".join(pub) and "🎭" in "".join(pub)
-    assert kom not in texts.who(g, 2)
+    assert kom in "".join(pub) and "🎭" not in "".join(pub) and g.get(2).items["mask"] == 1
     g = mk("don", "mafiya", "tinch", "tinch", "tinch", "tinch", "tinch", p1={"mask": 1})
     ev = vote(g, (3, 1), (4, 1))  # o'yin davom etadi (Mafiya Don bo'ladi)
-    pub, _ = texts.morning(g, ev)
+    pub, priv = texts.morning(g, ev)
     assert g.phase != "finished" and don not in "".join(pub) and "🎭" in "".join(pub)
+    assert ("item_used", 1) in [(e.kind, e.uid) for e in ev] and g.get(1).items["mask"] == 0
+    assert any(u == 1 and "Maska" in t for u, t in priv)
+    dead = texts.players(g).split("Halok bo'lganlar")[1]  # /players dagi o'lganlar ro'yxatida ham yashirin
+    assert don not in dead and "🎭" in dead
     g.phase = "finished"
     assert don in texts.game_over(g)  # o'yin oxirida haqiqiy rollar ko'rinadi
+
+
+def test_no_protection_for_afsungar():
+    """Afsungar o'lsa ham qotilini olib ketadi: qalqon/verbena/ovoz himoyasi unda ishlamaydi va yechilmaydi."""
+    g = mk("don", "afsungar", "tinch", "tinch", "tinch", "tinch", "mafiya",
+           p2={"shield": 1, "votesave": 1, "verbena": 1})
+    ev = night(g, (1, "mafia_kill", 2))
+    assert not g.get(2).alive and "item_used" not in [e.kind for e in ev]
+    assert g.get(2).items == {"shield": 1, "votesave": 1, "verbena": 1}
+    g = mk("don", "afsungar", "tinch", "tinch", "tinch", "tinch", "mafiya", p2={"votesave": 1})
+    ev = vote(g, (3, 2), (4, 2))
+    assert not g.get(2).alive and "vote_saved" not in [e.kind for e in ev] and g.bomb == 2
 
 
 def test_rob_never_takes_mask():

@@ -1203,3 +1203,53 @@ def test_owner_couple_can_uncouple():
         await handlers.cmd_uncouple(msg)
         assert await db.partner(a) is None and await db.partner(b) is None
     asyncio.run(go())
+
+
+def test_settings_and_denials_only_for_caller():
+    """/settings guruhda faqat yozgan adminga (ephemeral), ➕ shu xabarni tahrirlaydi; rad javoblari ham faqat yozganga."""
+    from mafia_zone import config, handlers
+
+    class Bot(FakeBot):
+        async def edit_ephemeral_message_reply_markup(self, **kw):
+            self.eph_kb = kw
+
+    async def go():
+        await db.init()
+        bot, chat, admin = Bot(), -4648, 4_648_001
+        config.ADMIN_IDS.add(admin)
+        user = SimpleNamespace(id=admin, full_name="A", username=None)
+        msg = SimpleNamespace(bot=bot, chat=SimpleNamespace(id=chat, type="supergroup", title="g"), from_user=user,
+                              sender_chat=None, answer=None)
+        await handlers.cmd_settings(msg, bot)
+        assert bot.eph[-1][:2] == (chat, admin) and handlers.SET_EPH[admin][0] == chat
+        eid = handlers.SET_EPH[admin][1]
+        cq = SimpleNamespace(bot=bot, from_user=user, data="s:lobby:+", answer=lambda *a, **k: asyncio.sleep(0),
+                             message=SimpleNamespace(chat=SimpleNamespace(id=chat), ephemeral_message_id=eid))
+        before = (await db.group_settings(chat))["lobby"]
+        await handlers.cb_settings(cq, bot)
+        assert (await db.group_settings(chat))["lobby"] > before and bot.eph_kb["ephemeral_message_id"] == eid
+        cq.data = "s:close"
+        await handlers.cb_settings(cq, bot)  # ❌ Yopish - xabar o'chadi
+        assert bot.eph_deleted[-1] == (chat, admin, eid) and admin not in handlers.SET_EPH
+        msg.from_user = SimpleNamespace(id=admin + 1, full_name="B", username=None)
+        await handlers.cmd_stop(msg, bot)  # o'yin yo'q - faqat yozganga
+        assert bot.eph[-1] == (chat, admin + 1, texts.NO_GAME_HERE)
+    try:
+        asyncio.run(go())
+    finally:
+        config.ADMIN_IDS.discard(4_648_001)
+
+
+def test_bot_pin_notice_deleted():
+    """Bot qadagan xabar haqidagi xizmat xabari o'chadi, odam qadagani qoladi."""
+    from mafia_zone import handlers
+    gone = []
+
+    async def go():
+        for who in (42, 7):
+            async def delete(who=who):
+                gone.append(who)
+            msg = SimpleNamespace(bot=SimpleNamespace(id=42), from_user=SimpleNamespace(id=who), delete=delete)
+            await handlers.on_pinned(msg)
+    asyncio.run(go())
+    assert gone == [42]
