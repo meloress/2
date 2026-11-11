@@ -860,6 +860,23 @@ async def game_items(uids: list[int]) -> dict[int, dict[str, int]]:
         return out
 
 
+async def recent_roles(uids: list[int], k: int = 3) -> dict[int, list[str]]:
+    """Har o'yinchining oxirgi k ta tugagan o'yindagi roli (yangisi oldin) - rol aylanishi uchun (setup.assign)."""
+    if not uids:
+        return {}
+    rn = func.row_number().over(partition_by=GamePlayer.user_id, order_by=GamePlayer.game_id.desc()).label("rn")
+    sub = (select(GamePlayer.user_id, GamePlayer.role, GamePlayer.game_id, rn)
+           .join(GameRow, GameRow.id == GamePlayer.game_id)
+           .where(GamePlayer.user_id.in_(uids), GameRow.status == "finished").subquery())
+    async with Session() as s:
+        rows = (await s.execute(select(sub.c.user_id, sub.c.role).where(sub.c.rn <= k)
+                                .order_by(sub.c.user_id, sub.c.game_id.desc()))).all()
+    out: dict[int, list[str]] = {}
+    for uid, role in rows:
+        out.setdefault(uid, []).append(role)
+    return out
+
+
 # ---------- guruhlar ----------
 async def group_settings(chat_id: int, title: str = "", username: str | None = None) -> dict:
     from sqlalchemy.exc import IntegrityError

@@ -405,7 +405,7 @@ class Runner:
         items = await db.game_items(uids) if self.s["items"] else {}
         self.game = Game.create(self.chat_id, self.members, random.SystemRandom().randrange(2 ** 31),
                                 frozenset(self.s["disabled"]), items, AFK_LIMIT if self.s.get("afk", True) else 0,
-                                self.s.get("confirm", True))
+                                self.s.get("confirm", True), history=await db.recent_roles(uids))
         if self.couple:
             self.game.pairs, self.game.couple_mode = pairs, True
         if self.teams:

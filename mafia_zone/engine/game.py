@@ -7,7 +7,7 @@ import random
 from dataclasses import asdict, dataclass, field
 
 from .roles import MAFIA, NEUTRAL, NO_TARGET, ROLES, TOWN
-from .setup import deal
+from .setup import assign, deal
 
 NIGHT, DAY, VOTING, CONFIRM, FINISHED = "night", "day", "voting", "confirm", "finished"
 MAX_DAYS = 20
@@ -111,8 +111,11 @@ class Game:
     @classmethod
     def create(cls, chat_id: int, members: list[tuple[int, str]], seed: int,
                disabled: frozenset = frozenset(), items: dict | None = None,
-               afk_limit: int = AFK_LIMIT, confirm: bool = False) -> "Game":
+               afk_limit: int = AFK_LIMIT, confirm: bool = False,
+               history: dict[int, list[str]] | None = None) -> "Game":
         roles = deal(len(members), random.Random(seed), disabled)
+        if history:  # rol aylanishi: oxirgi o'yinlardagi rollarga qarab (setup.assign)
+            roles = assign(roles, [history.get(uid, []) for uid, _ in members], random.Random(f"{seed}:assign"))
         items = items or {}
         players = [Player(uid, name, role, items=dict(items.get(uid, {})))
                    for (uid, name), role in zip(members, roles)]

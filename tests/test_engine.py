@@ -1265,3 +1265,36 @@ def test_konchi_tunnel_collapse_and_iron_shield(monkeypatch):
     g = mk("don", "konchi", *["tinch"] * 8)
     ev = night(g, (2, "dig", None))
     assert g.get(2).alive and "dug" in [e.kind for e in ev]
+
+
+def test_deal_killer_cap_and_balance_table():
+    """Qotil neytrallar ko'pi bilan 1 ta; 5/6/10 kishida maxsus tinch rol 1 ta kam, 7 da 1 ta ko'p (prod statistikasi)."""
+    from mafia_zone.engine import setup
+    killers = {"qotil", "gazabkor", "sehrgar", "vampir"}
+    for n in range(12, 61):
+        for seed in range(30):
+            assert sum(x in killers for x in deal(n, random.Random(seed))) <= setup.MAX_KILLERS, (n, seed)
+    plain = lambda n: [deal(n, random.Random(s)).count("tinch") for s in range(20)]
+    assert set(plain(5)) == {2} and set(plain(6)) == {2} and set(plain(7)) == {0} and set(plain(10)) == {2}
+
+
+def test_assign_rotates_roles():
+    """Bir xil 8 kishi 400 o'yin: Don ketma-ket kamdan-kam (tasodif ~12.5%), uzoq vaqt Tinch qolish yo'q,
+    uzoq muddatda hamma teng (har kim Don ~50 marta)."""
+    from collections import Counter
+    from mafia_zone.engine.setup import assign
+    hist = {u: [] for u in range(8)}
+    don, again, tinch_streak, cur = Counter(), 0, 0, Counter()
+    for g in range(400):
+        rng = random.Random(g)
+        roles = assign(deal(8, rng), [hist[u] for u in range(8)], random.Random(f"{g}:a"))
+        assert sorted(roles) == sorted(deal(8, random.Random(g)))  # tarkib o'zgarmaydi
+        for u, r in enumerate(roles):
+            again += r == "don" and hist[u][:1] == ["don"]
+            don[u] += r == "don"
+            cur[u] = cur[u] + 1 if r == "tinch" else 0
+            tinch_streak = max(tinch_streak, cur[u])
+            hist[u] = [r] + hist[u][:2]
+    assert again / 400 < 0.04, again
+    assert all(35 <= don[u] <= 65 for u in range(8)), don
+    assert tinch_streak <= 5, tinch_streak
