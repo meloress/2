@@ -24,10 +24,12 @@ GROUP_COMMANDS = [  # guruhdagi buyruqlar menyusi; is_ephemeral - buyruq va javo
     BotCommand(command="players", description="👥 Tiriklar va o'liklar", is_ephemeral=True),
     BotCommand(command="send", description="💸 Pul: /send 100 10 yoki reply + /send 100"),
     BotCommand(command="give", description="💎 Olmos: /give 10 2 yoki reply + /give 5"),
+    BotCommand(command="couple", description="❤️ Para bo'lish: reply yoki /couple @username"),
+    BotCommand(command="uncouple", description="💔 Paradan chiqish"),
     BotCommand(command="mycouple", description="💞 Mening param"),
     BotCommand(command="settings", description="⚙️ Sozlamalar (admin)"),
     BotCommand(command="donate", description="💎 Guruhga olmos: /donate 5 (TOP guruhlar)"),
-    BotCommand(command="topgroups", description="🏆 TOP 5 guruh"),
+    BotCommand(command="topgroups", description="🏆 TOP 10 guruh"),
     BotCommand(command="top", description="🏆 Guruh reytingi", is_ephemeral=True),
     BotCommand(command="rules", description="📜 Rollar", is_ephemeral=True),
 ]

@@ -732,10 +732,10 @@ async def cb_menu(cq: CallbackQuery):
 async def show(cq: CallbackQuery, text: str, kb: Kb) -> None:
     """Xabarni joyida almashtiradi; tahrirlab bo'lmasa (eski yoki media xabar) - yangisini yuboradi."""
     try:
-        await cq.message.edit_text(text, reply_markup=kb)
+        await cq.message.edit_text(text, reply_markup=kb, disable_web_page_preview=True)  # havola kartochkasi chiqmasin
     except TelegramBadRequest as e:
         if "not modified" not in str(e):
-            await cq.message.answer(text, reply_markup=kb)
+            await cq.message.answer(text, reply_markup=kb, disable_web_page_preview=True)
             if (getattr(cq.message, "model_extra", None) or {}).get("widget"):  # to'lov kartasidan "Orqaga"
                 await _call(cq.message.delete)
 
@@ -1217,7 +1217,7 @@ async def top_groups_text(bot: Bot | None) -> str:
 
 @router.message(Command("topgroups"))
 async def cmd_topgroups(msg: Message, bot: Bot):
-    """TOP 5 guruh: guruhda hammaga ko'rinadi (raqobat), botda - oddiy javob."""
+    """TOP 10 guruh (kam bo'lsa - boricha): guruhda hammaga ko'rinadi (raqobat), botda - oddiy javob."""
     await send(bot, msg.chat.id, await top_groups_text(bot))  # guruh xabar limiti orqali
 
 
@@ -1234,8 +1234,7 @@ async def cmd_donate(msg: Message, bot: Bot, command: CommandObject):
     await db.group_settings(msg.chat.id, msg.chat.title or "", msg.chat.username or "")  # guruh qatori va nomi
     if not await db.donate(me.telegram_id, msg.chat.id, n):
         return await msg.reply(texts.NO_DIAMONDS)
-    r = next((x for x in await db.top_groups(None) if x["chat_id"] == msg.chat.id), None)
-    await send(bot, msg.chat.id, texts.donated(me.telegram_id, me.full_name, n, r))
+    await send(bot, msg.chat.id, texts.donated(me.telegram_id, me.full_name, n))
 
 
 @router.message(Command("donate"), PRIVATE)

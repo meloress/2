@@ -213,7 +213,7 @@ def test_pro_menu_diamonds_and_nickname():
         async def cq_answer(text=None, show_alert=False):
             alerts.append(text)
 
-        async def edit_text(text, reply_markup=None):
+        async def edit_text(text, reply_markup=None, **kw):
             shown.append((text, reply_markup))
         cq = lambda data: SimpleNamespace(data=data, from_user=SimpleNamespace(id=u, full_name="Ali", username=None),
                                           message=SimpleNamespace(edit_text=edit_text), answer=cq_answer, bot=None)

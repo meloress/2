@@ -1315,7 +1315,7 @@ def test_top_groups_and_donate():
         replies = []
         msg.reply = lambda text, **kw: asyncio.sleep(0, replies.append(text))
         await handlers.cmd_donate(msg, bot, SimpleNamespace(args="3"))
-        assert (await db.get_user(uid)).diamonds == 2 and "+6 ball" in bot.sent[-1][1]
+        assert (await db.get_user(uid)).diamonds == 2 and "3 💎</b> donat qildi!" in bot.sent[-1][1]
         await handlers.cmd_donate(msg, bot, SimpleNamespace(args="3"))  # 2 ta qoldi - yetmaydi
         assert (await db.get_user(uid)).diamonds == 2 and replies[-1] == texts.NO_DIAMONDS  # hammaga ko'rinadi
         await handlers.cmd_donate(msg, bot, SimpleNamespace(args=""))
@@ -1329,7 +1329,7 @@ def test_top_groups_and_donate():
         await handlers._link_groups(bot, mine())
         assert 'href="https://t.me/ochiqguruh"' in text and "&lt;guruh&gt;" in text
         assert 'href="https://t.me/+inv7772"' in text and Bot.made == 1  # havola bir marta yaratiladi
-        assert rows[-7772]["gems"] == 3 and rows[-7772]["donors"][0][0] == uid and "Homiylar" in text
+        assert rows[-7772]["gems"] == 3 and rows[-7772]["donors"][0][0] == uid and "💎 " in text
         assert "Donor" in text and "(3)" in text
         assert_telegram_html(text)
     asyncio.run(go())

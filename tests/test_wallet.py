@@ -20,7 +20,7 @@ async def gems(uid: int) -> int:
 
 
 def cq(uid: int, data: str, log: list):
-    async def edit_text(text, reply_markup=None):
+    async def edit_text(text, reply_markup=None, **kw):
         log.append(("edit", text, reply_markup))
 
     async def answer(text=None, show_alert=False, **kw):

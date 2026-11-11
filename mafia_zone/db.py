@@ -918,7 +918,7 @@ async def donate(uid: int, chat_id: int, n: int) -> bool:
 DONORS_SHOWN = 3  # har guruh ostida eng ko'p olmos bergan homiylar
 
 
-async def top_groups(limit: int | None = 5) -> list[dict]:
+async def top_groups(limit: int | None = 10) -> list[dict]:
     """Guruhlar reytingi (umumiy): ball = tugagan o'yinlar // 4 + 2 * olmos. /testgame o'yinlari sanalmaydi.
     donors: [(uid, ism, olmos)] - eng ko'p berganlar."""
     from .runner import FAKE_BASE

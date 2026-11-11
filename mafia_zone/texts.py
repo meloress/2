@@ -1210,23 +1210,22 @@ def group_link(r: dict) -> str:
     return f'<a href="{escape(url)}">{name}</a>' if url else f"<b>{name}</b>"
 
 
+TOP_MEDAL = {1: "🥇", 2: "🥈", 3: "🥉", 4: "4️⃣", 5: "5️⃣", 6: "6️⃣", 7: "7️⃣", 8: "8️⃣", 9: "9️⃣", 10: "🔟"}
+
+
 def top_groups(rows: list[dict]) -> str:
-    medal = {1: "🥇", 2: "🥈", 3: "🥉"}
-    lines = ["🏆 <b>TOP 5 guruh</b>", ""]
+    """Faqat nom (havola) va ball, guruhlar orasida bo'sh qator; homiylar - bo'lsa, ostida ixcham qatorda."""
+    blocks = []
     for r in rows:
-        lines.append(f"{medal.get(r['place'], str(r['place']) + '.')} {group_link(r)} — <b>{r['points']} ball</b>\n"
-                     f"      🎮 {r['games']} o'yin · 💎 {r['gems']}")
-        if r.get("donors"):  # eng ko'p olmos berganlar
-            lines.append("      💎 Homiylar: " + ", ".join(f"{mention(u, n)} ({g})" for u, n, g in r["donors"]))
-    if not rows:
-        lines.append("Hali hech bir guruh ball to'plamagan.")
-    lines += ["", "ℹ️ Har 4 ta o'yin = <b>1 ball</b>, 1 💎 = <b>2 ball</b>.", "Guruhingizga olmos: guruhda <code>/donate 5</code>"]
-    return "\n".join(lines)
+        line = f"{TOP_MEDAL.get(r['place'], str(r['place']) + '.')} {group_link(r)} — <b>{r['points']} ball</b>"
+        if r.get("donors"):
+            line += "\n      💎 " + ", ".join(f"{mention(u, n)} ({g})" for u, n, g in r["donors"])
+        blocks.append(line)
+    return "🏆 <b>TOP guruhlar</b>\n\n" + ("\n\n".join(blocks) or "Hali hech bir guruh ball to'plamagan.")
 
 
-def donated(uid: int, name: str, n: int, r: dict | None) -> str:
-    where = f"\n🏆 Guruh: <b>{r['points']} ball</b>, reytingda <b>{r['place']}-o'rin</b>" if r else ""
-    return f"💎 {mention(uid, name)} guruhga <b>{n} olmos</b> sovg'a qildi! <b>+{n * 2} ball</b>{where}"
+def donated(uid: int, name: str, n: int) -> str:
+    return f"🎁 {mention(uid, name)} guruhga <b>{n} 💎</b> donat qildi!"
 
 
 def month_name(key: str) -> str:

@@ -20,4 +20,7 @@ def test_top_groups_compact():
     text = texts.top_groups([row(1, "Admiral guruh", "adm"), row(2, "<b>"), row(4, "A, B", inv="https://t.me/+x")])
     text = text.replace(texts.USER_MARK, "")
     assert '🥇 <a href="https://t.me/adm">Admiral guruh</a> — <b>9 ball</b>' in text and "&lt;b&gt;" in text
-    assert '4. <a href="https://t.me/+x">A, B</a>' in text  # havolasiz guruh - oddiy qalin nom
+    assert '4️⃣ <a href="https://t.me/+x">A, B</a> — <b>9 ball</b>' in text and "o'yin" not in text  # faqat ball
+    assert "</a> — <b>9 ball</b>\n\n🥈" in text  # guruhlar orasida bo'sh qator
+    ten = texts.top_groups([row(i, f"g{i}") for i in range(1, 11)])
+    assert "🔟 <b>g10</b>" in ten.replace(texts.USER_MARK, "")

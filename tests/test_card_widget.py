@@ -189,7 +189,7 @@ def test_card_screen_back_from_widget_deletes_it():
     from aiogram.methods import EditMessageText
     log = []
 
-    async def edit_text(text, reply_markup=None):
+    async def edit_text(text, reply_markup=None, **kw):
         raise TelegramBadRequest(EditMessageText(text="x"), "there is no text in the message to edit")
 
     async def answer(text=None, reply_markup=None, **kw):

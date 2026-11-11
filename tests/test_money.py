@@ -276,7 +276,7 @@ def test_begin_allowed_for_admins_and_opener():
 def test_menu_sections_have_back_button():
     async def t():
         edits = []
-        async def edit_text(text, reply_markup=None):
+        async def edit_text(text, reply_markup=None, **kw):
             edits.append((text, reply_markup))
         async def answer(*a, **kw):
             pass
