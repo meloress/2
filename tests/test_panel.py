@@ -352,3 +352,28 @@ def test_panel_js_never_appends_raw_arrays():
     from pathlib import Path
     js = (Path(__file__).resolve().parent.parent / "mafia_zone" / "panel_static" / "app.js").read_text(encoding="utf-8")
     assert not re.findall(r"\.append\((?!\.\.\.)[\w.]+\.(?:map|filter)\(", js)
+
+
+def test_panel_couple_lock_set_and_clear():
+    """💍 Para qulfi panelda: faqat bosh admin; faqat hozirgi para qulflanadi; olib tashlansa /uncouple ishlaydi."""
+    async def s(c):
+        csrf = await login(c, OWNER)
+        hdr = {"X-CSRF": csrf}
+        a, b, x = 7_881_001, 7_881_002, 7_881_003
+        for u in (a, b, x):
+            await db.upsert_user(u, f"u{u}", None)
+        await db.break_couple(a)
+        await db.break_couple(x)
+        assert await db.make_couple(a, b)
+        assert (await c.post("/api/couple-lock", json={"a": a, "b": x}, headers=hdr)).status == 400  # para emas
+        assert (await c.post("/api/couple-lock", json={"a": a, "b": a}, headers=hdr)).status == 400
+        r = await c.post("/api/couple-lock", json={"a": str(a), "b": b}, headers=hdr)
+        assert r.status == 200 and {u["id"] for u in (await r.json())["lock"]} == {a, b}
+        assert await db.couple_lock() == {a, b}
+        r = await c.post("/api/couple-lock", json={"clear": True}, headers=hdr)
+        assert r.status == 200 and (await r.json())["lock"] == [] and await db.couple_lock() == set()
+        assert any(x["action"] == "couple_lock" for x in (await (await c.get("/api/log")).json())["items"])
+        mcsrf = await login(c, MOD)
+        assert (await c.get("/api/couple-lock")).status == 403
+        assert (await c.post("/api/couple-lock", json={"clear": True}, headers={"X-CSRF": mcsrf})).status == 403
+    run(s)

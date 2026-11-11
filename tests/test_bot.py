@@ -1329,7 +1329,6 @@ def test_top_groups_and_donate():
         await handlers._link_groups(bot, mine())
         assert 'href="https://t.me/ochiqguruh"' in text and "&lt;guruh&gt;" in text
         assert 'href="https://t.me/+inv7772"' in text and Bot.made == 1  # havola bir marta yaratiladi
-        assert rows[-7772]["gems"] == 3 and rows[-7772]["donors"][0][0] == uid and "💎 " in text
-        assert "Donor" in text and "(3)" in text
+        assert rows[-7772]["gems"] == 3 and "Donor" not in text and "💎" not in text  # ro'yxatda faqat nom va ball
         assert_telegram_html(text)
     asyncio.run(go())

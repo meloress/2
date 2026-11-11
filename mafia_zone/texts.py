@@ -1214,13 +1214,9 @@ TOP_MEDAL = {1: "🥇", 2: "🥈", 3: "🥉", 4: "4️⃣", 5: "5️⃣", 6: "6�
 
 
 def top_groups(rows: list[dict]) -> str:
-    """Faqat nom (havola) va ball, guruhlar orasida bo'sh qator; homiylar - bo'lsa, ostida ixcham qatorda."""
-    blocks = []
-    for r in rows:
-        line = f"{TOP_MEDAL.get(r['place'], str(r['place']) + '.')} {group_link(r)} — <b>{r['points']} ball</b>"
-        if r.get("donors"):
-            line += "\n      💎 " + ", ".join(f"{mention(u, n)} ({g})" for u, n, g in r["donors"])
-        blocks.append(line)
+    """Faqat medal, nom (havola) va ball, guruhlar orasida bo'sh qator - boshqa hech narsa (egasining talabi)."""
+    blocks = [f"{TOP_MEDAL.get(r['place'], str(r['place']) + '.')} {group_link(r)} — <b>{r['points']} ball</b>"
+              for r in rows]
     return "🏆 <b>TOP guruhlar</b>\n\n" + ("\n\n".join(blocks) or "Hali hech bir guruh ball to'plamagan.")
 
 

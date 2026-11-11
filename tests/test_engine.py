@@ -359,9 +359,10 @@ def test_konchi_dig_distribution():
     dollars = [x for x, _ in loot]
     gems = [y for _, y in loot]
     assert min(dollars) >= 10 and max(dollars) <= 2000 and max(dollars) > 1000
-    assert 0.003 < sum(x > 500 for x in dollars) / len(loot) < 0.02  # 500 dan tepasi - ~1%
-    assert 0.55 < sum(x <= 50 for x in dollars) / len(loot) < 0.65
-    assert set(gems) <= {0, 1, 2, 3} and 0.92 < gems.count(0) / len(loot) < 0.96 and gems.count(3) < gems.count(2)
+    assert 0.04 < sum(x > 500 for x in dollars) / len(loot) < 0.06  # 500 dan tepasi - 5%
+    assert 0.18 < sum(x <= 50 for x in dollars) / len(loot) < 0.22
+    assert 0.38 < sum(150 < x <= 300 for x in dollars) / len(loot) < 0.42  # 151-300 - 40%
+    assert set(gems) <= {0, 1, 2, 3} and 0.75 < gems.count(0) / len(loot) < 0.79 and gems.count(3) < gems.count(2)
 
 
 # ---------- kun ----------
@@ -1298,3 +1299,12 @@ def test_assign_rotates_roles():
     assert again / 400 < 0.04, again
     assert all(35 <= don[u] <= 65 for u in range(8)), don
     assert tinch_streak <= 5, tinch_streak
+
+
+def test_konchi_always_from_15():
+    from mafia_zone.engine.setup import KONCHI_ALWAYS
+    for n in range(KONCHI_ALWAYS, 61):
+        for seed in range(20):
+            assert "konchi" in deal(n, random.Random(seed)), (n, seed)
+    assert all("konchi" not in deal(20, random.Random(s), frozenset({"konchi"})) for s in range(20))  # o'chirilgan
+    assert not all("konchi" in deal(14, random.Random(s)) for s in range(40))  # 14 da - tasodifiy

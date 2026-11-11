@@ -247,6 +247,19 @@ async def make_couple(a: int, b: int) -> bool:
     return True
 
 
+async def set_couple_lock(pair: list[int] | None) -> None:
+    """Hazil qulfini qo'yish (panel, bosh admin) yoki None - olib tashlash (qator o'chadi)."""
+    async with Session.begin() as s:
+        row = await s.get(Setting, "couple_lock")
+        if pair is None:
+            if row:
+                await s.delete(row)
+        elif row:
+            row.value = {"v": list(pair)}
+        else:
+            s.add(Setting(key="couple_lock", value={"v": list(pair)}))
+
+
 async def couple_lock() -> set[int]:
     """Hazil qulfi (settings "couple_lock" = {"v": [uid1, uid2]}, ikkalasi rozi): bu juft /uncouple qila olmaydi.
     Id'lar faqat bazada (repoda emas); qatorni o'chirsa - qulf yo'q."""
@@ -915,12 +928,8 @@ async def donate(uid: int, chat_id: int, n: int) -> bool:
     return True
 
 
-DONORS_SHOWN = 3  # har guruh ostida eng ko'p olmos bergan homiylar
-
-
 async def top_groups(limit: int | None = 10) -> list[dict]:
-    """Guruhlar reytingi (umumiy): ball = tugagan o'yinlar // 4 + 2 * olmos. /testgame o'yinlari sanalmaydi.
-    donors: [(uid, ism, olmos)] - eng ko'p berganlar."""
+    """Guruhlar reytingi (umumiy): ball = tugagan o'yinlar // 4 + 2 * olmos. /testgame o'yinlari sanalmaydi."""
     from .runner import FAKE_BASE
     fake = select(GamePlayer.game_id).where(GamePlayer.user_id >= FAKE_BASE)
     async with Session() as s:
@@ -928,17 +937,10 @@ async def top_groups(limit: int | None = 10) -> list[dict]:
                                       .where(GameRow.status == "finished", GameRow.id.not_in(fake))
                                       .group_by(GameRow.chat_id))).all())
         groups = (await s.scalars(select(Group))).all()
-        given = func.sum(Donation.gems)
-        don = (await s.execute(select(Donation.chat_id, Donation.user_id, User.full_name, given)
-                               .join(User, User.telegram_id == Donation.user_id)
-                               .group_by(Donation.chat_id, Donation.user_id, User.full_name)
-                               .order_by(given.desc(), Donation.user_id))).all()
-    donors: dict[int, list] = {}
-    for chat, uid, name, n in don:
-        donors.setdefault(chat, []).append((uid, name or "?", int(n)))
+        gems = dict((await s.execute(select(Donation.chat_id, func.sum(Donation.gems))
+                                     .group_by(Donation.chat_id))).all())
     rows = [{"chat_id": g.chat_id, "title": g.title or "?", "username": g.username, "invite": g.invite,
-             "games": games.get(g.chat_id, 0), "gems": sum(n for *_, n in donors.get(g.chat_id, [])),
-             "donors": donors.get(g.chat_id, [])[:DONORS_SHOWN]} for g in groups]
+             "games": games.get(g.chat_id, 0), "gems": int(gems.get(g.chat_id) or 0)} for g in groups]
     for r in rows:
         r["points"] = r["games"] // GAMES_PER_POINT + GEM_POINTS * r["gems"]
     rows = [r for r in rows if r["points"] > 0]

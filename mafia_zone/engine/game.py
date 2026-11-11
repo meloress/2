@@ -26,12 +26,15 @@ def couple_pairs(uids: list[int], partners: dict[int, int]) -> dict[int, int]:
     return {u: p for u, p in partners.items() if u in inside and p in inside and partners.get(p) == u}
 
 # Konchi o'ljasi: (ehtimol, dan, gacha). Foizlar o'yinchilarga ko'rsatilmaydi
-DIG_DOLLARS = [(0.60, 10, 50), (0.25, 51, 150), (0.10, 151, 300), (0.04, 301, 500), (0.008, 501, 1000),
-               (0.002, 1001, 2000)]
+# 2026-11-11 egasining talabi: 151-300 - 40%, qolganlari shunga moslab (avval 60/25/10/4/0.8/0.2)
+DIG_DOLLARS = [(0.20, 10, 50), (0.25, 51, 150), (0.40, 151, 300), (0.10, 301, 500), (0.04, 501, 1000),
+               (0.01, 1001, 2000)]
 HUNT_FINE = (100, 200)  # Ovchi tinch aholini o'ldirsa: jarima oralig'i (💵), pul o'ldirilganga o'tadi
 DIG_DEATH = 0.10  # Konchi har qazishda shu ehtimol bilan tunnel ostida qoladi (🪖 Temir qalqon bir marta saqlaydi)
 TUNNELS = 9  # "jasadi N-tunneldan topildi": N shu oraliqdan
-DIG_DIAMONDS =[(0.94, 0), (0.05, 1), (0.008, 2), (0.002, 3)]
+# Prod (2026-11-04..11): o'yin o'rtacha 3.45 tun, Konchi ~3 marta qazadi -> avvalgi 6% bilan o'yinda ~15% olmos
+# chiqardi ("umuman tushmayapti"). Endi qazishda 23% -> Konchi o'yinlarining ~yarmida kamida 1 💎
+DIG_DIAMONDS = [(0.77, 0), (0.18, 1), (0.04, 2), (0.01, 3)]
 
 
 def dig_loot(rng: random.Random) -> tuple[int, int]:

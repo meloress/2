@@ -15,6 +15,7 @@ KILLER_NEUTRALS = {"qotil", "gazabkor", "sehrgar", "vampir"}
 KILLERS_FROM = 12  # har tunda o'ldiradigan neytrallar shu sondan
 BIG_GAME = 30  # shu sondan ba'zi rollar 3 tagacha takrorlanadi
 REPEATABLE = ["daydi", "kezuvchi", "ovchi", "janob"]
+KONCHI_ALWAYS = 15  # shu sondan Konchi har doim tushadi (guruhda o'chirilmagan bo'lsa) - egasining talabi
 MAX_KILLERS = 1  # prod (2026-11, 12+ kishi): 2 qotil neytralli o'yinda tinchlar 29% yutardi (0-1 tasida 50-56%)
 # Prod (2026-10-07..11-11, 926 o'yin): tinchlar 5/6/10 kishida ~66%, 7 kishida 43% yutardi -> maxsus tinch rollar
 # soni shu sonlarda 1 taga kamroq/ko'proq. ponytail: qo'lda jadval; yangi statistika bilan qayta ko'rib chiqiladi
@@ -45,8 +46,11 @@ def deal(n: int, rng: random.Random, disabled: frozenset = frozenset()) -> list[
     # Neytrallar
     k = sum(n >= x for x in (8, 14, 20, 26, 34, 42, 50))  # 60 kishida 7 neytral
     neutrals = [x for x in pool(NEUTRAL_POOL) if n >= KILLERS_FROM or x not in KILLER_NEUTRALS]
-    picked = []
-    for x in rng.sample(neutrals, len(neutrals)):  # qotil neytrallar ko'pi bilan MAX_KILLERS ta
+    picked, order = [], rng.sample(neutrals, len(neutrals))
+    if n >= KONCHI_ALWAYS and "konchi" in order:  # navbatda birinchi - albatta tanlanadi
+        order.remove("konchi")
+        order.insert(0, "konchi")
+    for x in order:  # qotil neytrallar ko'pi bilan MAX_KILLERS ta
         if len(picked) < k and (x not in KILLER_NEUTRALS or sum(y in KILLER_NEUTRALS for y in picked) < MAX_KILLERS):
             picked.append(x)
     roles += picked

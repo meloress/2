@@ -682,6 +682,39 @@ async def api_cards_save(req: web.Request) -> web.Response:
     return ok({"cards": config.CARDS, "types": list(config.CARD_TYPES), "env": bool(config.CARD_NUMBER)})
 
 
+# ---------- 💍 para qulfi (hazil): bu juft /uncouple qila olmaydi ----------
+async def _lock_view() -> dict:
+    users = []
+    for uid in sorted(await db.couple_lock()):
+        u = await db.get_user(uid)
+        users.append({"id": uid, "name": (u.full_name if u else "") or "?"})
+    return {"lock": users}
+
+
+async def api_couple_lock(req: web.Request) -> web.Response:
+    need(req, "owner")
+    return ok(await _lock_view())
+
+
+async def api_couple_lock_save(req: web.Request) -> web.Response:
+    """{"a": id, "b": id} - qulflash (ikkalasi hozir para bo'lishi kerak); {"clear": true} - olib tashlash."""
+    need(req, "owner")
+    d = await body(req)
+    if d.get("clear"):
+        await db.set_couple_lock(None)
+        await audit(req, "couple_lock", "", "olib tashlandi")
+        return ok(await _lock_view())
+    a = as_int(d.get("a"), 1, 10 ** 15, "1-o'yinchi ID")
+    b = as_int(d.get("b"), 1, 10 ** 15, "2-o'yinchi ID")
+    if a == b:
+        raise Bad("Ikki xil o'yinchi kerak")
+    if await db.partner(a) != b:
+        raise Bad("Bu ikkisi hozir para emas: avval guruhda /couple bilan para bo'lishsin")
+    await db.set_couple_lock([a, b])
+    await audit(req, "couple_lock", f"{a},{b}", "qulflandi")
+    return ok(await _lock_view())
+
+
 # ---------- adminlar va jurnal ----------
 async def api_admins(req: web.Request) -> web.Response:
     need(req, "owner")
@@ -975,6 +1008,8 @@ def make_app() -> web.Application:
     r.add_post("/api/economy", api_economy_save)
     r.add_get("/api/cards", api_cards)
     r.add_post("/api/cards", api_cards_save)
+    r.add_get("/api/couple-lock", api_couple_lock)
+    r.add_post("/api/couple-lock", api_couple_lock_save)
     r.add_get("/api/admins", api_admins)
     r.add_post("/api/admins", api_admin_add)
     r.add_delete("/api/admins/{uid}", api_admin_remove)

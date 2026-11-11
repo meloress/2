@@ -1111,11 +1111,12 @@
     const err = h("div", { class: "err", role: "alert" });
     const adminCard = owner ? h("section", { class: "card f1" }, h("h2", { text: "Adminlar" }), skel(3, 44)) : null;
     const cardsCard = owner ? h("section", { class: "card f1" }, h("h2", { text: "To'lov kartalari" }), skel(4, 40)) : null;
+    const lockCard = owner ? h("section", { class: "card f1" }, h("h2", { text: "💍 Para qulfi" }), skel(2, 40)) : null;
     const logCard = h("section", { class: owner ? "card f1" : "card" }, h("h2", { text: "Amallar jurnali" }), skel(6, 30));
     root.append(head("Iqtisod va adminlar", owner ? "O'zgarishlar darhol kuchga kiradi — botni qayta ishga tushirish shart emas" : "Ko'rish rejimi: o'zgartirish faqat bosh admin uchun",
       owner ? resetBtn : null, owner ? saveBtn : null), err,
       h("div", { class: "row", style: { alignItems: "flex-start" } }, econCard, shopCard),
-      cardsCard ? h("div", { class: "row", style: { alignItems: "flex-start" } }, cardsCard) : null,
+      cardsCard ? h("div", { class: "row", style: { alignItems: "flex-start" } }, cardsCard, lockCard) : null,
       h("div", { class: "row", style: { alignItems: "flex-start" } }, adminCard, logCard));
 
     let base = null;
@@ -1274,7 +1275,41 @@
           + (d.env ? " O'zbekiston kartasi bo'sh bo'lsa — Railway'dagi CARD_NUMBER ishlatiladi." : "") }),
         h("div", { class: "stack gap-8" }, blocks), cerr, h("div", { class: "inline" }, save));
     }
-    loadEcon(); loadAdmins(); loadCards(); loadLog(0);
+    // 💍 Para qulfi (hazil, ikkalasi rozi): qulflangan juft /uncouple qila olmaydi ("Siz parani uzolmaysiz!").
+    async function loadLock() {
+      if (!lockCard) return;
+      let d;
+      try { d = await api("/api/couple-lock"); } catch (e) { if (alive(view)) clear(lockCard).append(h("h2", { text: "💍 Para qulfi" }), errorCard(e, loadLock)); return; }
+      if (!alive(view)) return;
+      const lerr = h("div", { class: "err", role: "alert" });
+      const send = (payload, btn, msg) => busy(btn, async () => {
+        lerr.textContent = "";
+        try { await api("/api/couple-lock", { method: "POST", json: payload }); toast(msg); loadLock(); loadLog(0); }
+        catch (e) { lerr.textContent = e.message; }
+      });
+      const body = [];
+      if (d.lock.length) {
+        const off = h("button", { type: "button", class: "btn danger", text: "Qulfni olib tashlash" });
+        off.addEventListener("click", () => send({ clear: true }, off, "Qulf olib tashlandi: endi /uncouple ishlaydi"));
+        body.push(h("p", { text: "Hozir qulflangan: " + d.lock.map((u) => `${u.name} (${u.id})`).join(" + ") }), h("div", { class: "inline" }, off));
+      } else {
+        body.push(h("p", { class: "hint", text: "Hozir hech qaysi juft qulflanmagan." }));
+      }
+      const a = h("input", { class: "input", id: "lk-a", placeholder: "Telegram ID", inputmode: "numeric", maxlength: 16, autocomplete: "off" });
+      const b = h("input", { class: "input", id: "lk-b", placeholder: "Telegram ID", inputmode: "numeric", maxlength: 16, autocomplete: "off" });
+      const on = h("button", { type: "button", class: "btn primary", text: d.lock.length ? "Boshqa juftni qulflash" : "Qulflash" });
+      on.addEventListener("click", () => {
+        if (!/^\d+$/.test(a.value.trim()) || !/^\d+$/.test(b.value.trim())) { lerr.textContent = "Ikkala ID ni raqam bilan kiriting"; return; }
+        send({ a: a.value.trim(), b: b.value.trim() }, on, "Qulflandi: bu juft endi /uncouple qila olmaydi");
+      });
+      clear(lockCard).append(h("h2", { text: "💍 Para qulfi" }),
+        h("p", { class: "hint", text: "Hazil uchun (ikkalasi rozi bo'lsa): qulflangan juft /uncouple qila olmaydi. Bir vaqtda bitta juft. Ikkalasi hozir para bo'lishi kerak." }),
+        ...body,
+        h("div", { class: "inline", style: { alignItems: "flex-end", flexWrap: "wrap" } },
+          h("div", { class: "field", style: { flex: "1 1 160px" } }, h("label", { for: "lk-a", text: "1-o'yinchi ID" }), a),
+          h("div", { class: "field", style: { flex: "1 1 160px" } }, h("label", { for: "lk-b", text: "2-o'yinchi ID" }), b), on), lerr);
+    }
+    loadEcon(); loadAdmins(); loadCards(); loadLock(); loadLog(0);
   }
 
   boot();
