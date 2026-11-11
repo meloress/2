@@ -5,3 +5,4 @@ mafia.db
 .pytest_cache/
 assets/
 emojies/
+.env.test

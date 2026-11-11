@@ -616,6 +616,72 @@ async def api_economy_save(req: web.Request) -> web.Response:
     return ok({"values": db.economy()})
 
 
+# ---------- to'lov kartalari ----------
+CARD_SLOTS = {"uz": "O'zbekiston kartasi", "xorij": "Chet el kartasi"}
+
+
+def _plain(v, limit: int) -> str:
+    """Bir qatorli matn: boshqaruv belgilarisiz, ortiqcha bo'shliqsiz (karta va matnda ko'rinadi)."""
+    return " ".join("".join(c for c in str(v or "") if c.isprintable()).split())[:limit]
+
+
+def clean_card(d, label: str) -> dict | None:
+    """Paneldan kelgan karta. Hammasi bo'sh - None (karta o'chiriladi). Raqam/ism/telefon tekshiriladi."""
+    if not isinstance(d, dict):
+        raise Bad(f"{label}: noto'g'ri ma'lumot")
+    n = "".join(c for c in str(d.get("n") or "") if c.isdigit())
+    o, b, k = _plain(d.get("o"), 40), _plain(d.get("b"), 30), _plain(d.get("k"), 16)
+    t = re.sub(r"[\s()-]", "", str(d.get("t") or ""))
+    if not (n or o or b or t):
+        return None
+    if not 13 <= len(n) <= 19:
+        raise Bad(f"{label}: karta raqami 16 ta raqamdan iborat bo'lishi kerak")
+    if len(o) < 3:
+        raise Bad(f"{label}: karta egasining ism familiyasini yozing")
+    if t and not re.fullmatch(r"\+?\d{9,15}", t):
+        raise Bad(f"{label}: telefon raqami noto'g'ri (masalan +998901234567)")
+    if k and k not in config.CARD_TYPES:
+        raise Bad(f"{label}: karta turini ro'yxatdan tanlang")
+    c = {"n": n, "o": o}
+    if t:
+        c["t"] = t if t.startswith("+") else "+" + t
+    if b:
+        c["b"] = b
+    if k:
+        c["k"] = k
+    return c
+
+
+def _card_note(c: dict | None) -> str:
+    if not c:
+        return "o'chirildi"
+    return "···· " + c["n"][-4:] + "".join(f", {c[x]}" for x in ("b", "k") if c.get(x))
+
+
+async def api_cards(req: web.Request) -> web.Response:
+    need(req, "owner")
+    return ok({"cards": config.CARDS, "types": list(config.CARD_TYPES), "env": bool(config.CARD_NUMBER)})
+
+
+async def api_cards_save(req: web.Request) -> web.Response:
+    need(req, "owner")
+    d = await body(req)
+    if not d or set(d) - set(CARD_SLOTS):
+        raise Bad("Noto'g'ri so'rov")
+    old = {k: dict(v) for k, v in config.CARDS.items()}
+    new = dict(old)
+    for slot, v in d.items():
+        c = clean_card(v, CARD_SLOTS[slot])
+        if c:
+            new[slot] = c
+        else:
+            new.pop(slot, None)
+    await db.save_settings({"cards": new})
+    changes = [f"{CARD_SLOTS[k]}: {_card_note(new.get(k))}" for k in CARD_SLOTS if old.get(k) != new.get(k)]
+    await audit(req, "cards", "", "; ".join(changes) or "o'zgarishsiz")  # jurnalda raqamning faqat oxiri
+    return ok({"cards": config.CARDS, "types": list(config.CARD_TYPES), "env": bool(config.CARD_NUMBER)})
+
+
 # ---------- adminlar va jurnal ----------
 async def api_admins(req: web.Request) -> web.Response:
     need(req, "owner")
@@ -907,6 +973,8 @@ def make_app() -> web.Application:
     r.add_post("/api/groups/{chat}/leave", api_group_leave)
     r.add_get("/api/economy", api_economy)
     r.add_post("/api/economy", api_economy_save)
+    r.add_get("/api/cards", api_cards)
+    r.add_post("/api/cards", api_cards_save)
     r.add_get("/api/admins", api_admins)
     r.add_post("/api/admins", api_admin_add)
     r.add_delete("/api/admins/{uid}", api_admin_remove)

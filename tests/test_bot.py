@@ -24,8 +24,15 @@ class FakeBot:
 
     async def send_message(self, chat_id, text, **kw):
         self._id += 1
+        if e := kw.get("ephemeral_message_parameters"):  # guruhda faqat bitta odamga ko'rinadi - alohida yoziladi
+            self.eph = getattr(self, "eph", []) + [(chat_id, e.receiver_user_id, text)]
+            return SimpleNamespace(message_id=0, ephemeral_message_id=self._id)
         self.sent.append((chat_id, text))
         return SimpleNamespace(message_id=self._id)
+
+    async def delete_ephemeral_message(self, chat_id, receiver_user_id, ephemeral_message_id):
+        self.eph_deleted = getattr(self, "eph_deleted", []) + [(chat_id, receiver_user_id, ephemeral_message_id)]
+        return True
 
     async def edit_message_text(self, text, chat_id, message_id, **kw):
         self.sent.append((chat_id, text))
@@ -759,6 +766,35 @@ def test_unanswered_prompts_deleted_when_phase_ends():
         await r._step()
         await asyncio.sleep(0.2)  # fondagi o'chirish
         assert sorted(bot.deleted) == sorted((u, m) for u, m in sent.items() if u != 1) and not r.prompts
+        r.close()
+    asyncio.run(go())
+
+
+def test_group_ephemeral_prompts_mirror_private_ones():
+    """Ovoz tugmalari guruhda ham chiqadi, faqat egasiga (ephemeral). Guruhdagisi bosilsa - shaxsiy chatdagi o'chadi;
+    shaxsiydagisi bosilsa - guruhdagi o'chadi; faza oxirida guruhdagilarning hammasi o'chadi."""
+    from mafia_zone.engine.game import Game
+
+    async def go():
+        await db.init()
+        bot = FakeBot()
+        r = runner.Runner(bot, -4647, {"vote": 10})
+        r.game, r.game_id = Game.create(-4647, [(i, f"p{i}") for i in range(1, 7)], 3), 79
+        r.game.phase = VOTING
+        await r._intro(VOTING, 10)
+        voters = {p.uid for p in r.game.alive() if r.game.can_vote(p.uid)}
+        assert {u for c, u, _ in bot.eph if c == -4647} == voters == set(r.eph)  # guruh lentasiga tushmaydi
+        pm1, e2 = r.prompts[1], r.eph[2]
+        assert await r.on_vote(1, r.game.day, 0)
+        await r.drop_prompt(1, via_eph=True)  # 1 - guruhdagi tugmani bosdi: shaxsiydagi o'chadi
+        assert (1, pm1) in bot.deleted
+        assert await r.on_vote(2, r.game.day, 0)
+        await r.drop_prompt(2, via_eph=False)  # 2 - shaxsiydagini bosdi: guruhdagi o'chadi
+        assert (-4647, 2, e2) in bot.eph_deleted and 2 not in r.eph
+        r.meta["deadline"] = 0
+        await r._step()
+        await asyncio.sleep(0.2)
+        assert {u for _, u, _ in bot.eph_deleted} == voters and not r.eph
         r.close()
     asyncio.run(go())
 

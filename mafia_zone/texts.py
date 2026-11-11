@@ -640,7 +640,7 @@ def day_start(g: Game, secs: int) -> str:
 
 def vote_prompt(g: Game, secs: int) -> str:
     return (f"⚖️ <b>Aybdorni aniqlash va jazolash vaqti keldi!</b>\n"
-            f"🗳 Ovoz berish uchun botga o'ting.\n⏳ Vaqt: <b>{dur(secs)}</b>")
+            f"🗳 Ovoz tugmalari shu yerda — faqat sizga ko'rinadi (yoki botga o'ting).\n⏳ Vaqt: <b>{dur(secs)}</b>")
 
 
 SKIP_BTN = "🤐 Hech kimga ovoz bermayman"
@@ -998,6 +998,7 @@ def gem_shop(target: str | None = None) -> str:
 
 STARS_PAY_BTN = "⭐ Stars orqali to'lash"
 COPY_CARD_BTN = "📋 Kartani nusxalash"
+COPY_CARD_ABROAD_BTN = "📋 Chet el kartasini nusxalash"
 CANCEL_ORDER_BTN = "❌ Bekor qilish"
 CHECK_NEED_PHOTO = "📸 Iltimos, to'lov chekini <b>rasm (skrinshot)</b> qilib yuboring."
 APPROVE_BTN = "✅ Tasdiqlash — pul keldi"
@@ -1005,6 +1006,7 @@ REJECT_WHY = {"n": "❌ Pul kelmadi", "s": "❌ Summa boshqa", "c": "❌ Chek em
 REJECT_TELL = {"n": "pul kartaga kelmadi", "s": "kelgan summa buyurtmadagidan boshqa",
                "c": "yuborilgan rasm to'lov cheki emas"}  # foydalanuvchiga sabab
 ORDER_CANCELLED = "❌ <b>Buyurtma bekor qilindi.</b>"
+ORDER_CANCELLED_SHORT = "❌ Buyurtma bekor qilindi"
 ORDER_DONE_ALREADY = "Bu buyurtma allaqachon ko'rib chiqilgan"
 
 
@@ -1016,18 +1018,39 @@ def order_no(oid: int) -> str:
     return f"TOP-{oid}"
 
 
-def card_pay(o, card: str, target: str | None = None) -> str:
-    """To'lov ekrani. target - sovg'a bo'lsa qabul qiluvchi (mention)."""
+def _num(card: str) -> str:
+    return " ".join(card[i:i + 4] for i in range(0, len(card), 4))
+
+
+def _card_lines(c: dict) -> str:
+    """Karta raqami, bank/turi va egasi (paneldan - escape), telefon (chet el kartasida)."""
+    about = " · ".join(escape(x) for x in (c.get("b", ""), c.get("k", ""), c.get("o", "")) if x)
+    return (f"<code>{_num(c['n'])}</code>" + (f"\n     {about}" if about else "")
+            + (f"\n     📱 Bankka ulangan raqam: <code>{escape(c['t'])}</code>" if c.get("t") else ""))
+
+
+def card_pay(o, cards: dict, target: str | None = None) -> str:
+    """To'lov ekrani (vidjet chiqmasa - shu matn). cards - config.cards(); target - sovg'a oluvchi (mention)."""
     where = f"do'stingizga: {target}" if target else "hisobingizga"
-    num = " ".join(card[i:i + 4] for i in range(0, len(card), 4))
+    if set(cards) == {"uz"}:
+        lines = f"💳 <b>Karta</b>: {_card_lines(cards['uz'])}\n"
+    else:
+        lines = "".join(f"{label}: {_card_lines(cards[k])}\n" for k, label in
+                        (("uz", "🇺🇿 <b>O'zbekistondan</b>"), ("xorij", "🌍 <b>Chet eldan</b> (Rossiya va b.)"))
+                        if k in cards)
     return ("💳 <b>To'lovni amalga oshiring</b>\n\n"
             f"📦 💎 {o.diamonds} <b>olmos</b> → {where}\n\n"
-            f"💳 <b>Karta</b>: <code>{num}</code>\n"
+            + lines +
             f"💰 <b>To'lov summasi</b>: {som(o.amount)} so'm\n"
             f"🆔 <b>ID</b>: <code>{order_no(o.id)}</code>\n\n"
             "⚠️ <b>Muhim</b>: aynan shu summani yuboring (ko'p ham, kam ham emas).\n"
             "📸 To'lagach, <b>chekni (skrinshot)</b> shu yerga yuboring — admin tekshirib, olmosni hisobga tushiradi.\n\n"
             f"⏱ To'lov <b>{config.CARD_ORDER_MIN}</b> daqiqa amal qiladi.")
+
+
+# To'lov kartasi (vidjet) ostidagi matn: karta raqami va summa kartaning o'zida - bu yerda takrorlanmaydi
+# (egasining istagi, 2026-11-11). Vidjet chiqmasa - to'liq matnli ekran (card_pay) yuboriladi.
+CARD_CAPTION = "📸 To'lagach, <b>chekni (skrinshot)</b> shu chatga yuboring — admin tekshirib, olmosni hisobga tushiradi."
 
 
 def order_wait(o) -> str:
@@ -1050,7 +1073,8 @@ def order_admin(o, payer: str, username: str | None, target: str | None, dup: in
             f"👤 {payer}{at} · <code>{o.payer}</code>\n"
             f"💎 {o.diamonds} olmos" + (f" → 🎁 {target}" if target else "") + "\n"
             f"💰 Kutilgan summa: <b>{som(o.amount)} so'm</b>\n"
-            f"💳 Karta: ···· {config.CARD_NUMBER[-4:]}\n\n"
+            "💳 Karta: " + " / ".join(("🌍 " if k == "xorij" else "") + "···· " + c["n"][-4:]
+                                    for k, c in config.cards().items()) + "\n\n"
             "Bank ilovangizda <b>aynan shu summa</b> kelganini tekshiring.")
 
 

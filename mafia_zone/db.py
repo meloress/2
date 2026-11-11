@@ -459,7 +459,8 @@ COLUMNS = [("users", "last_seen", "TIMESTAMP WITH TIME ZONE"), ("users", "leave_
            ("users", "pro_reminded", "BOOLEAN NOT NULL DEFAULT FALSE"),
            ("giveaways", "currency", "VARCHAR(16) NOT NULL DEFAULT 'dollars'"),
            ("groups", "username", "VARCHAR(64) NOT NULL DEFAULT ''"),
-           ("users", "pro_tier", "INTEGER"), ("users", "title", "VARCHAR(64)")]
+           ("users", "pro_tier", "INTEGER"), ("users", "title", "VARCHAR(64)"),
+           ("card_orders", "msg_id", "BIGINT")]
 
 
 def _migrate(conn) -> None:
@@ -604,6 +605,7 @@ class CardOrder(Base):
     check_file: Mapped[str | None] = mapped_column(String(256))  # chek (rasm/fayl) Telegram file_id
     check_uid: Mapped[str | None] = mapped_column(String(64), index=True)  # file_unique_id: bir chek ikki marta
     reason: Mapped[str | None] = mapped_column(String(16))  # rad etish sababi: n / s / c (texts.REJECT_WHY)
+    msg_id: Mapped[int | None] = mapped_column(BigInteger)  # to'lov kartasi (vidjet): holati shu xabarda yangilanadi
 
 
 async def create_card_order(payer: int, target: int, diamonds: int) -> CardOrder | None:
@@ -642,6 +644,12 @@ async def move_card_order(oid: int, frm: str, to: str, **values) -> bool:
         r = await s.execute(update(CardOrder).where(CardOrder.id == oid, CardOrder.status == frm)
                             .values(status=to, **values))
         return r.rowcount == 1
+
+
+async def set_order_msg(oid: int, msg_id: int) -> None:
+    """To'lov kartasi (vidjet) xabari: chek/tasdiq/rad bo'lganda holati shu xabarda yangilanadi."""
+    async with Session.begin() as s:
+        await s.execute(update(CardOrder).where(CardOrder.id == oid).values(msg_id=msg_id))
 
 
 async def approve_card_order(oid: int, admin: int) -> CardOrder | None:
@@ -980,6 +988,9 @@ def _apply(key: str, value) -> None:
     elif key == "shop_off":
         config.SHOP_OFF.clear()
         config.SHOP_OFF.update(k for k in value if k in config.SHOP)
+    elif key == "cards":  # to'lov kartalari (panel): joyida - config.CARDS ni olganlar ham ko'radi
+        config.CARDS.clear()
+        config.CARDS.update({k: dict(v) for k, v in value.items() if k in ("uz", "xorij") and isinstance(v, dict)})
     elif key == "name_lock":  # hazil: {"uid": "ism"} - qo'lda yoziladi, id'lar faqat bazada (repo ochiq)
         pro.FORCED.clear()
         pro.FORCED.update({int(k): str(v) for k, v in value.items()})

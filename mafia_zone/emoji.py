@@ -8,7 +8,8 @@ import re
 
 from aiogram.client.session.middlewares.base import BaseRequestMiddleware
 from aiogram.exceptions import TelegramBadRequest
-from aiogram.methods import (EditMessageCaption, EditMessageReplyMarkup, EditMessageText, SendAnimation,
+from aiogram.methods import (EditEphemeralMessageReplyMarkup, EditEphemeralMessageText, EditMessageCaption,
+                             EditMessageReplyMarkup, EditMessageText, SendAnimation,
                              SendDocument, SendMessage, SendPhoto)
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
@@ -98,7 +99,7 @@ def unmark(kb):
 TG_EMOJI = re.compile(r'<tg-emoji emoji-id="\d+">(.*?)</tg-emoji>', re.S)
 DISABLED = False  # Telegram bir marta rad etgach: custom emoji'siz yuboriladi (qayta ishga tushguncha)
 METHODS = (SendMessage, EditMessageText, EditMessageReplyMarkup, SendAnimation, SendPhoto, SendDocument,
-           EditMessageCaption)
+           EditMessageCaption, EditEphemeralMessageText, EditEphemeralMessageReplyMarkup)
 CAPTIONED = (SendAnimation, SendPhoto, SendDocument, EditMessageCaption)  # matn "caption" maydonida
 
 

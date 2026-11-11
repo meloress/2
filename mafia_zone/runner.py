@@ -13,7 +13,7 @@ from aiogram.exceptions import (TelegramBadRequest, TelegramForbiddenError, Tele
                                 TelegramRetryAfter, TelegramServerError)
 from aiogram.client.session.middlewares.base import BaseRequestMiddleware
 from aiogram.methods import EditMessageReplyMarkup, EditMessageText, SendAnimation, SendMessage
-from aiogram.types import FSInputFile, InlineKeyboardButton as Btn, InlineKeyboardMarkup as Kb
+from aiogram.types import EphemeralMessageParameters, FSInputFile, InlineKeyboardButton as Btn, InlineKeyboardMarkup as Kb
 
 from . import config, db, pro, texts
 from .engine.game import AFK_LIMIT, CONFIRM, DAY, FINISHED, NIGHT, SKIP, VOTING, Game, couple_pairs
@@ -121,6 +121,24 @@ async def send(bot: Bot, chat_id: int, text: str, kb: Kb | None = None, effect: 
     return await _call(bot.send_message, chat_id, text, reply_markup=kb, disable_web_page_preview=True, **kw)
 
 
+def eph(uid: int, cq_id: str | None = None) -> EphemeralMessageParameters:
+    """Guruhda faqat uid ga ko'rinadigan xabar parametrlari (Bot API 10.2+, "ephemeral")."""
+    return EphemeralMessageParameters(receiver_user_id=uid, callback_query_id=cq_id)
+
+
+async def send_eph(bot: Bot, chat_id: int, uid: int, text: str, kb: Kb | None = None, cq_id: str | None = None):
+    """Guruhga faqat bitta odamga ko'rinadigan xabar. Guruh limiti navbatiga (_group_slot) kirmaydi - boshqalar
+    ko'rmaydi; global navbat va RetryAfter odatdagidek. Yetib borishi kafolatlanmagan (oflayn odam) - shuning uchun
+    o'yin tugmalari shaxsiy chatda ham turadi. Muvaffaqiyatsiz - None."""
+    if uid >= FAKE_BASE or chat_id >= FAKE_BASE:
+        return None
+    *head, text = split_text(text) if len(text) > MAX_TEXT else [text]
+    for part in head:
+        await _call(bot.send_message, chat_id, part, disable_web_page_preview=True, ephemeral_message_parameters=eph(uid))
+    return await _call(bot.send_message, chat_id, text, reply_markup=kb, disable_web_page_preview=True,
+                       ephemeral_message_parameters=eph(uid, cq_id))
+
+
 LAST_MSG: dict[int, int] = {}  # guruh -> botning oxirgi xabari ("Guruhga qaytish" shu yerga olib boradi)
 
 
@@ -141,7 +159,7 @@ class BackToGroup(BaseRequestMiddleware):
             return await make_request(bot, method)
         if chat < 0 and isinstance(method, (SendMessage, SendAnimation)):
             res = await make_request(bot, method)
-            if isinstance(getattr(res, "message_id", None), int):
+            if isinstance(getattr(res, "message_id", None), int) and res.message_id:  # ephemeral: message_id = 0
                 LAST_MSG[chat] = res.message_id
             return res
         kb = getattr(method, "reply_markup", None)
@@ -232,6 +250,8 @@ class Runner:
         # javob berilmagan tugmali shaxsiy so'rovlar (tun/ovoz/👍👎): uid -> msg_id; faza tugagach o'chiriladi.
         # Xotirada: restartdan keyin qolganlari bosilganda o'chadi (handlers._late)
         self.prompts: dict[int, int] = {}
+        self.picked: dict[int, int] = {}  # uid -> tanlov qilingan shaxsiy so'rov ("tanladingiz"; faza oxirida o'chmaydi)
+        self.eph: dict[int, int] = {}  # uid -> guruhdagi ephemeral so'rov (tungi harakat/ovoz), faza oxirida o'chadi
         self.feed_lock = asyncio.Lock()  # jonli lenta qatorlari tartib bilan, birma-bir (_flush_live)
         self.partners: dict[int, int] = {}  # qo'shilganda: uid -> /couple jufti (ro'yxatda juftlab ko'rsatish)
         self.members: list[tuple[int, str]] = []
@@ -439,7 +459,9 @@ class Runner:
                 await self._economy(ev)
             await self.save()
         old, self.prompts = self.prompts, {}
-        spawn(self._clear_prompts(old))  # fonda: e'lon kechikmasin
+        olde, self.eph = self.eph, {}
+        self.picked = {}
+        spawn(self._clear_prompts(old, olde))  # fonda: e'lon kechikmasin
         await self._flush_live()  # tungi/ovoz qatorlari (fondagilar ham) e'londan oldin chiqib bo'lsin
         if ev is not None:
             await self._announce(ph, ev)
@@ -454,6 +476,8 @@ class Runner:
             for p in g.night_actors():
                 if kb := self.night_kb(p.uid):
                     self._prompt(p.uid, await send(self.bot, p.uid, texts.night_prompt(g, p.uid), kb))
+                    # guruhda ham - faqat o'ziga ko'rinadi (botga o'tmasdan tanlaydi); qaysi biri bosilsa, ikkinchisi o'chadi
+                    self._eph(p.uid, await send_eph(self.bot, self.chat_id, p.uid, texts.night_prompt(g, p.uid), kb))
                 elif p.role == "donishmand":  # tungi tugmasi yo'q: eshitish ishlayotganini bilsin
                     await send(self.bot, p.uid, f"🌙 <b>{g.day}-tun</b>\n\n{texts.DONISHMAND_NIGHT}")
         elif ph == DAY:
@@ -464,7 +488,9 @@ class Runner:
                        Kb(inline_keyboard=[[Btn(text="🗳 Ovoz berish", url=bot_link())]]))
             for p in g.alive():
                 if g.can_vote(p.uid):
-                    self._prompt(p.uid, await send(self.bot, p.uid, texts.vote_pm(g), self.vote_kb(p.uid)))
+                    kb = self.vote_kb(p.uid)
+                    self._prompt(p.uid, await send(self.bot, p.uid, texts.vote_pm(g), kb))
+                    self._eph(p.uid, await send_eph(self.bot, self.chat_id, p.uid, texts.vote_pm(g), kb))
         else:
             m = await send(self.bot, self.chat_id, texts.confirm_prompt(g, secs), self._confirm_kb())
             self.meta["confirm_msg"] = m.message_id if m else None
@@ -480,10 +506,30 @@ class Runner:
         if m:
             self.prompts[uid] = m.message_id
 
-    async def _clear_prompts(self, prompts: dict[int, int]) -> None:
-        """Faza tugadi: javob berilmagan so'rovlar o'chiriladi - shaxsiy chat toza qoladi."""
+    def _eph(self, uid: int, m) -> None:
+        if m and getattr(m, "ephemeral_message_id", None):
+            self.eph[uid] = m.ephemeral_message_id
+
+    async def _del_eph(self, uid: int, eid: int) -> None:
+        await _call(self.bot.delete_ephemeral_message, chat_id=self.chat_id, receiver_user_id=uid, ephemeral_message_id=eid)
+
+    async def drop_prompt(self, uid: int, via_eph: bool) -> None:
+        """Tanlov qilindi: bosilgan nusxa "tanladingiz" bo'lib qoladi, ikkinchisi (shaxsiy chat yoki guruhdagi
+        ephemeral) o'chadi - qayta tanlab bo'lmasin. Guruhdagisi baribir faza oxirida o'chadi."""
+        mid = self.picked.pop(uid, None)
+        if via_eph:
+            if mid:
+                await _call(self.bot.delete_message, uid, mid)
+        elif (eid := self.eph.pop(uid, None)) is not None:
+            await self._del_eph(uid, eid)
+
+    async def _clear_prompts(self, prompts: dict[int, int], ephs: dict[int, int] | None = None) -> None:
+        """Faza tugadi: javob berilmagan so'rovlar o'chiriladi - shaxsiy chat toza qoladi; guruhdagi ephemeral
+        so'rovlar (tanlangani ham) o'chadi."""
         for uid, mid in prompts.items():
             await _call(self.bot.delete_message, uid, mid)
+        for uid, eid in (ephs or {}).items():
+            await self._del_eph(uid, eid)
 
     def add_bots(self, n: int) -> None:
         """/testgame: n ta bot-o'yinchi qo'shish."""
@@ -693,7 +739,8 @@ class Runner:
             if not g or g.phase != NIGHT or g.day != day or not g.submit(uid, kind, target or None):
                 return False
             await self.save()
-            self.prompts.pop(uid, None)  # xabar "tanladingiz" bo'lib qoladi - o'chirilmaydi
+            if (mid := self.prompts.pop(uid, None)) is not None:
+                self.picked[uid] = mid  # "tanladingiz" bo'lib qoladi - faza oxirida o'chirilmaydi
             if not again and g.get(uid).alive:  # qayta tanlov va o'lgan Afsungar guruhga yozilmaydi (maska sir qolsin)
                 line = texts.skip_feed(g.get(uid).role) if kind == SKIP else texts.act_feed(g.get(uid).role, kind)
                 if line:
@@ -717,7 +764,8 @@ class Runner:
             if not g or g.day != day or uid in g.votes or not g.cast_vote(uid, target or None):
                 return False  # ovoz bir marta: tez ikki bosishda lenta takrorlanmasin
             await self.save()
-            self.prompts.pop(uid, None)
+            if (mid := self.prompts.pop(uid, None)) is not None:
+                self.picked[uid] = mid
             self.live_lines.append(texts.vote_feed(g, uid, target or None))
         return True
 

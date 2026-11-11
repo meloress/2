@@ -44,6 +44,19 @@ DIAMOND_STARS = {1: 6, 7: 39, 15: 83, 30: 160, 55: 285, 100: 500, 250: 1200, 500
 # Olmos uchun karta raqami: Railway Variables'da CARD_NUMBER (gitga yozilmaydi). Bo'sh - karta to'lovi yopiq
 CARD_NUMBER = "".join(c for c in os.environ.get("CARD_NUMBER", "") if c.isdigit())
 CARD_ORDER_MIN = 7  # karta buyurtmasi shuncha daqiqa amal qiladi ("To'ladim" shu vaqt ichida)
+# To'lov kartalari — paneldan (settings "cards", db._apply): "uz" - O'zbekistondan, "xorij" - chet eldan
+# (Rossiya va b.: Uzum Visa'ga karta raqami + bankka ulangan telefon). Har biri: n raqam, o egasi (ism
+# familiya), t telefon, b bank, k turi. Raqamlar faqat bazada (repo ochiq). "uz" bo'sh - CARD_NUMBER env.
+CARDS: dict = {}
+CARD_TYPES = ("Humo", "Uzcard", "Visa", "Mastercard", "UnionPay", "Mir")
+
+
+def cards() -> dict:
+    """Faol to'lov kartalari {"uz": {...}, "xorij": {...}}; bo'sh - karta to'lovi yopiq."""
+    c = {k: v for k, v in CARDS.items() if v.get("n")}
+    if "uz" not in c and CARD_NUMBER:
+        c["uz"] = {"n": CARD_NUMBER}
+    return c
 NEWS_URL = os.environ.get("NEWS_URL", "").strip()  # yangiliklar kanali, bo'sh bo'lsa tugma chiqmaydi
 SHOP = {"shield": 140, "verbena": 145, "doc": 190}  # dollar
 SHOP_GEMS = {"mask": 1, "votesave": 2, "ironshield": 1}  # olmos (Pro chegirmasi yo'q); ironshield - Konchi uchun

@@ -360,6 +360,7 @@
     ban: ["Ban qilindi", "B", "c-red"], unban: ["Bandan chiqarildi", "U", "c-green"], stop_game: ["O'yin to'xtatildi", "O", "c-red"],
     view_roles: ["Rollarni ko'rdi", "R", "c-violet"], group_settings: ["Guruh sozlamalari", "G", "c-gold"],
     leave_group: ["Guruhdan chiqdi", "G", "c-red"], economy: ["Iqtisod sozlamalari", "S", "c-gold"],
+    cards: ["To'lov kartalari", "K", "c-gold"],
     admin_set: ["Admin roli berildi", "A", "c-blue"], admin_remove: ["Adminlikdan olindi", "A", "c-red"],
     broadcast: ["E'lon yuborildi", "E", "c-blue"], broadcast_cancel: ["E'lon to'xtatildi", "E", "c-red"],
   };
@@ -1109,10 +1110,12 @@
     const resetBtn = h("button", { type: "button", class: "btn", text: "Bekor qilish", disabled: true });
     const err = h("div", { class: "err", role: "alert" });
     const adminCard = owner ? h("section", { class: "card f1" }, h("h2", { text: "Adminlar" }), skel(3, 44)) : null;
+    const cardsCard = owner ? h("section", { class: "card f1" }, h("h2", { text: "To'lov kartalari" }), skel(4, 40)) : null;
     const logCard = h("section", { class: owner ? "card f1" : "card" }, h("h2", { text: "Amallar jurnali" }), skel(6, 30));
     root.append(head("Iqtisod va adminlar", owner ? "O'zgarishlar darhol kuchga kiradi — botni qayta ishga tushirish shart emas" : "Ko'rish rejimi: o'zgartirish faqat bosh admin uchun",
       owner ? resetBtn : null, owner ? saveBtn : null), err,
       h("div", { class: "row", style: { alignItems: "flex-start" } }, econCard, shopCard),
+      cardsCard ? h("div", { class: "row", style: { alignItems: "flex-start" } }, cardsCard) : null,
       h("div", { class: "row", style: { alignItems: "flex-start" } }, adminCard, logCard));
 
     let base = null;
@@ -1225,7 +1228,53 @@
       clear(logCard).append(h("h2", { text: "Amallar jurnali" }), d.items.length ? h("div", null, d.items.map(feedItem)) : empty("Hali amallar yo'q."),
         d.total > d.size ? pager(d.page, d.size, d.total, loadLog) : null);
     }
-    loadEcon(); loadAdmins(); loadLog(0);
+    // To'lov kartalari: olmos karta orqali sotilganda o'yinchi shularni ko'radi (bot - to'lov kartasi vidjeti).
+    // "uz" - O'zbekistondan, "xorij" - chet eldan (Rossiya va b.). Bo'sh qoldirilgan karta o'chiriladi.
+    const CARD_SLOTS = [["uz", "🇺🇿 O'zbekistondan to'lovlar", "Humo / Uzcard — O'zbekistondagi o'yinchilar shu kartaga to'laydi"],
+      ["xorij", "🌍 Chet eldan to'lovlar", "Rossiya va boshqa davlatlar (masalan Uzum Bank Visa). Telefon — bankka ulangan raqam: chet el banki so'raydi"]];
+    const CARD_FIELDS = [["n", "Karta raqami", "8600 1234 5678 9012", 23, "numeric"], ["o", "Ism familiya (karta egasi)", "Ali Valiyev", 40, "text"],
+      ["t", "Telefon (bankka ulangan)", "+998 90 123 45 67", 20, "tel"], ["b", "Bank nomi", "Uzum Bank", 30, "text"]];
+    async function loadCards() {
+      if (!cardsCard) return;
+      let d;
+      try { d = await api("/api/cards"); } catch (e) { if (alive(view)) clear(cardsCard).append(h("h2", { text: "To'lov kartalari" }), errorCard(e, loadCards)); return; }
+      if (!alive(view)) return;
+      const inp = {};
+      const cerr = h("div", { class: "err", role: "alert" });
+      const save = h("button", { type: "button", class: "btn primary", text: "Kartalarni saqlash" });
+      const blocks = CARD_SLOTS.map(([slot, title, hint]) => {
+        const c = d.cards[slot] || {};
+        inp[slot] = {};
+        const fields = CARD_FIELDS.map(([k, label, ph, max, mode]) => {
+          inp[slot][k] = h("input", { class: "input", id: `cd-${slot}-${k}`, placeholder: ph, maxlength: max, value: c[k] || "", autocomplete: "off", inputmode: mode });
+          return h("div", { class: "field", style: { flex: "1 1 200px" } }, h("label", { for: `cd-${slot}-${k}`, text: label }), inp[slot][k]);
+        });
+        inp[slot].k = h("select", { class: "input", id: `cd-${slot}-k` }, h("option", { value: "", text: "— tanlang —" }), d.types.map((t) => h("option", { value: t, text: t })));
+        inp[slot].k.value = c.k || "";
+        fields.push(h("div", { class: "field", style: { flex: "1 1 140px" } }, h("label", { for: `cd-${slot}-k`, text: "Karta turi" }), inp[slot].k));
+        return h("div", { class: "sub stack gap-8", style: { padding: "12px" } }, h("h3", { text: title }), h("span", { class: "hint", text: hint }),
+          h("div", { class: "inline", style: { alignItems: "flex-end", flexWrap: "wrap" } }, fields));
+      });
+      save.addEventListener("click", () => {
+        cerr.textContent = "";
+        const payload = {};
+        for (const [slot] of CARD_SLOTS) {
+          payload[slot] = {};
+          for (const k of ["n", "o", "t", "b", "k"]) payload[slot][k] = inp[slot][k].value.trim();
+          const digits = payload[slot].n.replace(/\D/g, "");
+          if (payload[slot].n && (digits.length < 13 || digits.length > 19)) { cerr.textContent = "Karta raqami 16 ta raqamdan iborat bo'lishi kerak"; inp[slot].n.focus(); return; }
+        }
+        busy(save, async () => {
+          try { await api("/api/cards", { method: "POST", json: payload }); toast("Saqlandi. Yangi buyurtmalarda shu kartalar chiqadi."); loadCards(); loadLog(0); }
+          catch (e) { cerr.textContent = e.message; }
+        });
+      });
+      clear(cardsCard).append(h("h2", { text: "To'lov kartalari" }),
+        h("p", { class: "hint", text: "Olmos karta orqali sotilganda o'yinchi shu ma'lumotlarni ko'radi. Ikkalasi to'ldirilsa — to'lov oynasida «O'zbekistondan / Chet eldan» tanlovi chiqadi. Bo'sh qoldirilgan karta o'chiriladi."
+          + (d.env ? " O'zbekiston kartasi bo'sh bo'lsa — Railway'dagi CARD_NUMBER ishlatiladi." : "") }),
+        h("div", { class: "stack gap-8" }, blocks), cerr, h("div", { class: "inline" }, save));
+    }
+    loadEcon(); loadAdmins(); loadCards(); loadLog(0);
   }
 
   boot();

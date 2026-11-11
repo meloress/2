@@ -2,6 +2,7 @@ import asyncio
 import logging
 import re
 import time
+from html import escape
 from pathlib import Path
 
 from aiogram import Bot, F, Router
@@ -9,11 +10,12 @@ from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.types import CallbackQuery, ChatMemberUpdated, CopyTextButton, ErrorEvent, FSInputFile, LabeledPrice, PreCheckoutQuery, InlineKeyboardButton as Btn, InlineKeyboardMarkup as Kb, Message
 
-from . import config, db, pro, texts
+from . import config, db, pro, texts, vidjet
 from .engine.game import CONFIRM, DAY, FINISHED, NIGHT, VOTING
 from .engine.roles import ROLES
 from .engine.setup import CORE
-from .runner import NEXT, PLAYING, RUNNERS, Runner, _call, spawn, back_btn, pro_btn, bot_link, edit, grid, invite_url, profile_kb, send
+from .runner import (NEXT, PLAYING, RUNNERS, Runner, _call, spawn, back_btn, pro_btn, bot_link, edit, eph, grid,
+                     invite_url, profile_kb, send, send_eph)
 
 log = logging.getLogger(__name__)
 router = Router()
@@ -61,11 +63,51 @@ async def drop_commands(handler, msg: Message, data):
         return await handler(msg, data)
     finally:
         text = msg.text or ""
-        if msg.chat.type in ("group", "supergroup") and text.startswith("/"):
+        if msg.chat.type in ("group", "supergroup") and text.startswith("/") and getattr(msg, "message_id", None) != 0:
             cmd = text.split()[0]
             bot: Bot = data["bot"]
             if "@" not in cmd or cmd.split("@", 1)[1].lower() == ((await bot.me()).username or "").lower():
                 await _call(msg.delete)
+
+
+GROUP_TYPES = ("group", "supergroup")
+
+
+async def alert(cq: CallbackQuery, text: str) -> None:
+    """Ogohlantirish. Guruhdagi tugma bosilsa - guruhda faqat bosganga ko'rinadigan xabar (ephemeral: premium emoji
+    va to'liq matn bilan); shaxsiy chatda yoki yuborib bo'lmasa - odatdagi alert."""
+    chat = getattr(getattr(cq, "message", None), "chat", None)
+    if getattr(chat, "type", None) in GROUP_TYPES and await send_eph(cq.bot, chat.id, cq.from_user.id, escape(text),
+                                                             cq_id=cq.id):
+        return await cq.answer()
+    await cq.answer(text, show_alert=True)
+
+
+async def answer_me(msg: Message, text: str, kb: Kb | None = None, reply: bool = False):
+    """Guruh buyrug'iga javob faqat yozgan odamga (ephemeral); bo'lmasa - odatdagi javob."""
+    if getattr(msg.chat, "type", None) in GROUP_TYPES and msg.from_user and not getattr(msg, "sender_chat", None):
+        if await send_eph(msg.bot, msg.chat.id, msg.from_user.id, text, kb):
+            return
+    await (msg.reply if reply else msg.answer)(text, reply_markup=kb)
+
+
+async def cq_edit(cq: CallbackQuery, r, text: str | None = None, kb: Kb | None = None) -> bool:
+    """Tugma bosilgan xabarni tahrirlash: shaxsiy chatdagisi yoki guruhdagi ephemeral (o'z usullari bilan).
+    True - ephemeral edi."""
+    m, uid = cq.message, cq.from_user.id
+    eid = getattr(m, "ephemeral_message_id", None) if m else (r.eph.get(uid) if r else None)
+    if eid:
+        chat = m.chat.id if getattr(m, "chat", None) else r.chat_id
+        if text is None:
+            await _call(cq.bot.edit_ephemeral_message_reply_markup, chat_id=chat, receiver_user_id=uid,
+                        ephemeral_message_id=eid, reply_markup=kb)
+        else:
+            await _call(cq.bot.edit_ephemeral_message_text, chat_id=chat, receiver_user_id=uid,
+                        ephemeral_message_id=eid, text=text, reply_markup=kb)
+        return True
+    if m and getattr(m, "message_id", 0):
+        await _call(m.edit_reply_markup, reply_markup=kb) if text is None else await _call(m.edit_text, text, reply_markup=kb)
+    return False
 
 
 async def is_admin(bot: Bot, chat_id: int, uid: int, msg: Message | None = None) -> bool:
@@ -115,7 +157,7 @@ async def cmd_testgame(msg: Message, bot: Bot, command: CommandObject):
 async def cmd_next(msg: Message):
     await db.upsert_user(msg.from_user.id, msg.from_user.full_name, msg.from_user.username)
     NEXT[msg.chat.id].add(msg.from_user.id)
-    await msg.reply(texts.NEXT_OK)
+    await answer_me(msg, texts.NEXT_OK, reply=True)
 
 
 EXTEND_MAX_MIN = 60
@@ -200,12 +242,12 @@ async def cmd_kick(msg: Message, command: CommandObject):
 
 @router.message(Command("top"), GROUPS)
 async def cmd_top_group(msg: Message):
-    await msg.answer(texts.top(await db.top(msg.chat.id), "Guruh reytingi"))
+    await answer_me(msg, texts.top(await db.top(msg.chat.id), "Guruh reytingi"))
 
 
 @router.message(Command("rules"))
 async def cmd_rules(msg: Message):
-    await msg.answer(texts.rules())
+    await answer_me(msg, texts.rules())
 
 
 # ---------- sozlamalar ----------
@@ -246,7 +288,7 @@ async def cmd_settings(msg: Message, bot: Bot):
 async def cb_settings(cq: CallbackQuery, bot: Bot):
     chat = cq.message.chat.id
     if not await is_admin(bot, chat, cq.from_user.id):
-        return await cq.answer(texts.ONLY_ADMIN, show_alert=True)
+        return await alert(cq, texts.ONLY_ADMIN)
     s = await db.group_settings(chat)
     parts = cq.data.split(":")
     key = parts[1]
@@ -285,8 +327,13 @@ def _stale(r, gid: str, day: str, phase: str) -> bool:
 async def _late(cq: CallbackQuery, text: str) -> None:
     """Kechikib bosildi: tepada xabar, shaxsiy chatdagi eski so'rov o'chadi - chat toza qoladi."""
     await cq.answer(text)
-    delete = getattr(cq.message, "delete", None)  # 48 soatdan eski (InaccessibleMessage) - o'chirib bo'lmaydi
-    if delete and cq.message.chat.id > 0:  # faqat shaxsiy chat: guruh xabarlariga tegilmaydi
+    m = cq.message
+    if m and (eid := getattr(m, "ephemeral_message_id", None)):  # guruhdagi faqat o'ziga ko'ringan so'rov
+        await _call(cq.bot.delete_ephemeral_message, chat_id=m.chat.id, receiver_user_id=cq.from_user.id,
+                    ephemeral_message_id=eid)
+        return
+    delete = getattr(m, "delete", None)  # 48 soatdan eski (InaccessibleMessage) - o'chirib bo'lmaydi
+    if delete and m.chat.id > 0 and getattr(m, "message_id", None) != 0:  # faqat shaxsiy chat: guruh xabarlariga tegilmaydi
         await _call(delete)
 
 
@@ -348,16 +395,16 @@ async def cb_giveaway(cq: CallbackQuery, bot: Bot):
     key = (gid, cq.from_user.id)
     if key in _early or time.monotonic() - _shown.get(gid, 0) < config.CLAIM_DELAY:
         _early.add(key)  # keyin qayta bosib ham ololmaydi
-        return await cq.answer(texts.GIVEAWAY_EARLY, show_alert=True)
+        return await alert(cq, texts.GIVEAWAY_EARLY)
     # ochiq guruhda a'zo bo'lmagan ham xabarni ko'radi: tarqatma faqat a'zolarga (xato bo'lsa ham bermaymiz)
     m = await _call(bot.get_chat_member, cq.message.chat.id, cq.from_user.id)
     if not m or m.status in ("left", "kicked") or (m.status == "restricted" and not getattr(m, "is_member", True)):
-        return await cq.answer(texts.GIVEAWAY_MEMBERS, show_alert=True)
+        return await alert(cq, texts.GIVEAWAY_MEMBERS)
     g = await db.claim(gid, cq.from_user.id) if me else None
     if not g:  # oyna bo'lib chiqadi: olgan bo'lsa - shuni, bo'lmasa - tugagan
         took = any(uid == cq.from_user.id for uid, _ in await db.giveaway_takers(gid))
-        return await cq.answer(texts.GIVEAWAY_TAKEN if took else texts.GIVEAWAY_NO, show_alert=True)
-    await cq.answer(texts.GIVEAWAY_GOT.format(g.per, texts.CUR[g.currency or "dollars"]), show_alert=True)
+        return await alert(cq, texts.GIVEAWAY_TAKEN if took else texts.GIVEAWAY_NO)
+    await alert(cq, texts.GIVEAWAY_GOT.format(g.per, texts.CUR[g.currency or "dollars"]))
     if gid not in _refresh:  # ko'p bosilganda 3 s da bir marta tahrirlash (guruh limiti)
         _refresh[gid] = asyncio.create_task(_refresh_giveaway(bot, cq.message.chat.id, cq.message.message_id, gid))
 
@@ -454,7 +501,7 @@ async def cb_couple(cq: CallbackQuery, bot: Bot):
     _, a, b, yes = cq.data.split(":")
     a, b = int(a), int(b)
     if cq.from_user.id != b:
-        return await cq.answer(texts.COUPLE_NOT_YOU, show_alert=True)
+        return await alert(cq, texts.COUPLE_NOT_YOU)
     if not await _user(cq):
         return await cq.answer()
     if yes != "1":
@@ -462,7 +509,7 @@ async def cb_couple(cq: CallbackQuery, bot: Bot):
     elif await db.make_couple(a, b):
         text = texts.couple_made(a, await _name(a), b, cq.from_user.full_name)
     else:
-        return await cq.answer(texts.COUPLE_FAILED, show_alert=True)
+        return await alert(cq, texts.COUPLE_FAILED)
     await cq.answer()
     await edit(bot, cq.message.chat.id, cq.message.message_id, text)
 
@@ -485,18 +532,19 @@ async def cmd_mycouple(msg: Message):
     if not me:
         return
     p = await db.partner(me.telegram_id)
-    await msg.reply(texts.couple_show(me.telegram_id, me.full_name, p, await _name(p)) if p else texts.COUPLE_NONE)
+    await answer_me(msg, texts.couple_show(me.telegram_id, me.full_name, p, await _name(p)) if p else texts.COUPLE_NONE,
+                    reply=True)
 
 
 @router.message(Command("players"), GROUPS)
 async def cmd_players(msg: Message):
     r = RUNNERS.get(msg.chat.id)
     if r and r.game:
-        await msg.answer(texts.players(r.game))
+        await answer_me(msg, texts.players(r.game))
     elif r:
-        await msg.answer(r._lobby_text())
+        await answer_me(msg, r._lobby_text())
     else:
-        await msg.answer("🎮 Hozir o'yin yo'q. /game bilan boshlang!")
+        await answer_me(msg, "🎮 Hozir o'yin yo'q. /game bilan boshlang!")
 
 @router.callback_query(F.data.startswith("v:"))
 async def cb_vote(cq: CallbackQuery):
@@ -510,7 +558,8 @@ async def cb_vote(cq: CallbackQuery):
             return await cq.answer("✅ Ovozingiz allaqachon qabul qilingan")
         return await cq.answer("❌ Ovoz bera olmaysiz")
     t = r.game.get(int(target)) if int(target) else None
-    await cq.message.edit_text(texts.vote_chosen(texts.dn(t) if t else None))
+    via = await cq_edit(cq, r, texts.vote_chosen(texts.dn(t) if t else None))
+    await r.drop_prompt(cq.from_user.id, via)
     await cq.answer()
 
 
@@ -581,7 +630,7 @@ async def cb_menu(cq: CallbackQuery):
     elif what in ("top", "topall"):  # oylik mavsum (standart) yoki umumiy
         await show(cq, *await top_view(cq.from_user.id, monthly=what == "top"))
     elif what in ("buy", "gem") and config.DIAMONDS_OFF:
-        return await cq.answer(texts.DIAMONDS_OFF, show_alert=True)
+        return await alert(cq, texts.DIAMONDS_OFF)
     elif what == "buy":
         btns = [Btn(text=f"💵 {d} — {n}💎", callback_data=f"xd:{n}") for n, d in config.DOLLAR_PACKS.items()]
         await show(cq, texts.BUY_DOLLARS, Kb(inline_keyboard=grid(btns, 2) + [[prof_back()]]))
@@ -593,13 +642,13 @@ async def cb_menu(cq: CallbackQuery):
         await show(cq, texts.top_groups(await db.top_groups()), Kb(inline_keyboard=[[prof_back()]]))
     elif what in ("pay", "gift"):
         if not (u := await _user(cq)):
-            return await cq.answer(texts.BANNED, show_alert=True)
+            return await alert(cq, texts.BANNED)
         kb = Kb(inline_keyboard=[[prof_back()]])
         ASK[u.telegram_id] = "dollars" if what == "pay" else "diamonds"
         await show(cq, texts.ask_send(ASK[u.telegram_id]), kb)
     elif what in ("profile", "shop"):
         if not (u := await _user(cq)):
-            return await cq.answer(texts.BANNED, show_alert=True)
+            return await alert(cq, texts.BANNED)
         if what == "shop":
             await show(cq, texts.shop(u.dollars, u.telegram_id, u.diamonds), shop_kb(u.telegram_id))
         else:
@@ -615,6 +664,8 @@ async def show(cq: CallbackQuery, text: str, kb: Kb) -> None:
     except TelegramBadRequest as e:
         if "not modified" not in str(e):
             await cq.message.answer(text, reply_markup=kb)
+            if (getattr(cq.message, "model_extra", None) or {}).get("widget"):  # to'lov kartasidan "Orqaga"
+                await _call(cq.message.delete)
 
 
 # ---------- hamyon: Xarid, Olmos (Stars), yuborish ----------
@@ -644,11 +695,39 @@ def gem_shop_kb(target: int = 0) -> Kb:
                                                [Btn(text=texts.BACK_BTN, callback_data="m:gem")]])
 
 
-def order_kb(o) -> Kb:
+def order_kb(o, copy: bool = True) -> Kb:
+    """copy=False - to'lov kartasi (vidjet) ostida: nusxa tugmalari kartaning o'zida."""
     back = 0 if o.target == o.payer else o.target
-    return Kb(inline_keyboard=[[Btn(text=texts.COPY_CARD_BTN, copy_text=CopyTextButton(text=config.CARD_NUMBER))],
-                               [Btn(text=texts.CANCEL_ORDER_BTN, callback_data=f"ox:{o.id}")],
-                               [Btn(text=texts.BACK_BTN, callback_data=f"gp:{back}")]])
+    cards = config.cards() if copy else {}
+    copy = [[Btn(text=label, copy_text=CopyTextButton(text=cards[k]["n"]))]
+            for k, label in (("uz", texts.COPY_CARD_BTN), ("xorij", texts.COPY_CARD_ABROAD_BTN)) if k in cards]
+    return Kb(inline_keyboard=copy + [[Btn(text=texts.CANCEL_ORDER_BTN, callback_data=f"ox:{o.id}")],
+                                      [Btn(text=texts.BACK_BTN, callback_data=f"gp:{back}")]])
+
+
+async def _plain_name(target: int) -> str | None:
+    """Sovg'a oluvchining ismi karta uchun (oddiy matn, textContent); o'zim uchun - None."""
+    t = await db.get_user(target) if target else None
+    return pro.name(t.telegram_id, t.full_name).replace(texts.USER_MARK, "") if t else None
+
+
+async def _order_card(cq: CallbackQuery, o, target: int) -> bool:
+    """To'lov kartasi (vidjet) yangi xabar bo'lib, menyu xabari o'chadi. False - vidjet chiqmadi (matnli ekran)."""
+    mid = await vidjet.send(cq.bot, cq.message.chat.id, vidjet.holat(o, await _plain_name(target)),
+                            texts.CARD_CAPTION, order_kb(o, copy=False))
+    if not mid:
+        return False
+    await db.set_order_msg(o.id, mid)
+    await _call(cq.message.delete)
+    return True
+
+
+async def _card_state(bot, o, status: str, reason: str = "") -> None:
+    """To'lovchidagi kartaning holati (chek keldi, tasdiq, rad, bekor). Karta yo'q bo'lsa - hech narsa."""
+    if o.msg_id:
+        o.status = status
+        await vidjet.update(bot, o.payer, o.msg_id, vidjet.holat(
+            o, await _plain_name(0 if o.target == o.payer else o.target), reason))
 
 
 async def _gift_name(target: int) -> str | None | bool:
@@ -664,33 +743,38 @@ async def cb_card(cq: CallbackQuery):
     """Olmos: gp - karta paketlari, gx - Stars paketlari, gc:<olmos>:<target> - karta buyurtmasi (keyin bot
     chek kutadi: on_check), ox:<id> - bekor qilish."""
     if not await _user(cq):
-        return await cq.answer(texts.BANNED, show_alert=True)
+        return await alert(cq, texts.BANNED)
     if config.DIAMONDS_OFF:
-        return await cq.answer(texts.DIAMONDS_OFF, show_alert=True)
+        return await alert(cq, texts.DIAMONDS_OFF)
     uid = cq.from_user.id
     kind, _, rest = cq.data.partition(":")
     if kind in ("gp", "gx", "gc"):
         n, _, target = rest.rpartition(":") if kind == "gc" else ("", "", rest)
         target = int(target) if target.isdigit() else 0
         if (name := await _gift_name(target)) is False:
-            return await cq.answer(texts.WALLET_NO_USER, show_alert=True)
+            return await alert(cq, texts.WALLET_NO_USER)
         if kind == "gp":
             await show(cq, texts.gem_shop(name), gem_shop_kb(target))
         elif kind == "gx":
             await show(cq, texts.stars_menu(name), stars_kb(target))
-        elif not config.CARD_NUMBER:
-            return await cq.answer(texts.card_off(), show_alert=True)
+        elif not config.cards():
+            return await alert(cq, texts.card_off())
         elif n.isdigit() and (o := await db.create_card_order(uid, target or uid, int(n))):
             ASK[uid] = f"chek:{o.id}"  # endi shu yerga yuborilgan rasm - shu buyurtma cheki
-            await show(cq, texts.card_pay(o, config.CARD_NUMBER, name), order_kb(o))
+            if not await _order_card(cq, o, target):
+                await show(cq, texts.card_pay(o, config.cards(), name), order_kb(o))
         return await cq.answer()
     o = await db.get_card_order(int(rest)) if rest.isdigit() else None
     if not o or o.payer != uid:
         return await cq.answer()
     if not await db.move_card_order(o.id, "new", "cancelled"):
-        return await cq.answer(texts.ORDER_DONE_ALREADY, show_alert=True)
+        return await alert(cq, texts.ORDER_DONE_ALREADY)
     if ASK.get(uid) == f"chek:{o.id}":
         del ASK[uid]
+    if o.msg_id and getattr(cq.message, "message_id", None) == o.msg_id:  # to'lov kartasining o'zida
+        await _card_state(cq.bot, o, "cancelled")
+        await _call(cq.message.edit_reply_markup, reply_markup=_order_back(o))
+        return await cq.answer(texts.ORDER_CANCELLED_SHORT)
     await show(cq, texts.ORDER_CANCELLED, _order_back(o))
     await cq.answer()
 
@@ -722,6 +806,7 @@ async def on_check(msg: Message):
     if not await db.move_card_order(o.id, "new", "paid", check_file=f.file_id, check_uid=f.file_unique_id):
         return
     await msg.answer(texts.order_wait(o), reply_markup=_order_back(o))
+    await _card_state(msg.bot, o, "paid")
     name = await _gift_name(0 if o.target == uid else o.target)
     caption = texts.order_admin(o, texts.mention(uid, msg.from_user.full_name), msg.from_user.username, name or None,
                                 await db.check_used(f.file_unique_id, o.id))
@@ -739,16 +824,16 @@ async def on_check(msg: Message):
 async def cb_wallet(cq: CallbackQuery):
     """xd:<olmos> - dollar paketi; gm:me / gm:to - kim uchun olmos; gs:<olmos>:<target> - Stars hisob-fakturasi."""
     if not await _user(cq):
-        return await cq.answer(texts.BANNED, show_alert=True)
+        return await alert(cq, texts.BANNED)
     if config.DIAMONDS_OFF:
-        return await cq.answer(texts.DIAMONDS_OFF, show_alert=True)
+        return await alert(cq, texts.DIAMONDS_OFF)
     uid = cq.from_user.id
     kind, _, rest = cq.data.partition(":")
     if kind == "xd":
         n = int(rest) if rest.isdigit() else 0
         if not await db.buy_dollars(uid, n):
-            return await cq.answer(texts.NO_DIAMONDS, show_alert=True)
-        return await cq.answer(texts.dollars_bought(n, config.DOLLAR_PACKS[n]), show_alert=True)
+            return await alert(cq, texts.NO_DIAMONDS)
+        return await alert(cq, texts.dollars_bought(n, config.DOLLAR_PACKS[n]))
     if kind == "gm":
         if rest == "to":
             ASK[uid] = "to"
@@ -761,7 +846,7 @@ async def cb_wallet(cq: CallbackQuery):
         return await cq.answer()
     n, target = int(n), int(target)
     if target and not await db.get_user(target):
-        return await cq.answer(texts.WALLET_NO_USER, show_alert=True)
+        return await alert(cq, texts.WALLET_NO_USER)
     await _call(cq.bot.send_invoice, chat_id=uid, title=f"{n} olmos" + (" (sovg'a)" if target else ""),
                 description=f"Admiral Mafia: {n} 💎 olmos" + (" do'stingizga sovg'a." if target else " hisobingizga."),
                 payload=f"dm:{n}:{target}", currency="XTR",
@@ -849,10 +934,10 @@ async def cb_pro_tier(cq: CallbackQuery):
     if what != "check" or not await _user(cq):
         return await cq.answer()
     if pro.title(cq.from_user.id):
-        return await cq.answer(texts.TITLE_HAVE, show_alert=True)
+        return await alert(cq, texts.TITLE_HAVE)
     title = await find_title(cq.bot, cq.from_user.id)
     if not title:
-        return await cq.answer(texts.title_none(), show_alert=True)
+        return await alert(cq, texts.title_none())
     await db.grant_title(cq.from_user.id, title)
     await show(cq, texts.title_done(title), Kb(inline_keyboard=[[Btn(text=texts.BACK_BTN, callback_data="m:pro")]]))
     await cq.answer()
@@ -885,15 +970,15 @@ async def cb_pro(cq: CallbackQuery):
     if tier not in pro.PACKS or not await _user(cq):
         return await cq.answer()
     if pro.title(cq.from_user.id):
-        return await cq.answer(texts.TITLE_HAVE, show_alert=True)
+        return await alert(cq, texts.TITLE_HAVE)
     if how == "d" and config.DIAMONDS_OFF:
-        return await cq.answer(texts.DIAMONDS_OFF, show_alert=True)
+        return await alert(cq, texts.DIAMONDS_OFF)
     if how == "d":
         end = await db.buy_pro_diamonds(cq.from_user.id, tier)
         if not end:
-            return await cq.answer(texts.PRO_NO_DIAMONDS, show_alert=True)
+            return await alert(cq, texts.PRO_NO_DIAMONDS)
         await show(cq, texts.pro_tier(cq.from_user.id, tier, cq.from_user.full_name), tier_kb(tier))
-        return await cq.answer(f"🎉 Pro {tier} faollashdi! {pro.DAYS} kun qo'shildi.", show_alert=True)
+        return await alert(cq, f"🎉 Pro {tier} faollashdi! {pro.DAYS} kun qo'shildi.")
     stars = pro.PACKS[tier][1]
     await _call(cq.bot.send_invoice, chat_id=cq.from_user.id, title=f"Pro {tier} · {pro.DAYS} kun",
                 description=f"Admiral Mafia Pro {tier}-daraja akkaunt — {pro.DAYS} kun.",
@@ -1062,7 +1147,7 @@ async def cmd_top(msg: Message):
 
 @router.message(Command("help"))
 async def cmd_help(msg: Message):
-    await msg.answer(texts.start_pm())
+    await answer_me(msg, texts.start_pm())
 
 
 @router.callback_query(F.data.startswith("t:"))
@@ -1077,11 +1162,11 @@ async def cb_profile(cq: CallbackQuery):
 @router.callback_query(F.data.startswith("b:") | F.data.in_({"shop", "shoproles"}))
 async def cb_shop(cq: CallbackQuery):
     if not await _user(cq):
-        return await cq.answer(texts.BANNED, show_alert=True)
+        return await alert(cq, texts.BANNED)
     item = cq.data[2:] if cq.data.startswith("b:") else None
     gems = db.gem_price(item) if item else None
     if config.DIAMONDS_OFF and gems:  # bo'limlar ochiladi, olmosga sotib olish yopiq
-        return await cq.answer(texts.DIAMONDS_OFF, show_alert=True)
+        return await alert(cq, texts.DIAMONDS_OFF)
     if item:
         if not gems and (item not in config.SHOP or item in config.SHOP_OFF):
             return await cq.answer()
@@ -1112,7 +1197,7 @@ async def cb_kind(cq: CallbackQuery):
         return await _late(cq, texts.LATE_NIGHT)
     kb = r.night_kb(cq.from_user.id, None if kind == "menu" else kind)  # "menu" - ⬅️ Orqaga
     if kb:
-        await cq.message.edit_reply_markup(reply_markup=kb)
+        await cq_edit(cq, r, None, kb)
     await cq.answer()
 
 
@@ -1125,7 +1210,8 @@ async def cb_action(cq: CallbackQuery):
     if not await r.on_action(cq.from_user.id, int(day), kind, int(target)):
         return await cq.answer("❌ Bu harakat mumkin emas")
     t = r.game.get(int(target)) if int(target) else None
-    await cq.message.edit_text(texts.SKIPPED_NIGHT if kind == "skip" else texts.CHOSEN.get(kind) or texts.chosen(texts.dn(t) if t else None))
+    via = await cq_edit(cq, r, texts.SKIPPED_NIGHT if kind == "skip" else texts.CHOSEN.get(kind) or texts.chosen(texts.dn(t) if t else None))
+    await r.drop_prompt(cq.from_user.id, via)
     await cq.answer()
 
 
@@ -1137,9 +1223,9 @@ async def cb_hunt(cq: CallbackQuery):
     r = PLAYING.get(cq.from_user.id)
     if _stale(r, gid, day, DAY):
         await _call(cq.message.edit_reply_markup, reply_markup=None)
-        return await cq.answer(texts.HUNT_LATE, show_alert=True)
+        return await alert(cq, texts.HUNT_LATE)
     if not await r.on_hunt(cq.from_user.id, int(day)):
-        return await cq.answer(texts.HUNT_NO, show_alert=True)
+        return await alert(cq, texts.HUNT_NO)
     await _call(cq.message.edit_reply_markup, reply_markup=None)
     await cq.answer()
 
@@ -1161,15 +1247,16 @@ async def cb_order_admin(cq: CallbackQuery):
             done = await db.approve_card_order(o.id, cq.from_user.id)
         except LookupError:  # qabul qiluvchi bazada yo'q: hech narsa o'zgarmadi, buyurtma hali "paid"
             log.exception("karta buyurtmasi tasdiqlanmadi: order=%s", o.id)
-            return await cq.answer(texts.WALLET_NO_USER, show_alert=True)
+            return await alert(cq, texts.WALLET_NO_USER)
     else:
         done = o if await db.move_card_order(o.id, "paid", "rejected", admin_id=cq.from_user.id, reason=why) else None
     if not done:
-        return await cq.answer(texts.ORDER_DONE_ALREADY, show_alert=True)
+        return await alert(cq, texts.ORDER_DONE_ALREADY)
     admin = texts.mention(cq.from_user.id, cq.from_user.full_name).replace(texts.USER_MARK, "")
     await _call(cq.message.edit_caption, caption=texts.order_admin_done(cq.message.html_text, None if why == "1" else why,
                                                                         admin))
     await cq.answer()
+    await _card_state(cq.bot, o, "approved" if why == "1" else "rejected", "" if why == "1" else texts.REJECT_TELL[why])
     if why != "1":
         return await send(cq.bot, o.payer, texts.order_rejected(o, why))
     payer = await db.get_user(o.payer)
@@ -1276,16 +1363,18 @@ _welcome_id: list[str] = []  # Telegram file_id (rasm bir marta yuklanadi)
 
 @router.message(GROUPS, F.new_chat_members)
 async def on_join(msg: Message):
-    """Guruhga yangi kelgan odamga salom: faqat o'ziga (shaxsiy chatda). Guruhda hech kim ko'rmaydi;
-    botni hali ochmagan odamga Telegram yozishga ruxsat bermaydi - unda salom yuborilmaydi.
+    """Guruhga yangi kelgan odamga salom: guruhda, faqat o'ziga ko'rinadi (ephemeral, Bot API 10.2+);
+    yuborib bo'lmasa - shaxsiy chatga (botni ochgan bo'lsa).
     "... qo'shildi" xizmat xabari guruhdan o'chiriladi (botda o'chirish huquqi bo'lsa)."""
     await _call(msg.delete)
     for u in msg.new_chat_members:
         if u.is_bot:
             continue
-        cap = texts.join_greet(u.id, u.full_name).replace(texts.USER_MARK, "")  # send_photo PremiumEmoji'dan o'tmaydi
-        m = await _call(msg.bot.send_photo, u.id, _welcome_id[0] if _welcome_id else FSInputFile(WELCOME_IMG),
-                        caption=cap)
+        cap = texts.join_greet(u.id, u.full_name).replace(texts.USER_MARK, "")
+        photo = _welcome_id[0] if _welcome_id else FSInputFile(WELCOME_IMG)
+        # guruhning o'zida, faqat yangi kelganga ko'rinadi (botni ochmagan bo'lsa ham); bo'lmasa - shaxsiy chatga
+        m = (await _call(msg.bot.send_photo, msg.chat.id, photo, caption=cap, ephemeral_message_parameters=eph(u.id))
+             or await _call(msg.bot.send_photo, u.id, photo, caption=cap))
         if m and m.photo and not _welcome_id:
             _welcome_id.append(m.photo[-1].file_id)
 

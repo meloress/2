@@ -10,7 +10,7 @@ from . import config, db, emoji, panel, runner
 from .handlers import pro_reminder, restore_giveaways, router, season_payouts
 
 
-GROUP_COMMANDS = [  # guruhdagi buyruqlar menyusi
+GROUP_COMMANDS = [  # guruhdagi buyruqlar menyusi; is_ephemeral - buyruq va javobni faqat yozgan odam ko'radi
     BotCommand(command="game", description="🎮 Yangi o'yin"),
     BotCommand(command="extend", description="⏳ Ro'yxatni uzaytirish (daqiqa): /extend yoki /extend 5"),
     BotCommand(command="start", description="▶️ Darhol boshlash (admin)"),
@@ -19,16 +19,16 @@ GROUP_COMMANDS = [  # guruhdagi buyruqlar menyusi
     BotCommand(command="couplestop", description="💔 Paralar o'yinini to'xtatish (admin)"),
     BotCommand(command="stop", description="🛑 O'yinni to'xtatish (admin)"),
     BotCommand(command="leave", description="🚪 O'yindan chiqish (Pro)"),
-    BotCommand(command="next", description="🔔 Keyingi o'yinda xabar berish"),
-    BotCommand(command="players", description="👥 Tiriklar va o'liklar"),
+    BotCommand(command="next", description="🔔 Keyingi o'yinda xabar berish", is_ephemeral=True),
+    BotCommand(command="players", description="👥 Tiriklar va o'liklar", is_ephemeral=True),
     BotCommand(command="send", description="💸 Pul: /send 100 10 yoki reply + /send 100"),
     BotCommand(command="give", description="💎 Olmos: /give 10 2 yoki reply + /give 5"),
     BotCommand(command="couple", description="❤️ Para bo'lish: reply yoki /couple @username"),
     BotCommand(command="uncouple", description="💔 Paradan chiqish"),
-    BotCommand(command="mycouple", description="💞 Mening param"),
+    BotCommand(command="mycouple", description="💞 Mening param", is_ephemeral=True),
     BotCommand(command="settings", description="⚙️ Sozlamalar (admin)"),
-    BotCommand(command="top", description="🏆 Guruh reytingi"),
-    BotCommand(command="rules", description="📜 Rollar"),
+    BotCommand(command="top", description="🏆 Guruh reytingi", is_ephemeral=True),
+    BotCommand(command="rules", description="📜 Rollar", is_ephemeral=True),
 ]
 
 
