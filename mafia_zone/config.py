@@ -19,7 +19,9 @@ DATABASE_URL = _url.replace("postgres://", "postgresql://", 1).replace("postgres
 
 # guruh vaqtlari (soniya): eng kam/ko'p qiymat va /settings dagi ➖/➕ qadami
 TIMER_RANGES = {"lobby": (30, 86400, 30), "night": (15, 3600, 15), "day": (15, 10800, 15), "vote": (15, 3600, 15)}
-DEFAULT_SETTINGS = {"lobby": 120, "night": 60, "day": 60, "vote": 45, "items": True, "afk": True, "confirm": True, "disabled": []}
+DEFAULT_SETTINGS = {"lobby": 120, "night": 60, "day": 60, "vote": 45, "items": True, "afk": True, "confirm": True, "disabled": [],
+                    # 🛡 moderatsiya: avtomatik tozalash standart o'chiq (guruh admini /settings dan yoqadi)
+                    "mod_ads": False, "mod_swear": False, "mod_swear_min": 30, "mod_warn_max": 3, "mod_report": True}
 
 # Iqtisod (spec, 7-bo'lim)
 REWARD_PLAY, REWARD_WIN, REF_BONUS = 0, 40, 50  # yutsa 40$, yutqazsa 0
@@ -58,6 +60,8 @@ def cards() -> dict:
         c["uz"] = {"n": CARD_NUMBER}
     return c
 NEWS_URL = os.environ.get("NEWS_URL", "").strip()  # yangiliklar kanali, bo'sh bo'lsa tugma chiqmaydi
+BAD_WORDS: list[str] = []  # panelda qo'shilgan so'kinish so'zlari (settings "bad_words"); asosiylari moderation.py da
+ORDERS_CHAT: int | None = None  # karta cheklari shu guruhga (bot egasi u yerda /cheklar yozadi); None - egalarga shaxsiy
 SHOP = {"shield": 140, "verbena": 145, "doc": 190}  # dollar
 SHOP_GEMS = {"mask": 1, "votesave": 2, "ironshield": 1}  # olmos (Pro chegirmasi yo'q); ironshield - Konchi uchun
 # Rolni tanlab olish, olmos (Tinchdan boshqa hamma rol). Narx - vazifaga qarab:

@@ -355,25 +355,50 @@ def test_panel_js_never_appends_raw_arrays():
 
 
 def test_panel_couple_lock_set_and_clear():
-    """💍 Para qulfi panelda: faqat bosh admin; faqat hozirgi para qulflanadi; olib tashlansa /uncouple ishlaydi."""
+    """💍 Para qulfi panelda: faqat bosh admin; para bo'lmasa ham majburan para qiladi (eski paralar uziladi)."""
     async def s(c):
         csrf = await login(c, OWNER)
         hdr = {"X-CSRF": csrf}
-        a, b, x = 7_881_001, 7_881_002, 7_881_003
-        for u in (a, b, x):
+        a, b, x, y = 7_881_001, 7_881_002, 7_881_003, 7_881_004
+        for u in (a, b, x, y):
             await db.upsert_user(u, f"u{u}", None)
-        await db.break_couple(a)
-        await db.break_couple(x)
-        assert await db.make_couple(a, b)
-        assert (await c.post("/api/couple-lock", json={"a": a, "b": x}, headers=hdr)).status == 400  # para emas
+            await db.break_couple(u)
+        assert await db.make_couple(a, b) and await db.make_couple(x, y)
         assert (await c.post("/api/couple-lock", json={"a": a, "b": a}, headers=hdr)).status == 400
-        r = await c.post("/api/couple-lock", json={"a": str(a), "b": b}, headers=hdr)
-        assert r.status == 200 and {u["id"] for u in (await r.json())["lock"]} == {a, b}
-        assert await db.couple_lock() == {a, b}
+        assert (await c.post("/api/couple-lock", json={"a": a, "b": 7_881_999}, headers=hdr)).status == 400  # botda yo'q
+        r = await c.post("/api/couple-lock", json={"a": str(a), "b": x}, headers=hdr)  # a-b va x-y paralar edi
+        assert r.status == 200 and {u["id"] for u in (await r.json())["lock"]} == {a, x}
+        assert await db.couple_lock() == {a, x}
+        assert await db.partner(a) == x and await db.partner(x) == a
+        assert await db.partner(b) is None and await db.partner(y) is None
         r = await c.post("/api/couple-lock", json={"clear": True}, headers=hdr)
         assert r.status == 200 and (await r.json())["lock"] == [] and await db.couple_lock() == set()
         assert any(x["action"] == "couple_lock" for x in (await (await c.get("/api/log")).json())["items"])
         mcsrf = await login(c, MOD)
         assert (await c.get("/api/couple-lock")).status == 403
         assert (await c.post("/api/couple-lock", json={"clear": True}, headers={"X-CSRF": mcsrf})).status == 403
+    run(s)
+
+
+def test_panel_bad_words():
+    """🤬 Qo'shimcha so'kinish so'zlari: faqat bosh admin, tozalab saqlanadi, darhol ishlaydi va qayta yuklanadi."""
+    from mafia_zone import moderation
+
+    async def s(c):
+        hdr = {"X-CSRF": await login(c, OWNER)}
+        old = list(config.BAD_WORDS)
+        try:
+            r = await c.post("/api/bad-words", json={"words": " Zormaxsus ,\nyangiso'z\n\nzormaxsus"}, headers=hdr)
+            assert r.status == 200 and (await r.json())["words"] == ["yangiso'z", "zormaxsus"]
+            assert moderation.is_swear("ZORMAXSUSlar", moderation.extra_words())
+            for bad in [{"words": "ab"}, {"words": 5}, {"words": "x" * 41}]:
+                assert (await c.post("/api/bad-words", json=bad, headers=hdr)).status == 400, bad
+            config.BAD_WORDS.clear()
+            await db.load_settings()
+            assert config.BAD_WORDS == ["yangiso'z", "zormaxsus"]
+            mcsrf = await login(c, MOD)
+            assert (await c.get("/api/bad-words")).status == 403
+            assert (await c.post("/api/bad-words", json={"words": ""}, headers={"X-CSRF": mcsrf})).status == 403
+        finally:
+            await db.save_settings({"bad_words": old})
     run(s)

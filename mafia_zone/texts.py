@@ -1198,6 +1198,9 @@ def top(rows, title: str, me: tuple[int, int, int] | None = None, show_me: bool 
 MONTHS = ["Yanvar", "Fevral", "Mart", "Aprel", "May", "Iyun", "Iyul", "Avgust", "Sentabr", "Oktabr", "Noyabr", "Dekabr"]
 TOP_MONTH_BTN, TOP_ALL_BTN = "📅 Oylik", "🏆 Umumiy"
 TOP_GROUPS_BTN = "👥 Top guruhlar"
+ORDERS_HERE = ("✅ <b>Karta to'lovi cheklari endi shu guruhga keladi.</b>\n"
+               "Tasdiqlash/rad etish tugmalarini faqat bot egalari bosa oladi. Shaxsiy chatga qaytarish: botga /cheklar")
+ORDERS_PM = "✅ Karta to'lovi cheklari endi yana shaxsiy chatingizga keladi."
 DONATE_HOW = ("💎 <b>Guruhga olmos</b>: <code>/donate 5</code> — 5 olmosingiz guruh balliga o'tadi.\n"
               "1 💎 = <b>2 ball</b>, har 4 ta o'yin = <b>1 ball</b>. Reyting: /topgroups")
 DONATE_PM = "💎 Olmosni guruhga berish uchun o'sha guruhda <code>/donate 5</code> yozing."
@@ -1342,3 +1345,146 @@ def profile_card(u, inv) -> str:
             f"💵 <b>Dollar</b>: {u.dollars}\n💎 <b>Olmos</b>: {u.diamonds}\n\n{items}\n\n"
             f"🃏 {nxt}: {pick}\n\n"
             f"🎲 {games}: {u.games}\n🏆 {wins}: {u.wins}")
+
+
+# ---------- 🛡 moderatsiya (moderation.py) ----------
+MOD_ONLY_ADMIN = "⚠️ Bu buyruq faqat a'zolarni cheklash huquqi bor adminlar uchun."
+MOD_NOT_STAFF = "⚠️ Adminni (yoki botni) jazolab bo'lmaydi."
+MOD_NO_RIGHTS = "⚠️ Botga guruhda admin huquqi kerak: «Xabarlarni o'chirish» va «A'zolarni cheklash/bloklash»."
+MOD_HOW = {
+    "mute": "Xabarga reply qilib yozing: <code>.mute 30m sabab</code> (10m, 2h, 1d; yozilmasa — 1 soat)",
+    "unmute": "Xabarga reply qilib yozing: <code>.unmute</code>",
+    "ban": "Xabarga reply qilib yozing: <code>.ban sabab</code>",
+    "unban": "Xabarga reply qilib yozing: <code>.unban</code>",
+    "kick": "Xabarga reply qilib yozing: <code>.kick sabab</code>",
+    "warn": "Xabarga reply qilib yozing: <code>.warn sabab</code>",
+    "unwarn": "Xabarga reply qilib yozing: <code>.unwarn</code>",
+    "warns": "Xabarga reply qilib yozing: <code>.warns</code>",
+}
+MOD_WHY = {"link": "reklama (havola)", "mention": "reklama (kanal)", "forward": "reklama (forward)",
+           "buttons": "reklama (tugmali xabar)"}
+
+
+def mod_dur(secs: int) -> str:
+    """Mute muddati: 30 daqiqa / 2 soat / 3 kun."""
+    if secs % 86400 == 0:
+        return f"{secs // 86400} kun"
+    if secs % 3600 == 0:
+        return f"{secs // 3600} soat"
+    return f"{max(1, secs // 60)} daqiqa"
+
+
+def _by(reason: str, admin: str | None) -> str:
+    parts = ([f"Sabab: {escape(reason)}"] if reason else []) + ([f"Admin: {admin}"] if admin else [])
+    return ("\n" + " · ".join(parts)) if parts else ""
+
+
+def mod_muted(who: str, secs: int, reason: str, admin: str | None) -> str:
+    return f"🔇 {who} <b>{mod_dur(secs)}</b>ga mute qilindi.{_by(reason, admin)}"
+
+
+def mod_unmuted(who: str, admin: str | None) -> str:
+    return f"🔊 {who} endi yoza oladi.{_by('', admin)}"
+
+
+def mod_banned(who: str, reason: str, admin: str | None) -> str:
+    return f"🚫 {who} guruhdan ban qilindi.{_by(reason, admin)}"
+
+
+def mod_unbanned(who: str, admin: str | None) -> str:
+    return f"✅ {who} bandan chiqarildi — guruhga qaytib kira oladi.{_by('', admin)}"
+
+
+def mod_kicked(who: str, reason: str, admin: str | None) -> str:
+    return f"👢 {who} guruhdan chiqarildi (qaytib kira oladi).{_by(reason, admin)}"
+
+
+def mod_warned(who: str, n: int, mx: int, reason: str, admin: str | None) -> str:
+    return f"⚠️ {who} ogohlantirildi: <b>{n}/{mx}</b>.{_by(reason, admin)}"
+
+
+def mod_warn_ban(who: str, mx: int) -> str:
+    return f"🚫 {who} <b>{mx}</b> ta ogohlantirish oldi va guruhdan ban qilindi."
+
+
+def mod_unwarned(who: str, n: int, mx: int) -> str:
+    return f"✅ {who}: bitta ogohlantirish olib tashlandi — <b>{n}/{mx}</b>."
+
+
+def mod_no_warns(who: str) -> str:
+    return f"✅ {who}da ogohlantirish yo'q."
+
+
+def _ago(dt, now) -> str:
+    days = (now - dt).days
+    return "bugun" if days <= 0 else f"{days} kun oldin"
+
+
+def mod_warn_list(who: str, items, mx: int, now) -> str:
+    if not items:
+        return mod_no_warns(who)
+    rows = [f"{i}. {escape(w.reason or '—')} — {_ago(w.created_at, now)}" for i, w in enumerate(items, 1)]
+    return f"⚠️ {who}: <b>{len(items)}/{mx}</b> ogohlantirish\n" + "\n".join(rows)
+
+
+def mod_swear_muted(who: str, secs: int) -> str:
+    return f"🔇 {who} so'kingani uchun <b>{mod_dur(secs)}</b> mute qilindi."
+
+
+def mod_ad_warned(who: str, n: int, mx: int) -> str:
+    return f"🧹 {who}, reklama mumkin emas — xabar o'chirildi. Ogohlantirish: <b>{n}/{mx}</b>"
+
+
+REPORT_HOW = "Qoidabuzar xabarga reply qilib yozing: <code>/report sabab</code>"
+REPORT_OFF = "⚠️ Bu guruhda /report o'chirilgan."
+REPORT_WAIT = "⏳ Yaqinda report yubordingiz — biroz kuting."
+REPORT_SENT = "✅ Adminlarga yuborildi. Rahmat!"
+REPORT_NOBODY = "⚠️ Hech bir adminga yetkazib bo'lmadi (adminlar botni ochmagan)."
+REPORT_ACTS = {"m": "🔇 Mute 30m", "b": "🚫 Ban", "d": "🗑 O'chirish", "ok": "✅ Hammasi joyida"}
+REPORT_DONE = {"m": "30 daqiqa mute qilindi", "b": "ban qilindi", "d": "xabar o'chirildi", "ok": "hammasi joyida deb topildi"}
+REPORT_ALREADY = "Bu report allaqachon ko'rib chiqilgan."
+
+
+def report_pm(group: str, who: str, target: str, reason: str, quote: str) -> str:
+    q = escape(quote[:300] + ("…" if len(quote) > 300 else "")) if quote else "<i>(matnsiz xabar)</i>"
+    return (f"🚨 <b>Report</b> — {escape(group)}\n👤 Yubordi: {who}\n🎯 Kimga: {target}"
+            + (f"\n📝 Sabab: {escape(reason)}" if reason else "") + f"\n\n💬 {q}")
+
+
+def report_done(text: str, admin: str, act: str) -> str:
+    return f"{text}\n\n✅ <b>Ko'rib chiqildi</b>: {admin} — {REPORT_DONE[act]}"
+
+
+ADMINS_WAIT = "⏳ Adminlar yaqinda chaqirilgan — biroz kuting."
+ADMINS_NONE = "⚠️ Bu guruhda metka qilib bo'ladigan admin topilmadi."
+GO_TO_MSG_BTN = "➡️ Xabarga o'tish"
+
+
+def admins_called(caller: str, admins: list[str]) -> str:
+    return f"📣 <b>Adminlar chaqirildi!</b> Chaqirgan: {caller}\n👮 " + ", ".join(admins)
+
+
+def admins_called_pm(group: str, caller: str) -> str:
+    return f"📣 <b>{escape(group)}</b> guruhida {caller} adminlarni chaqirdi."
+
+
+def user_info(who: str, uid: int, username: str | None, status: str, warns: str, joined: str, games: int,
+              wins: int) -> str:
+    return (f"ℹ️ <b>Ma'lumot:</b> {who}\n🆔 ID: <code>{uid}</code>" + (f" · @{escape(username)}" if username else "")
+            + f"\n👤 Holati: {status}\n⚠️ Ogohlantirish: {warns}\n{joined}\n🎮 Shu guruhda: <b>{games}</b> o'yin, "
+            f"<b>{wins}</b> g'alaba")
+
+
+MOD_SETTINGS_BTN = "🛡 Moderatsiya"
+
+
+def mod_settings_text(s: dict, rights_ok: bool | None) -> str:
+    head = "🛡 <b>Moderatsiya</b> (darhol kuchga kiradi)\n\n"
+    body = (f"🔗 Reklama tozalash: <b>{'✅' if s['mod_ads'] else '❌'}</b> — havola, kanal, forward → o'chiriladi + ogohlantirish\n"
+            f"🤬 So'kinish: <b>{'✅' if s['mod_swear'] else '❌'}</b> — o'chiriladi + <b>{mod_dur(s['mod_swear_min'] * 60)}</b> mute\n"
+            f"⚠️ Ogohlantirish → ban: <b>{s['mod_warn_max']}</b> ta\n"
+            f"📣 /report: <b>{'✅' if s['mod_report'] else '❌'}</b>\n\n"
+            "Buyruqlar (reply bilan): .mute .unmute .ban .unban .kick .warn .unwarn .warns .info · hamma uchun: .admins /report")
+    tail = ("" if rights_ok is None else "\n\n✅ Botda kerakli huquqlar bor." if rights_ok
+            else "\n\n⚠️ Botga huquq bering: «Xabarlarni o'chirish» va «A'zolarni cheklash».")
+    return head + body + tail

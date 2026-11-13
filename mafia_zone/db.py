@@ -156,6 +156,25 @@ async def transfer(src: int, dst: int, amount: int, currency: str = "dollars") -
     return True
 
 
+class ModWarn(Base):
+    """🛡 Ogohlantirishlar (.warn va avtomatik reklama): WARN_DAYS kundan eskisi hisoblanmaydi."""
+    __tablename__ = "mod_warns"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    chat_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    reason: Mapped[str] = mapped_column(String(128), default="")
+    admin_id: Mapped[int | None] = mapped_column(BigInteger)  # None - avtomatik
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class GroupMember(Base):
+    """Guruhga qo'shilgan vaqt (.info): Telegram buni bermaydi - bot yangi a'zo kirganda o'zi yozadi."""
+    __tablename__ = "group_members"
+    chat_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
 class Donation(Base):
     """/donate: guruhga berilgan olmoslar jurnali - TOP guruhlar balli va homiylar ro'yxati shundan."""
     __tablename__ = "donations"
@@ -248,8 +267,13 @@ async def make_couple(a: int, b: int) -> bool:
 
 
 async def set_couple_lock(pair: list[int] | None) -> None:
-    """Hazil qulfini qo'yish (panel, bosh admin) yoki None - olib tashlash (qator o'chadi)."""
+    """Hazil qulfini qo'yish (panel, bosh admin) yoki None - olib tashlash (qator o'chadi).
+    Qo'yilganda ikkalasi shu zahoti majburan para qilinadi (eski paralari uziladi) - bitta tranzaksiyada."""
     async with Session.begin() as s:
+        if pair:
+            a, b = pair
+            await s.execute(delete(Couple).where(Couple.user_id.in_([a, b]) | Couple.partner_id.in_([a, b])))
+            s.add_all([Couple(user_id=a, partner_id=b), Couple(user_id=b, partner_id=a)])
         row = await s.get(Setting, "couple_lock")
         if pair is None:
             if row:
@@ -915,6 +939,68 @@ async def group_settings(chat_id: int, title: str = "", username: str | None = N
 GAMES_PER_POINT, GEM_POINTS = 4, 2  # TOP guruhlar: 4 ta tugagan o'yin = 1 ball, 1 💎 = 2 ball
 
 
+# ---------- 🛡 moderatsiya ----------
+WARN_DAYS = 30
+
+
+def _warn_live(chat_id: int, uid: int):
+    return (ModWarn.chat_id == chat_id, ModWarn.user_id == uid, ModWarn.created_at >= now() - timedelta(days=WARN_DAYS))
+
+
+async def add_warn(chat_id: int, uid: int, reason: str, admin_id: int | None) -> int:
+    """Ogohlantirish qo'shadi; hozirgi (amaldagi) soni qaytadi."""
+    async with Session.begin() as s:
+        s.add(ModWarn(chat_id=chat_id, user_id=uid, reason=reason[:128], admin_id=admin_id))
+    return len(await warns(chat_id, uid))
+
+
+async def warns(chat_id: int, uid: int) -> list[ModWarn]:
+    """Amaldagi ogohlantirishlar, eskisi oldin."""
+    async with Session() as s:
+        return list(await s.scalars(select(ModWarn).where(*_warn_live(chat_id, uid)).order_by(ModWarn.id)))
+
+
+async def pop_warn(chat_id: int, uid: int) -> int | None:
+    """Oxirgi amaldagi ogohlantirishni olib tashlaydi -> qolgan soni; yo'q edi - None."""
+    async with Session.begin() as s:
+        last = await s.scalar(select(ModWarn).where(*_warn_live(chat_id, uid)).order_by(ModWarn.id.desc()).limit(1))
+        if not last:
+            return None
+        await s.delete(last)
+    return len(await warns(chat_id, uid))
+
+
+async def clear_warns(chat_id: int, uid: int) -> None:
+    async with Session.begin() as s:
+        await s.execute(delete(ModWarn).where(ModWarn.chat_id == chat_id, ModWarn.user_id == uid))
+
+
+async def member_joined(chat_id: int, uid: int) -> None:
+    """Yangi a'zo (qayta kirsa - yangi sana)."""
+    from sqlalchemy.exc import IntegrityError
+    try:
+        async with Session.begin() as s:
+            r = await s.execute(update(GroupMember).where(GroupMember.chat_id == chat_id, GroupMember.user_id == uid)
+                                .values(joined_at=now()))
+            if r.rowcount == 0:
+                s.add(GroupMember(chat_id=chat_id, user_id=uid))
+    except IntegrityError:
+        pass  # bir vaqtda ikki marta - birinchisi yozildi
+
+
+async def member_info(chat_id: int, uid: int) -> dict:
+    """.info uchun: qo'shilgan sana (bot yozgan) yoki birinchi ko'rilgani (shu guruhdagi birinchi o'yini), o'yin/g'alaba."""
+    async with Session() as s:
+        joined = await s.scalar(select(GroupMember.joined_at).where(GroupMember.chat_id == chat_id,
+                                                                    GroupMember.user_id == uid))
+        first, games, wins = (await s.execute(
+            select(func.min(GameRow.started_at), func.count(GamePlayer.game_id),
+                   func.sum(case((GamePlayer.won.is_(True), 1), else_=0)))
+            .join(GameRow, GameRow.id == GamePlayer.game_id)
+            .where(GamePlayer.chat_id == chat_id, GamePlayer.user_id == uid, GameRow.status == "finished"))).one()
+    return {"joined": _aware(joined), "first": _aware(first), "games": int(games or 0), "wins": int(wins or 0)}
+
+
 async def donate(uid: int, chat_id: int, n: int) -> bool:
     """Olmosni guruhga (TOP guruhlar balli, donations jurnali): yetmasa hech narsa o'zgarmaydi."""
     if n <= 0:
@@ -948,6 +1034,12 @@ async def top_groups(limit: int | None = 10) -> list[dict]:
     for i, r in enumerate(rows, 1):
         r["place"] = i
     return rows if limit is None else rows[:limit]  # ponytail: hamma guruh xotirada saralanadi; minglab guruh bo'lsa SQL'da
+
+
+async def group_invite(chat_id: int) -> str:
+    """Guruhning saqlangan taklif havolasi ("" - yo'q) - reklamada o'z havolasi mustasno."""
+    async with Session() as s:
+        return (await s.scalar(select(Group.invite).where(Group.chat_id == chat_id))) or ""
 
 
 async def set_invite(chat_id: int, link: str) -> None:
@@ -1065,6 +1157,10 @@ def _apply(key: str, value) -> None:
     elif key == "cards":  # to'lov kartalari (panel): joyida - config.CARDS ni olganlar ham ko'radi
         config.CARDS.clear()
         config.CARDS.update({k: dict(v) for k, v in value.items() if k in ("uz", "xorij") and isinstance(v, dict)})
+    elif key == "bad_words":  # panelda qo'shilgan so'kinish so'zlari (repo ochiq - faqat bazada)
+        config.BAD_WORDS[:] = [str(w).strip().lower() for w in value if str(w).strip()][:500]
+    elif key == "orders_chat":  # karta cheklari guruhi (/cheklar); None - bot egalarining shaxsiy chati
+        config.ORDERS_CHAT = int(value) if value else None
     elif key == "name_lock":  # hazil: {"uid": "ism"} - qo'lda yoziladi, id'lar faqat bazada (repo ochiq)
         pro.FORCED.clear()
         pro.FORCED.update({int(k): str(v) for k, v in value.items()})

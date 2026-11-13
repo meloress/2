@@ -6,7 +6,7 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.types import BotCommand, BotCommandScopeAllGroupChats, BotCommandScopeAllPrivateChats
 
-from . import config, db, emoji, panel, runner
+from . import config, db, emoji, moderation, panel, runner
 from .handlers import pro_reminder, restore_giveaways, router, season_payouts
 
 
@@ -30,6 +30,9 @@ GROUP_COMMANDS = [  # guruhdagi buyruqlar menyusi; is_ephemeral - buyruq va javo
     BotCommand(command="settings", description="⚙️ Sozlamalar (admin)"),
     BotCommand(command="donate", description="💎 Guruhga olmos: /donate 5 (TOP guruhlar)"),
     BotCommand(command="topgroups", description="🏆 TOP 10 guruh"),
+    BotCommand(command="report", description="🚨 Adminlarga shikoyat (xabarga reply)"),
+    BotCommand(command="admins", description="📣 Adminlarni chaqirish"),
+    BotCommand(command="info", description="ℹ️ Ma'lumot (reply - o'sha odam haqida)"),
     BotCommand(command="top", description="🏆 Guruh reytingi", is_ephemeral=True),
     BotCommand(command="rules", description="📜 Rollar", is_ephemeral=True),
 ]
@@ -58,6 +61,7 @@ async def main() -> None:
         BotCommand(command="rules", description="📜 Rollar"),
     ], scope=BotCommandScopeAllPrivateChats())
     dp = Dispatcher()
+    dp.include_router(moderation.router)  # .mute/.ban/... va /report - asosiy routerdan oldin
     dp.include_router(router)
     await panel.start(bot)
     await runner.restore(bot)

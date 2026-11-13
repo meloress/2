@@ -13,7 +13,8 @@ from aiogram.exceptions import (TelegramBadRequest, TelegramForbiddenError, Tele
                                 TelegramRetryAfter, TelegramServerError)
 from aiogram.client.session.middlewares.base import BaseRequestMiddleware
 from aiogram.methods import EditMessageReplyMarkup, EditMessageText, SendAnimation, SendMessage
-from aiogram.types import EphemeralMessageParameters, FSInputFile, InlineKeyboardButton as Btn, InlineKeyboardMarkup as Kb
+from aiogram.types import (EphemeralMessageParameters, FSInputFile, InlineKeyboardButton as Btn, InlineKeyboardMarkup as Kb,
+                           ReplyParameters)
 
 from . import config, db, pro, texts
 from .engine.game import AFK_LIMIT, CONFIRM, DAY, FINISHED, NIGHT, SKIP, VOTING, Game, couple_pairs
@@ -109,7 +110,8 @@ def split_text(text: str, limit: int = MAX_TEXT) -> list[str]:
     return parts + [cur]
 
 
-async def send(bot: Bot, chat_id: int, text: str, kb: Kb | None = None, effect: str | None = None):
+async def send(bot: Bot, chat_id: int, text: str, kb: Kb | None = None, effect: str | None = None,
+               reply_to: int | None = None):
     if chat_id >= FAKE_BASE:
         return None
     if len(text) > MAX_TEXT:
@@ -118,6 +120,8 @@ async def send(bot: Bot, chat_id: int, text: str, kb: Kb | None = None, effect: 
             await send(bot, chat_id, part)
     await _group_slot(chat_id)
     kw = {"message_effect_id": effect} if effect and chat_id > 0 else {}
+    if reply_to:  # o'chirilgan bo'lsa ham yuboriladi
+        kw["reply_parameters"] = ReplyParameters(message_id=reply_to, allow_sending_without_reply=True)
     return await _call(bot.send_message, chat_id, text, reply_markup=kb, disable_web_page_preview=True, **kw)
 
 

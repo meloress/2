@@ -697,7 +697,7 @@ async def api_couple_lock(req: web.Request) -> web.Response:
 
 
 async def api_couple_lock_save(req: web.Request) -> web.Response:
-    """{"a": id, "b": id} - qulflash (ikkalasi hozir para bo'lishi kerak); {"clear": true} - olib tashlash."""
+    """{"a": id, "b": id} - majburan para qilib qulflash (eski paralari uziladi); {"clear": true} - olib tashlash."""
     need(req, "owner")
     d = await body(req)
     if d.get("clear"):
@@ -708,11 +708,35 @@ async def api_couple_lock_save(req: web.Request) -> web.Response:
     b = as_int(d.get("b"), 1, 10 ** 15, "2-o'yinchi ID")
     if a == b:
         raise Bad("Ikki xil o'yinchi kerak")
-    if await db.partner(a) != b:
-        raise Bad("Bu ikkisi hozir para emas: avval guruhda /couple bilan para bo'lishsin")
+    if not await db.get_user(a) or not await db.get_user(b):
+        raise Bad("Bunday ID li o'yinchi botda yo'q (ID ni tekshiring)")
     await db.set_couple_lock([a, b])
     await audit(req, "couple_lock", f"{a},{b}", "qulflandi")
     return ok(await _lock_view())
+
+
+# ---------- 🤬 qo'shimcha so'kinish so'zlari (asosiylari moderation.py da; bular faqat bazada - repo ochiq) ----------
+BAD_WORDS_MAX = 500
+
+
+async def api_bad_words(req: web.Request) -> web.Response:
+    need(req, "owner")
+    return ok({"words": config.BAD_WORDS})
+
+
+async def api_bad_words_save(req: web.Request) -> web.Response:
+    """{"words": "so'z1, so'z2\nso'z3"} - butun ro'yxat almashadi (bo'sh - hammasi o'chadi)."""
+    need(req, "owner")
+    d = await body(req)
+    raw = d.get("words")
+    if not isinstance(raw, str) or len(raw) > 20000:
+        raise Bad("So'zlar ro'yxati noto'g'ri")
+    words = sorted({w.strip().lower() for w in raw.replace(",", "\n").split("\n") if w.strip()})
+    if len(words) > BAD_WORDS_MAX or any(len(w) > 40 or len(w) < 3 for w in words):
+        raise Bad(f"Har so'z 3–40 harf, ko'pi bilan {BAD_WORDS_MAX} ta")
+    await db.save_settings({"bad_words": words})
+    await audit(req, "bad_words", "", f"{len(words)} ta so'z")
+    return ok({"words": config.BAD_WORDS})
 
 
 # ---------- adminlar va jurnal ----------
@@ -1010,6 +1034,8 @@ def make_app() -> web.Application:
     r.add_post("/api/cards", api_cards_save)
     r.add_get("/api/couple-lock", api_couple_lock)
     r.add_post("/api/couple-lock", api_couple_lock_save)
+    r.add_get("/api/bad-words", api_bad_words)
+    r.add_post("/api/bad-words", api_bad_words_save)
     r.add_get("/api/admins", api_admins)
     r.add_post("/api/admins", api_admin_add)
     r.add_delete("/api/admins/{uid}", api_admin_remove)

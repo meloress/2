@@ -1112,11 +1112,13 @@
     const adminCard = owner ? h("section", { class: "card f1" }, h("h2", { text: "Adminlar" }), skel(3, 44)) : null;
     const cardsCard = owner ? h("section", { class: "card f1" }, h("h2", { text: "To'lov kartalari" }), skel(4, 40)) : null;
     const lockCard = owner ? h("section", { class: "card f1" }, h("h2", { text: "💍 Para qulfi" }), skel(2, 40)) : null;
+    const wordsCard = owner ? h("section", { class: "card f1" }, h("h2", { text: "🤬 So'kinish so'zlari" }), skel(3, 40)) : null;
     const logCard = h("section", { class: owner ? "card f1" : "card" }, h("h2", { text: "Amallar jurnali" }), skel(6, 30));
     root.append(head("Iqtisod va adminlar", owner ? "O'zgarishlar darhol kuchga kiradi — botni qayta ishga tushirish shart emas" : "Ko'rish rejimi: o'zgartirish faqat bosh admin uchun",
       owner ? resetBtn : null, owner ? saveBtn : null), err,
       h("div", { class: "row", style: { alignItems: "flex-start" } }, econCard, shopCard),
       cardsCard ? h("div", { class: "row", style: { alignItems: "flex-start" } }, cardsCard, lockCard) : null,
+      wordsCard ? h("div", { class: "row", style: { alignItems: "flex-start" } }, wordsCard) : null,
       h("div", { class: "row", style: { alignItems: "flex-start" } }, adminCard, logCard));
 
     let base = null;
@@ -1300,16 +1302,36 @@
       const on = h("button", { type: "button", class: "btn primary", text: d.lock.length ? "Boshqa juftni qulflash" : "Qulflash" });
       on.addEventListener("click", () => {
         if (!/^\d+$/.test(a.value.trim()) || !/^\d+$/.test(b.value.trim())) { lerr.textContent = "Ikkala ID ni raqam bilan kiriting"; return; }
-        send({ a: a.value.trim(), b: b.value.trim() }, on, "Qulflandi: bu juft endi /uncouple qila olmaydi");
+        send({ a: a.value.trim(), b: b.value.trim() }, on, "Para qilindi va qulflandi: endi /uncouple qila olmaydi");
       });
       clear(lockCard).append(h("h2", { text: "💍 Para qulfi" }),
-        h("p", { class: "hint", text: "Hazil uchun (ikkalasi rozi bo'lsa): qulflangan juft /uncouple qila olmaydi. Bir vaqtda bitta juft. Ikkalasi hozir para bo'lishi kerak." }),
+        h("p", { class: "hint", text: "Hazil uchun (ikkalasi rozi bo'lsa): qulflangan juft /uncouple qila olmaydi. Bir vaqtda bitta juft. Para bo'lmasa ham shu zahoti para qilinadi (eski paralari uziladi)." }),
         ...body,
         h("div", { class: "inline", style: { alignItems: "flex-end", flexWrap: "wrap" } },
           h("div", { class: "field", style: { flex: "1 1 160px" } }, h("label", { for: "lk-a", text: "1-o'yinchi ID" }), a),
           h("div", { class: "field", style: { flex: "1 1 160px" } }, h("label", { for: "lk-b", text: "2-o'yinchi ID" }), b), on), lerr);
     }
-    loadEcon(); loadAdmins(); loadCards(); loadLock(); loadLog(0);
+    // 🤬 Qo'shimcha so'kinish so'zlari: guruhda "So'kinish → mute" yoqilgan bo'lsa, shular ham ushlanadi.
+    // Asosiy lug'at botning o'zida; bu yerga yangilari qo'shiladi (so'z boshi bo'yicha: "jalab" -> "jalablar" ham).
+    async function loadWords() {
+      if (!wordsCard) return;
+      let d;
+      try { d = await api("/api/bad-words"); } catch (e) { if (alive(view)) clear(wordsCard).append(h("h2", { text: "🤬 So'kinish so'zlari" }), errorCard(e, loadWords)); return; }
+      if (!alive(view)) return;
+      const werr = h("div", { class: "err", role: "alert" });
+      const area = h("textarea", { class: "input", id: "bw", rows: 6, placeholder: "har qatorga bitta so'z (yoki vergul bilan)" });
+      area.value = d.words.join("\n");
+      const save = h("button", { type: "button", class: "btn primary", text: "So'zlarni saqlash" });
+      save.addEventListener("click", () => busy(save, async () => {
+        werr.textContent = "";
+        try { await api("/api/bad-words", { method: "POST", json: { words: area.value } }); toast("Saqlandi: darhol ishlaydi"); loadWords(); loadLog(0); }
+        catch (e) { werr.textContent = e.message; }
+      }));
+      clear(wordsCard).append(h("h2", { text: "🤬 So'kinish so'zlari" }),
+        h("p", { class: "hint", text: "Asosiy o'zbekcha/ruscha lug'at botda bor. Bu yerga qo'shimcha so'zlar: har biri 3–40 harf, so'z boshi bo'yicha ushlanadi (lotin/kirill, yashirib yozilgani ham). Faqat «So'kinish → mute» yoqilgan guruhlarda ishlaydi." }),
+        h("div", { class: "field" }, h("label", { for: "bw", text: `Qo'shimcha so'zlar (${d.words.length} ta)` }), area), werr, h("div", { class: "inline" }, save));
+    }
+    loadEcon(); loadAdmins(); loadCards(); loadLock(); loadWords(); loadLog(0);
   }
 
   boot();

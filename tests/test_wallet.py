@@ -335,7 +335,26 @@ def test_card_order_check_photo_to_admin_approves_once():
             await handlers.on_check(photo(payer, log, same="U5"))
             assert log[-1][1] == texts.check_not_delivered(await db.get_card_order(oid5))
             assert "TOP-" not in photos[-1][2].split("Karta to'lovi")[0]  # yangi chek - ogohlantirishsiz
+            # /cheklar: cheklar guruhga boradi (shaxsiyga emas); guruhga yetmasa - egalarga shaxsiy
+            reach[0] = True
+            said = []
+            gmsg = SimpleNamespace(chat=SimpleNamespace(id=-5551, type="supergroup"),
+                                   answer=lambda t, **kw: asyncio.sleep(0, said.append(t)))
+            await handlers.cmd_orders_chat(gmsg)
+            assert config.ORDERS_CHAT == -5551 and said[-1] == texts.ORDERS_HERE
+            await handlers.cb_card(c(payer, "gc:7:0", log))
+            await handlers.on_check(photo(payer, log, same="U6"))
+            assert [x[0] for x in photos[-1:]] == [-5551]
+            n = len(photos)
+            reach[0] = False  # bot guruhdan chiqarilgan
+            await handlers.cb_card(c(payer, "gc:7:0", log))
+            await handlers.on_check(photo(payer, log, same="U7"))
+            assert [x[0] for x in photos[n:]] == [-5551, admin]
+            await handlers.cmd_orders_chat(SimpleNamespace(chat=SimpleNamespace(id=admin, type="private"),
+                                                           answer=lambda t, **kw: asyncio.sleep(0, said.append(t))))
+            assert config.ORDERS_CHAT is None and said[-1] == texts.ORDERS_PM
         finally:
+            config.ORDERS_CHAT = None
             handlers.send, config.CARD_NUMBER, config.ADMIN_IDS = old_send, old_card, old_admins
             handlers.ASK.pop(payer, None)
     run(t())

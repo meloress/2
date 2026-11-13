@@ -10,7 +10,7 @@ from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.types import CallbackQuery, ChatMemberUpdated, CopyTextButton, ErrorEvent, FSInputFile, LabeledPrice, PreCheckoutQuery, InlineKeyboardButton as Btn, InlineKeyboardMarkup as Kb, Message
 
-from . import config, db, pro, texts, vidjet
+from . import config, db, moderation, pro, texts, vidjet
 from .engine.game import CONFIRM, DAY, FINISHED, NIGHT, VOTING
 from .engine.roles import ROLES
 from .engine.setup import CORE
@@ -59,6 +59,11 @@ async def drop_commands(handler, msg: Message, data):
             _CHANNEL_WARN[msg.chat.id] = now
             await send(data["bot"], msg.chat.id, texts.AS_CHANNEL)
         return
+    try:
+        if await moderation.auto(msg, data["bot"]):  # 🛡 reklama/so'kinish o'chirildi - boshqa handlerlarga o'tmaydi
+            return
+    except Exception:
+        log.exception("moderatsiya")
     try:
         return await handler(msg, data)
     finally:
@@ -277,8 +282,35 @@ def settings_kb(s: dict) -> Kb:
     rows.append([Btn(text=f"😴 AFK chiqarish: {'✅' if s['afk'] else '❌'}", callback_data="s:afk")])
     rows.append([Btn(text=f"🪢 Osishni tasdiqlash: {'✅' if s['confirm'] else '❌'}", callback_data="s:confirm")])
     rows.append([Btn(text="🎭 Rollar", callback_data="s:roles")])
+    rows.append([Btn(text=texts.MOD_SETTINGS_BTN, callback_data="s:mod")])
     rows.append([Btn(text="❌ Yopish", callback_data="s:close")])
     return Kb(inline_keyboard=rows)
+
+
+MOD_FLAGS = ("mod_ads", "mod_swear", "mod_report")
+SWEAR_MINS = (5, 10, 15, 30, 60, 120, 180, 360, 720, 1440)  # so'kinish uchun mute muddati (daqiqa)
+WARN_MAX = (2, 10)
+
+
+def mod_kb(s: dict) -> Kb:
+    on = lambda k: "✅" if s.get(k) else "❌"
+    step = lambda k, label: [Btn(text="➖", callback_data=f"s:{k}:-"), Btn(text=label, callback_data=f"s:{k}:i"),
+                             Btn(text="➕", callback_data=f"s:{k}:+")]
+    return Kb(inline_keyboard=[
+        [Btn(text=f"🔗 Reklama tozalash: {on('mod_ads')}", callback_data="s:mod_ads")],
+        [Btn(text=f"🤬 So'kinish → mute: {on('mod_swear')}", callback_data="s:mod_swear")],
+        step("mod_swear_min", "⏱ Mute"), step("mod_warn_max", "⚠️ Warn → ban"),
+        [Btn(text=f"📣 /report: {on('mod_report')}", callback_data="s:mod_report")],
+        [Btn(text="⬅️ Orqaga", callback_data="s:main")]])
+
+
+async def _mod_rights(bot: Bot, chat: int) -> bool | None:
+    """Botda o'chirish va cheklash huquqi bormi (None - bilib bo'lmadi)."""
+    m = await _call(bot.get_chat_member, chat, bot.id)
+    if m is None:
+        return None
+    return m.status == "administrator" and bool(getattr(m, "can_delete_messages", False)) and \
+        bool(getattr(m, "can_restrict_members", False))
 
 
 def roles_kb(s: dict) -> Kb:
@@ -306,10 +338,10 @@ async def cmd_settings(msg: Message, bot: Bot):
 SET_EPH: dict[int, tuple[int, int | None]] = {}  # admin -> (guruh, ephemeral sozlamalar xabari) - tahrir uchun
 
 
-async def _settings_kb(cq: CallbackQuery, chat: int, kb: Kb, s: dict) -> None:
+async def _settings_kb(cq: CallbackQuery, chat: int, kb: Kb, s: dict, text: str | None = None) -> None:
     """Sozlamalar xabarini yangilash (matn + tugmalar). Faqat adminga ko'rinadigani tahrirlanmasa (eskirgan) -
     o'chirib, yangisini yuboramiz: sozlash hech qachon "osilib" qolmasin."""
-    m, uid, text = cq.message, cq.from_user.id, settings_text(s)
+    m, uid, text = cq.message, cq.from_user.id, text or settings_text(s)
     saved = SET_EPH.get(uid)
     eid = getattr(m, "ephemeral_message_id", None) or (saved[1] if saved and saved[0] == chat else None)
     if not eid:
@@ -343,6 +375,23 @@ async def cb_settings(cq: CallbackQuery, bot: Bot):
             await _call(m.delete)
         return await cq.answer()
     s = await db.group_settings(chat)
+    if key == "mod" or key in MOD_FLAGS or key in ("mod_swear_min", "mod_warn_max"):  # 🛡 Moderatsiya
+        if key in MOD_FLAGS:
+            s[key] = not s.get(key)
+        elif key == "mod_swear_min":
+            if parts[-1] == "i":
+                return await cq.answer(f"So'kinish uchun mute: {texts.mod_dur(s[key] * 60)}")
+            i = min(range(len(SWEAR_MINS)), key=lambda j: abs(SWEAR_MINS[j] - s[key]))
+            s[key] = SWEAR_MINS[max(0, min(len(SWEAR_MINS) - 1, i + (1 if parts[-1] == "+" else -1)))]
+        elif key == "mod_warn_max":
+            if parts[-1] == "i":
+                return await cq.answer(f"{s[key]} ta ogohlantirish → ban")
+            s[key] = max(WARN_MAX[0], min(WARN_MAX[1], s[key] + (1 if parts[-1] == "+" else -1)))
+        if key != "mod":
+            await db.save_group_settings(chat, s)
+            moderation.forget(chat)
+        await _settings_kb(cq, chat, mod_kb(s), s, texts.mod_settings_text(s, await _mod_rights(bot, chat)))
+        return await cq.answer()
     if key in TIMERS:  # ➖/➕: istalgan qiymat, qadam bilan, chegaradan chiqmaydi
         lo, hi, step = config.TIMER_RANGES[key]
         if parts[-1] == "i":  # o'rtadagi tugma - joriy qiymat
@@ -885,8 +934,12 @@ async def on_check(msg: Message):
     caption = caption.replace(texts.USER_MARK, "")  # PremiumEmoji ham oladi; bu - zaxira (middleware'siz chaqiruvlar)
     send_file = msg.bot.send_photo if msg.photo else msg.bot.send_document
     delivered = 0
-    for admin in config.ADMIN_IDS:
-        delivered += bool(await _call(send_file, admin, f.file_id, caption=caption, reply_markup=admin_order_kb(o.id)))
+    if config.ORDERS_CHAT:  # cheklar guruhi (/cheklar): bot bilan shaxsiy chat chalkashmaydi
+        delivered = bool(await _call(send_file, config.ORDERS_CHAT, f.file_id, caption=caption,
+                                     reply_markup=admin_order_kb(o.id)))
+    if not delivered:  # guruh yo'q yoki yetmadi (bot chiqarilgan) - har bir egaga shaxsiy
+        for admin in config.ADMIN_IDS:
+            delivered += bool(await _call(send_file, admin, f.file_id, caption=caption, reply_markup=admin_order_kb(o.id)))
     if not delivered:  # hech bir adminga yetmadi: foydalanuvchi kutib qolmasin
         log.error("karta cheki adminga yetmadi: order=%s", o.id)
         await msg.answer(texts.check_not_delivered(o))
@@ -1349,6 +1402,14 @@ async def cb_hunt(cq: CallbackQuery):
 OWNER = F.from_user.id.in_(config.ADMIN_IDS)
 
 
+@router.message(Command("cheklar"), OWNER)
+async def cmd_orders_chat(msg: Message):
+    """Bot egasi: guruhda /cheklar - karta cheklari shu guruhga keladi; botning shaxsiy chatida - yana shaxsiyga."""
+    chat = msg.chat.id if msg.chat.type != "private" else None
+    await db.save_settings({"orders_chat": chat})
+    await msg.answer(texts.ORDERS_HERE if chat else texts.ORDERS_PM)
+
+
 @router.callback_query(F.data.startswith("oa:"), OWNER)
 async def cb_order_admin(cq: CallbackQuery):
     """Karta to'lovi (chek rasmi ostida): oa:<id>:1 - tasdiqlash (olmos tushadi), oa:<id>:<n|s|c> - sabab bilan
@@ -1485,6 +1546,7 @@ async def on_join(msg: Message):
     for u in msg.new_chat_members:
         if u.is_bot:
             continue
+        await db.member_joined(msg.chat.id, u.id)  # .info: "guruhga qo'shilgan"
         cap = texts.join_greet(u.id, u.full_name).replace(texts.USER_MARK, "")
         photo = _welcome_id[0] if _welcome_id else FSInputFile(WELCOME_IMG)
         # guruhning o'zida, faqat yangi kelganga ko'rinadi (botni ochmagan bo'lsa ham); bo'lmasa - shaxsiy chatga
