@@ -177,6 +177,28 @@ class BackToGroup(BaseRequestMiddleware):
         return await make_request(bot, method)
 
 
+def bold_kb(kb):
+    """Tugma yozuvlari matematik qalin (𝐎𝐫𝐪𝐚𝐠𝐚); USER belgisi ichidagi ismlar (pro.short) - o'zgarmaydi."""
+    if not isinstance(kb, Kb):
+        return kb
+    lab = lambda t: texts.USER_MARK.join(x if i % 2 else texts.bold(x) for i, x in enumerate(t.split(texts.USER_MARK)))
+    rows = [[b.model_copy(update={"text": t}) if (t := lab(b.text)) != b.text else b for b in row]
+            for row in kb.inline_keyboard]
+    return Kb(inline_keyboard=rows)
+
+
+class BoldButtons(BaseRequestMiddleware):
+    """Botning shaxsiy chatidagi barcha tugmalar qalin (egasining talabi). Guruhdagilar - o'zgarmaydi.
+    BackToGroup dan keyin, PremiumEmoji dan oldin ro'yxatdan o'tadi (ismlardagi USER belgisi hali turibdi)."""
+
+    async def __call__(self, make_request, bot, method):
+        chat = getattr(method, "chat_id", None)
+        kb = getattr(method, "reply_markup", None)
+        if isinstance(chat, int) and chat > 0 and isinstance(kb, Kb):
+            method = method.model_copy(update={"reply_markup": bold_kb(kb)})
+        return await make_request(bot, method)
+
+
 async def edit(bot: Bot, chat_id: int, msg_id: int, text: str, kb: Kb | None = None):
     await _group_slot(chat_id)
     return await _call(bot.edit_message_text, text=text, chat_id=chat_id, message_id=msg_id, reply_markup=kb,
@@ -211,9 +233,12 @@ def invite_url(uid: int) -> str:
 
 def profile_kb(inv, uid: int | None = None) -> Kb:
     """Profil tugmalari: har buyum ON/OFF (3 tadan qatorda), PRO, hamyon, do'kon, do'st taklif qilish."""
+    if uid is not None:
+        MENU_FROM[uid] = "profile"  # bu yerdan ochilgan Do'kon/Pro "Orqaga" - profilga qaytadi
     have = {i.item: i for i in inv}
     on = lambda c: have[c].enabled if c in have else True  # hali sotib olinmagan - yoqilgan (db.buy ham yoqadi)
-    toggles = [Btn(text=texts.ITEMS[c].split(' ', 1)[0], callback_data=f"t:{c}", style="success" if on(c) else "danger")
+    toggles = [Btn(text=f"{texts.ITEMS[c].split(' ', 1)[0]} - {'🟢 ON' if on(c) else '🔴 OFF'}", callback_data=f"t:{c}",
+                   style="success" if on(c) else "danger")
                for c in texts.ITEMS if c in texts.ALWAYS_SHOWN or c in have and have[c].qty > 0]
     rows = grid(toggles, 3) if toggles else []
     rows += [[pro_btn()],
@@ -226,7 +251,7 @@ def profile_kb(inv, uid: int | None = None) -> Kb:
     if uid is not None:
         rows.append([Btn(text=texts.INVITE_BTN, url=invite_url(uid))])
     rows.append([back_btn()])
-    return Kb(inline_keyboard=rows)
+    return Kb(inline_keyboard=rows)  # yozuvlar qalin - BoldButtons (shaxsiy chatdagi hamma tugma)
 
 
 def pro_btn() -> Btn:
@@ -236,6 +261,15 @@ def pro_btn() -> Btn:
 def back_btn() -> Btn:
     """Bosh menyuga qaytish (handlers.cb_menu, m:home)."""
     return Btn(text=texts.BACK_BTN, callback_data="m:home")
+
+
+# Do'kon va Pro ham bosh menyudan, ham profildan ochiladi: "Orqaga" (m:back) qaysi biridan kelgan bo'lsa, o'shanga.
+# profile_kb / handlers.start_kb yozib qo'yadi. ponytail: xotirada - restartdan keyin bosh menyuga qaytaradi.
+MENU_FROM: dict[int, str] = {}
+
+
+def menu_back() -> Btn:
+    return Btn(text=texts.BACK_BTN, callback_data="m:back")
 
 
 def grid(btns: list[Btn], cols: int | None = None) -> list[list[Btn]]:
@@ -408,7 +442,9 @@ class Runner:
             await _call(self.bot.unpin_chat_message, self.chat_id, message_id=self.lobby_msg)
         uids = [u for u, _ in self.members]
         items = await db.game_items(uids) if self.s["items"] else {}
-        self.game = Game.create(self.chat_id, self.members, random.SystemRandom().randrange(2 ** 31),
+        order = self.members[:]  # o'yindagi raqamlar tasodifiy: kim birinchi bosgani 1-raqam bo'lmaydi
+        random.SystemRandom().shuffle(order)
+        self.game = Game.create(self.chat_id, order, random.SystemRandom().randrange(2 ** 31),
                                 frozenset(self.s["disabled"]), items, AFK_LIMIT if self.s.get("afk", True) else 0,
                                 self.s.get("confirm", True), history=await db.recent_roles(uids))
         if self.couple:

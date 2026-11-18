@@ -26,8 +26,9 @@ def test_profile_strikes_off_items_and_shows_role_picks():
            SimpleNamespace(item="r_don", qty=1, enabled=True), SimpleNamespace(item="r_komissar", qty=2, enabled=False)]
     u = SimpleNamespace(telegram_id=U + 900, full_name="Ali", wins=1, games=3, dollars=10, diamonds=2)
     card = texts.profile_card(u, inv)
-    assert "<b>Qalqon</b>: 2 ta" in card and "<s><b>Hujjat</b>: 1 ta</s>" in card
-    assert "<s><b>Qalqon</b>" not in card
+    B = texts.bold  # profil yozuvlari matematik qalin
+    assert f"{B('Qalqon')}: 2 ta" in card and f"<s>{B('Hujjat')}: 1 ta</s>" in card
+    assert f"<s>{B('Qalqon')}" not in card and B("Dollar") in card and B("Olmos") in card and B("Unvon") in card
     line = next(x for x in card.split("\n") if x.startswith("🃏"))
     assert texts.role("don") in line and f"<s>{texts.role('komissar')} ×2</s>" in line
     assert "Komissar Katani roli" not in card  # rol buyum ro'yxatida takrorlanmaydi
@@ -144,7 +145,7 @@ def test_buy_with_diamonds_no_pro_discount():
 def test_shop_menu_buttons():
     kb = handlers.shop_kb(U)
     cbs = [b.callback_data for row in kb.inline_keyboard for b in row]
-    assert {"b:shield", "b:mask", "b:votesave", "shoproles", "m:home"} <= set(cbs) and "b:ticket" not in cbs
+    assert {"b:shield", "b:mask", "b:votesave", "shoproles", "m:back"} <= set(cbs) and "b:ticket" not in cbs
     rk = handlers.roles_shop_kb()
     rcbs = [b.callback_data for row in rk.inline_keyboard for b in row]
     assert {"b:r_komissar", "b:r_don", "shop"} <= set(rcbs)

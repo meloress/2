@@ -188,7 +188,12 @@ def test_profile_kb_layout_and_sections():
         assert "x" not in c  # Exchange tugmasi yo'q: dollar Xarid orqali olinadi
         for item in texts.ALWAYS_SHOWN:  # himoyalar 0 ta bo'lsa ham yoqish/o'chirish tugmasi bor, ON/OFF yozuvisiz
             assert f"t:{item}" in c
-        assert not any("ON" in b.text or "OFF" in b.text for row in kb.inline_keyboard for b in row)
+        assert any(b.text.endswith("🟢 ON") for row in kb.inline_keyboard for b in row)  # holat yozuvi
+        bk = runner.bold_kb(kb)  # shaxsiy chatda BoldButtons shunday yuboradi
+        assert any(b.text.endswith("🟢 " + texts.bold("ON")) for row in bk.inline_keyboard for b in row)
+        assert all(b.text == texts.bold(b.text) for row in bk.inline_keyboard for b in row)
+        named = runner.bold_kb(runner.Kb(inline_keyboard=[[runner.Btn(text="2. " + pro.short("Ali"), callback_data="v")]]))
+        assert named.inline_keyboard[0][0].text == "2. " + pro.short("Ali")  # ism (USER belgisi ichida) o'zgarmaydi
         await db.toggle_item(U + 40, "shield")  # 0 ta Qalqonni o'chirish -> qator qty=0, OFF
         inv = await db.inventory(U + 40)
         assert [(i.item, i.qty, i.enabled) for i in inv] == [("shield", 0, False)]
@@ -367,3 +372,21 @@ def test_card_order_check_photo_to_admin_approves_once():
             handlers.send, config.CARD_NUMBER, config.ADMIN_IDS = old_send, old_card, old_admins
             handlers.ASK.pop(payer, None)
     run(t())
+
+
+def test_bold_buttons_only_in_private_chat():
+    """BoldButtons: shaxsiy chatdagi tugmalar qalin, guruhdagilar - o'zgarmaydi."""
+    from aiogram.methods import SendMessage
+
+    async def t():
+        kb = runner.Kb(inline_keyboard=[[runner.Btn(text="🛒 Do'kon", callback_data="shop")]])
+        got = []
+
+        async def make_request(bot, method):
+            got.append(method.reply_markup.inline_keyboard[0][0].text)
+
+        mw = runner.BoldButtons()
+        await mw(make_request, None, SendMessage(chat_id=5, text="x", reply_markup=kb))
+        await mw(make_request, None, SendMessage(chat_id=-100, text="x", reply_markup=kb))
+        assert got == ["🛒 " + texts.bold("Do'kon"), "🛒 Do'kon"]
+    asyncio.run(t())

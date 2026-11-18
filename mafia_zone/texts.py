@@ -1212,7 +1212,7 @@ TOP_MEDAL = {1: "🥇", 2: "🥈", 3: "🥉", 4: "4️⃣", 5: "5️⃣", 6: "6�
 def top_groups(rows: list[dict]) -> str:
     """Faqat medal, nom (havola) va ball, guruhlar orasida bo'sh qator - boshqa hech narsa (egasining talabi)."""
     blocks = [f"{TOP_MEDAL.get(r['place'], str(r['place']) + '.')} {group_link(r)} — <b>{r['points']} ball</b>"
-              for r in rows]
+              + (f" · {r['gems']}💎" if r.get("gems") else "") for r in rows]  # donat qilingan olmos (bo'lsa)
     return "🏆 <b>TOP guruhlar</b>\n\n" + ("\n\n".join(blocks) or "Hali hech bir guruh ball to'plamagan.")
 
 
@@ -1305,9 +1305,9 @@ def death_pm(hanged: bool, hunted: bool = False, collapsed: bool = False) -> str
 
 
 def _item_row(label: str, qty: int, off: bool) -> str:
-    """"🛡 <b>Qalqon</b>: 2 ta"; o'chirilgan (OFF) buyum ustidan chiziladi - o'yinga olinmaydi."""
+    """"🛡 𝐐𝐚𝐥𝐪𝐨𝐧: 2 ta"; o'chirilgan (OFF) buyum ustidan chiziladi - o'yinga olinmaydi."""
     emo, name = label.split(" ", 1)
-    row = f"<b>{name}</b>: {qty} ta"
+    row = f"{bold(name)}: {qty} ta"
     return f"{emo} " + (f"<s>{row}</s>" if off else row)
 
 
@@ -1320,22 +1320,24 @@ def profile_card(u, inv) -> str:
     named = [(role(c[2:]) + (f" ×{i.qty}" if i.qty > 1 else ""), i.enabled) for c, i in picks]
     pick = ", ".join(t if on else f"<s>{t}</s>" for t, on in named) or "—"
     end = pro.until(u.telegram_id)
-    # Matematik qalin (bold()) - faqat rollar va jamoalar; profil yozuvlari - oddiy Telegram qalin
+    # Profil yozuvlari matematik qalin (bold(), "𝐌𝐮𝐯𝐚𝐟𝐟𝐚𝐪𝐢𝐲𝐚𝐭𝐥𝐢 ro'yxatdan o'tdingiz" kabi - egasining talabi)
     uid, title = u.telegram_id, pro.title(u.telegram_id)
-    head = f"{pro.badge()} <b>Pro · Admiral Mafia</b>" if end else "<b>Admiral Mafia</b>"
+    head = f"{pro.badge()} {bold('Pro · Admiral Mafia')}" if end else bold("Admiral Mafia")
     status = ""
     if title:
-        status = f"{pro.badge()} <b>Vip</b>: cheksiz Pro 3\n"
+        status = f"{pro.badge()} {bold('Vip')}: cheksiz Pro 3\n"
     elif end:
         days = max(1, -(-int((end - pro._now()).total_seconds()) // 86400))  # yuqoriga yaxlitlash
-        status = f"{pro.badge()} <b>Pro {pro.tier(uid)}</b>: <b>{end + PRO_TZ:%d.%m.%Y}</b> gacha ({days} kun)\n"
+        tier = bold(f"Pro {pro.tier(uid)}")
+        status = f"{pro.badge()} {tier}: <b>{end + PRO_TZ:%d.%m.%Y}</b> gacha ({days} kun)\n"
     # f-string ichida ' ishlatib bo'lmaydi (Python 3.11)
-    games, wins, nxt = "<b>Jami o'yinlar</b>", "<b>G'alabalar</b>", "<b>Keyingi o'yindagi rol</b>"
+    games, wins, nxt = bold("Jami o'yinlar"), bold("G'alabalar"), bold("Keyingi o'yindagi rol")
+    lab = {k: bold(k) for k in ("ID", "Ism", "Unvon", "Dollar", "Olmos")}
     return (f"{head}\n\n"
-            f"<b>ID</b>: <code>{u.telegram_id}</code>\n"
-            f"👤 <b>Ism</b>: <b><i>{escape(pro.name(u.telegram_id, u.full_name))}</i></b>\n"
-            f"🏅 <b>Unvon</b>: {rank(u.wins)}\n{status}\n"
-            f"💵 <b>Dollar</b>: {u.dollars}\n💎 <b>Olmos</b>: {u.diamonds}\n\n{items}\n\n"
+            f"{lab['ID']}: <code>{u.telegram_id}</code>\n"
+            f"👤 {lab['Ism']}: <b><i>{escape(pro.name(u.telegram_id, u.full_name))}</i></b>\n"
+            f"🏅 {lab['Unvon']}: {rank(u.wins)}\n{status}\n"
+            f"💵 {lab['Dollar']}: {u.dollars}\n💎 {lab['Olmos']}: {u.diamonds}\n\n{items}\n\n"
             f"🃏 {nxt}: {pick}\n\n"
             f"🎲 {games}: {u.games}\n🏆 {wins}: {u.wins}")
 
@@ -1469,6 +1471,7 @@ def user_info(who: str, uid: int, username: str | None, status: str, warns: str,
 
 
 MOD_SETTINGS_BTN = "🛡 Moderatsiya"
+MOD_BOT_KICKED = "🤖 Guruhga botni faqat adminlar qo'sha oladi — bot chiqarildi."
 
 
 def mod_settings_text(s: dict, rights_ok: bool | None) -> str:
@@ -1476,7 +1479,8 @@ def mod_settings_text(s: dict, rights_ok: bool | None) -> str:
     body = (f"🔗 Reklama tozalash: <b>{'✅' if s['mod_ads'] else '❌'}</b> — havola, kanal, forward → o'chiriladi + ogohlantirish\n"
             f"🤬 So'kinish: <b>{'✅' if s['mod_swear'] else '❌'}</b> — o'chiriladi + <b>{mod_dur(s['mod_swear_min'] * 60)}</b> mute\n"
             f"⚠️ Ogohlantirish → ban: <b>{s['mod_warn_max']}</b> ta\n"
-            f"📣 /report: <b>{'✅' if s['mod_report'] else '❌'}</b>\n\n"
+            f"📣 /report: <b>{'✅' if s['mod_report'] else '❌'}</b>\n"
+            f"🤖 Bot qo'shish taqiqi: <b>{'✅' if s.get('mod_bots') else '❌'}</b> — botni faqat adminlar qo'sha oladi\n\n"
             "Buyruqlar (reply bilan): .mute .unmute .ban .unban .kick .warn .unwarn .warns .info · hamma uchun: .admins /report")
     tail = ("" if rights_ok is None else "\n\n✅ Botda kerakli huquqlar bor." if rights_ok
             else "\n\n⚠️ Botga huquq bering: «Xabarlarni o'chirish» va «A'zolarni cheklash».")

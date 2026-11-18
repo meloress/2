@@ -287,7 +287,15 @@ def test_menu_sections_have_back_button():
             await handlers.cb_menu(cq)
             rows = edits[-1][1].inline_keyboard
             cbs = [b.callback_data for row in rows for b in row]
-            assert ("m:home" in cbs) == (what != "home"), what
+            back = "m:back" if what == "shop" else "m:home"  # do'kon: kelgan joyiga qaytadi
+            assert (back in cbs) == (what != "home"), what
+        # profil -> Do'kon -> Orqaga = profil; bosh menyu -> Do'kon -> Orqaga = bosh menyu
+        for start in ("profile", "home"):
+            for d in (f"m:{start}", "m:shop", "m:back"):
+                await handlers.cb_menu(SimpleNamespace(data=d, from_user=u, message=SimpleNamespace(edit_text=edit_text),
+                                                       answer=answer))
+            cbs = [b.callback_data for row in edits[-1][1].inline_keyboard for b in row]
+            assert ("m:profile" in cbs) == (start == "home") and ("m:pay" in cbs) == (start == "profile"), start
     run(t())
 
 

@@ -353,3 +353,28 @@ def test_settings_mod_menu():
             config.ADMIN_IDS.clear()
             config.ADMIN_IDS.update(old)
     run(t())
+
+
+def test_kick_bots_added_by_members():
+    """🤖 Oddiy a'zo qo'shgan bot chiqariladi (ban+unban); admin qo'shgani, botning o'zi va o'chirilgan sozlama - tegilmaydi."""
+    async def t():
+        chat, bot = -8150, Bot()
+        await db.group_settings(chat, "G")
+        mod.forget(chat)
+        spam, ours = NS(id=7_000_001, is_bot=True), NS(id=BOTID, is_bot=True)
+        human = NS(id=7_000_002, is_bot=False)
+        m = gmsg(bot, chat, MEMBER)
+        m.new_chat_members = [spam, ours, human]
+        assert await mod.kick_bots(m, bot) == [spam.id]  # standart yoqiq
+        assert bot.banned == [(chat, spam.id)] and bot.unbanned == [(chat, spam.id)]
+        assert bot.eph[-1] == (chat, MEMBER, texts.MOD_BOT_KICKED)
+        m = gmsg(bot, chat, ADMIN)
+        m.new_chat_members = [spam]
+        assert await mod.kick_bots(m, bot) == []  # admin qo'shdi
+        s = await db.group_settings(chat)
+        await db.save_group_settings(chat, {**s, "mod_bots": False})
+        mod.forget(chat)
+        m = gmsg(bot, chat, MEMBER)
+        m.new_chat_members = [spam]
+        assert await mod.kick_bots(m, bot) == [] and len(bot.banned) == 1  # o'chirilgan
+    run(t())

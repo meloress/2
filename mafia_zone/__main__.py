@@ -45,6 +45,7 @@ async def main() -> None:
     bot = Bot(config.BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     await db.init()
     bot.session.middleware(runner.BackToGroup())
+    bot.session.middleware(runner.BoldButtons())  # shaxsiy chatdagi tugmalar qalin; PremiumEmoji dan oldin
     bot.session.middleware(emoji.PremiumEmoji())
     emoji.load_roles(config.ROLE_EMOJI, config.ICON_EMOJI)  # rol portretlari va belgilar (premium)
     await emoji.load_pack(bot, config.EMOJI_PACK)  # bo'sh: o'chiq (to'ldirilsa rollarni almashtiradi)

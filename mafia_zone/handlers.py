@@ -15,7 +15,7 @@ from .engine.game import CONFIRM, DAY, FINISHED, NIGHT, VOTING
 from .engine.roles import ROLES
 from .engine.setup import CORE
 from .runner import (JOIN_CODE, NEXT, PLAYING, RUNNERS, Runner, _call, spawn, back_btn, pro_btn, bot_link, edit, eph, grid,
-                     invite_url, profile_kb, send, send_eph)
+                     invite_url, profile_kb, send, send_eph, MENU_FROM, menu_back)
 
 log = logging.getLogger(__name__)
 router = Router()
@@ -287,7 +287,7 @@ def settings_kb(s: dict) -> Kb:
     return Kb(inline_keyboard=rows)
 
 
-MOD_FLAGS = ("mod_ads", "mod_swear", "mod_report")
+MOD_FLAGS = ("mod_ads", "mod_swear", "mod_report", "mod_bots")
 SWEAR_MINS = (5, 10, 15, 30, 60, 120, 180, 360, 720, 1440)  # so'kinish uchun mute muddati (daqiqa)
 WARN_MAX = (2, 10)
 
@@ -301,6 +301,7 @@ def mod_kb(s: dict) -> Kb:
         [Btn(text=f"🤬 So'kinish → mute: {on('mod_swear')}", callback_data="s:mod_swear")],
         step("mod_swear_min", "⏱ Mute"), step("mod_warn_max", "⚠️ Warn → ban"),
         [Btn(text=f"📣 /report: {on('mod_report')}", callback_data="s:mod_report")],
+        [Btn(text=f"🤖 Bot qo'shish taqiqi: {on('mod_bots')}", callback_data="s:mod_bots")],
         [Btn(text="⬅️ Orqaga", callback_data="s:main")]])
 
 
@@ -717,6 +718,8 @@ async def cmd_start(msg: Message, bot: Bot, command: CommandObject):
 
 
 def start_kb(uid: int | None = None) -> Kb:
+    if uid is not None:
+        MENU_FROM[uid] = "home"
     # admin=...: guruhga qo'shishda kerakli huquqlar so'raladi (xabar o'chirish, cheklash, pin)
     add = bot_link() + "?startgroup=true&admin=delete_messages+restrict_members+pin_messages"
     rows = [[Btn(text="🎮 O'yinni guruhingizga qo'shing", url=add)],
@@ -738,6 +741,8 @@ async def cb_menu(cq: CallbackQuery):
     what = cq.data[2:]
     back = Kb(inline_keyboard=[[back_btn()]])
     ASK.pop(cq.from_user.id, None)  # boshqa bo'limga o'tdi - kutilayotgan javob bekor
+    if what == "back":  # Do'kon/Pro dan: kelgan joyiga (bosh menyu yoki profil)
+        what = MENU_FROM.get(cq.from_user.id, "home")
     if what == "home":
         await show(cq, texts.welcome(), start_kb(cq.from_user.id))
     elif what == "rules":
@@ -749,7 +754,7 @@ async def cb_menu(cq: CallbackQuery):
     elif what == "topgroups":
         await show(cq, await top_groups_text(getattr(cq, "bot", None)), Kb(inline_keyboard=[
             [Btn(text=texts.TOP_MONTH_BTN, callback_data="m:top"), Btn(text=texts.TOP_ALL_BTN, callback_data="m:topall")],
-            [back_btn()]]))
+            [Btn(text=texts.BACK_BTN, callback_data="m:top")]]))  # Reyting ichidan ochiladi - unga qaytadi
     elif what in ("buy", "gem") and config.DIAMONDS_OFF:
         return await alert(cq, texts.DIAMONDS_OFF)
     elif what == "buy":
@@ -1017,7 +1022,7 @@ def shop_kb(uid: int | None = None) -> Kb:
     rows += [[Btn(text=f"{texts.ITEMS[i]} ({p}💎)", callback_data=f"b:{i}")]
              for i, p in config.SHOP_GEMS.items()]
     rows.append([Btn(text=texts.ROLE_SHOP_BTN, callback_data="shoproles")])
-    return Kb(inline_keyboard=rows + [[back_btn()]])
+    return Kb(inline_keyboard=rows + [[menu_back()]])
 
 
 def roles_shop_kb() -> Kb:
@@ -1028,7 +1033,7 @@ def roles_shop_kb() -> Kb:
 def pro_kb() -> Kb:
     """Darajalar, toifa, orqaga."""
     tiers = [Btn(text=f"{texts.TIER_ICON[t]} {t}-daraja", callback_data=f"pt:{t}") for t in pro.PACKS]
-    return Kb(inline_keyboard=[tiers, [Btn(text=texts.TITLE_BTN, callback_data="pt:title")], [back_btn()]])
+    return Kb(inline_keyboard=[tiers, [Btn(text=texts.TITLE_BTN, callback_data="pt:title")], [menu_back()]])
 
 
 def tier_kb(tier: int) -> Kb:
@@ -1084,6 +1089,7 @@ async def find_title(bot: Bot, uid: int) -> str | None:
 async def cmd_pro(msg: Message):
     if not await _user(msg):
         return await msg.answer(texts.BANNED)
+    MENU_FROM[msg.from_user.id] = "home"  # /pro buyrug'i: Orqaga - bosh menyu
     await msg.answer(texts.pro_info(msg.from_user.id), reply_markup=pro_kb())
 
 
@@ -1234,6 +1240,7 @@ async def cmd_role(msg: Message):
 async def cmd_shop(msg: Message):
     if not (u := await _user(msg)):
         return await msg.answer(texts.BANNED)
+    MENU_FROM[u.telegram_id] = "home"  # /shop buyrug'i: Orqaga - bosh menyu
     await msg.answer(texts.shop(u.dollars, u.telegram_id, u.diamonds), reply_markup=shop_kb(u.telegram_id))
 
 
@@ -1544,6 +1551,7 @@ async def on_join(msg: Message):
     yuborib bo'lmasa - shaxsiy chatga (botni ochgan bo'lsa).
     "... qo'shildi" xizmat xabari guruhdan o'chiriladi (botda o'chirish huquqi bo'lsa)."""
     await _call(msg.delete)
+    await moderation.kick_bots(msg, msg.bot)  # 🤖 oddiy a'zo qo'shgan botlar chiqariladi
     for u in msg.new_chat_members:
         if u.is_bot:
             continue

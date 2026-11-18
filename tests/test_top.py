@@ -21,6 +21,8 @@ def test_top_groups_compact():
     text = text.replace(texts.USER_MARK, "")
     assert '🥇 <a href="https://t.me/adm">Admiral guruh</a> — <b>9 ball</b>' in text and "&lt;b&gt;" in text
     assert '4️⃣ <a href="https://t.me/+x">A, B</a> — <b>9 ball</b>' in text and "o'yin" not in text  # faqat ball
-    assert "</a> — <b>9 ball</b>\n\n🥈" in text  # guruhlar orasida bo'sh qator
+    assert "</a> — <b>9 ball</b> · 4💎\n\n🥈" in text  # oxirida donat olmos; guruhlar orasida bo'sh qator
+    zero = texts.top_groups([{**row(1, "Z"), "gems": 0}]).replace(texts.USER_MARK, "")
+    assert zero.endswith("— <b>9 ball</b>")  # donat bo'lmasa - olmos yozilmaydi
     ten = texts.top_groups([row(i, f"g{i}") for i in range(1, 11)])
     assert "🔟 <b>g10</b>" in ten.replace(texts.USER_MARK, "")

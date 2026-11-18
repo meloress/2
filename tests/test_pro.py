@@ -167,7 +167,7 @@ def test_pro_buttons_profile_and_lobby_name():
     r.close()
     u = SimpleNamespace(telegram_id=5, full_name="Ali", wins=0, dollars=0, diamonds=0, games=0)
     card = texts.profile_card(u, [])
-    assert pro.BADGE_ID in card and F("Shoh") in card and "Pro 3" in card and "gacha" in card
+    assert pro.BADGE_ID in card and F("Shoh") in card and texts.bold("Pro 3") in card and "gacha" in card
     assert "gacha" not in texts.profile_card(SimpleNamespace(telegram_id=6, full_name="H", wins=0, dollars=0,
                                                              diamonds=0, games=0), [])
 
@@ -221,7 +221,7 @@ def test_pro_menu_diamonds_and_nickname():
         text, kb = shown[-1]
         assert "Pro AKKAUNT" in text and "darajani tanlang" in text
         cbs = [b.callback_data for row in kb.inline_keyboard for b in row]
-        assert cbs == ["pt:1", "pt:2", "pt:3", "pt:title", "m:home"]
+        assert cbs == ["pt:1", "pt:2", "pt:3", "pt:title", "m:back"]
         for lv in (1, 2, 3):
             await handlers.cb_pro_tier(cq(f"pt:{lv}"))
             text, kb = shown[-1]

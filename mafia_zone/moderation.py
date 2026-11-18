@@ -386,6 +386,26 @@ async def _channel_mentions(bot: Bot, names: list[str], own: set[str]) -> set[st
     return out
 
 
+async def kick_bots(msg: Message, bot: Bot) -> list[int]:
+    """🤖 Bot qo'shish taqiqi (mod_bots, standart yoqiq): botni admin/bot egasi qo'shmagan bo'lsa - darhol chiqariladi
+    (ban + unban: keyin admin o'zi qo'sha oladi). Botning o'zi va yashirin admin qo'shgani tegilmaydi."""
+    bots = [u for u in msg.new_chat_members or () if u.is_bot and u.id != bot.id]
+    adder = msg.from_user
+    if not bots or _anon_admin(msg) or not adder or await is_staff(bot, msg.chat.id, adder.id):
+        return []
+    s, _ = await settings(msg.chat.id)
+    if not s.get("mod_bots"):
+        return []
+    out = []
+    for b in bots:
+        if await _call(bot.ban_chat_member, msg.chat.id, b.id):
+            await _call(bot.unban_chat_member, msg.chat.id, b.id, only_if_banned=True)
+            out.append(b.id)
+    if out:
+        await me_only(msg, texts.MOD_BOT_KICKED)
+    return out
+
+
 async def auto(msg: Message, bot: Bot) -> bool:
     """Yoqilgan guruhda reklama/so'kinish: True - xabar o'chirildi (boshqa handlerlarga o'tmaydi)."""
     if msg.chat.type not in ("group", "supergroup") or not msg.from_user or msg.is_automatic_forward:

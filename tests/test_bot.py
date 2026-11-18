@@ -190,6 +190,8 @@ def test_sent_messages_are_valid_html_and_restore_works():
 
         r._loop = no_loop
         await r._start_game()
+        order = [p.uid for p in r.game.players]
+        assert sorted(order) == list(range(101, 131)) and order != list(range(101, 131))  # raqamlar tasodifiy
         gid = r.game_id
         r.close()
         await runner.restore(bot)
@@ -1319,6 +1321,6 @@ def test_top_groups_and_donate():
         await handlers._link_groups(bot, mine())
         assert 'href="https://t.me/ochiqguruh"' in text and "&lt;guruh&gt;" in text
         assert 'href="https://t.me/+inv7772"' in text and Bot.made == 1  # havola bir marta yaratiladi
-        assert rows[-7772]["gems"] == 3 and "Donor" not in text and "💎" not in text  # ro'yxatda faqat nom va ball
+        assert rows[-7772]["gems"] == 3 and "Donor" not in text and "· 3💎" in text  # nom, ball va donat olmos
         assert_telegram_html(text)
     asyncio.run(go())
