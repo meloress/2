@@ -225,7 +225,7 @@ def test_pro_menu_diamonds_and_nickname():
         for lv in (1, 2, 3):
             await handlers.cb_pro_tier(cq(f"pt:{lv}"))
             text, kb = shown[-1]
-            assert f"Pro {lv}" in text and F("Ali") in text and f"({pro.DISCOUNT[lv]}%)" in text and "/leave" in text
+            assert f"Pro {lv}" in text and F("Ali") in text and f"{pro.DISCOUNT[lv]}%" in text and "/leave" in text
             assert ("/nickname" in text) == (lv == 3) and ("x1.5" in text) == (lv == 3) and ("x1.25" in text) == (lv == 2)
             assert (pro.PRO_TAG in text) == (lv == 3) and (pro.BADGE_ID in text) == (lv >= 2) and "PRO" not in text
             cbs = [b.callback_data for row in kb.inline_keyboard for b in row]
@@ -267,9 +267,9 @@ def test_fix_nickname_not_frozen_into_game():
     assert r.members[-1] == (9, "Ali")  # haqiqiy ism saqlanadi, nickname ko'rsatishda qo'yiladi
     r.close()
     g = Game(-1, 1, [Player(9, "Ali", "don"), Player(10, "Vali", "mafiya")])
-    assert U(texts.nm(g, 9)) == F("Shoh") and F("Shoh") in texts.role_card(g, 10)
+    assert U(texts.nm(g, 9)) == F("Shoh") and F("Shoh") in texts.mates_card(g, 10)
     pro.set_user(9, db.now() - timedelta(seconds=1), "Shoh")  # Pro tugadi
-    assert U(texts.nm(g, 9)) == "Ali" and F("Shoh") not in texts.role_card(g, 10)
+    assert U(texts.nm(g, 9)) == "Ali" and F("Shoh") not in texts.mates_card(g, 10)
     assert "Shoh" not in texts.role_alert(g, 10)
 
 

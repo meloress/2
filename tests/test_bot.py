@@ -699,7 +699,7 @@ def test_ovchi_hunt_button_kills_by_day_and_pays_fine_to_victim():
             r.meta["deadline"] = 0
             await r._step()  # tun hal bo'ldi, tong e'lon qilindi
             assert r.game.phase == DAY and r.game.hunt == [[ids[1], ids[2]]]
-            assert any(c == ids[1] and "rahm" in t for c, t in bot.sent)  # rol + o'ldirish tugmasi
+            assert any(c == ids[1] and "o'ldirishingiz mumkin" in t for c, t in bot.sent)  # rol + o'ldirish tugmasi
             said = []
 
             async def answer(text=None, **kw):
@@ -770,31 +770,21 @@ def test_unanswered_prompts_deleted_when_phase_ends():
     asyncio.run(go())
 
 
-def test_group_ephemeral_prompts_mirror_private_ones():
-    """Ovoz tugmalari guruhda ham chiqadi, faqat egasiga (ephemeral). Guruhdagisi bosilsa - shaxsiy chatdagi o'chadi;
-    shaxsiydagisi bosilsa - guruhdagi o'chadi; faza oxirida guruhdagilarning hammasi o'chadi."""
+def test_game_prompts_only_in_private_chat():
+    """Tungi harakat va ovoz tugmalari faqat botda (shaxsiy chat): guruhda ephemeral nusxa yo'q - o'yinga xalal berardi."""
     from mafia_zone.engine.game import Game
 
     async def go():
         await db.init()
         bot = FakeBot()
-        r = runner.Runner(bot, -4647, {"vote": 10})
+        r = runner.Runner(bot, -4647, {"vote": 10, "night": 10})
         r.game, r.game_id = Game.create(-4647, [(i, f"p{i}") for i in range(1, 7)], 3), 79
-        r.game.phase = VOTING
-        await r._intro(VOTING, 10)
+        for ph in (NIGHT, VOTING):
+            r.game.phase = ph
+            await r._intro(ph, 10)
         voters = {p.uid for p in r.game.alive() if r.game.can_vote(p.uid)}
-        assert {u for c, u, _ in bot.eph if c == -4647} == voters == set(r.eph)  # guruh lentasiga tushmaydi
-        pm1, e2 = r.prompts[1], r.eph[2]
-        assert await r.on_vote(1, r.game.day, 0)
-        await r.drop_prompt(1, via_eph=True)  # 1 - guruhdagi tugmani bosdi: shaxsiydagi o'chadi
-        assert (1, pm1) in bot.deleted
-        assert await r.on_vote(2, r.game.day, 0)
-        await r.drop_prompt(2, via_eph=False)  # 2 - shaxsiydagini bosdi: guruhdagi o'chadi
-        assert (-4647, 2, e2) in bot.eph_deleted and 2 not in r.eph
-        r.meta["deadline"] = 0
-        await r._step()
-        await asyncio.sleep(0.2)
-        assert {u for _, u, _ in bot.eph_deleted} == voters and not r.eph
+        assert not getattr(bot, "eph", []) and not r.eph
+        assert voters <= set(r.prompts)  # shaxsiy chatda bor
         r.close()
     asyncio.run(go())
 
@@ -954,7 +944,7 @@ def test_couple_game_through_runner():
         for _, text in bot.sent:
             assert_telegram_html(text)
         assert any("PARALAR O'YINI BOSHLANDI" in t for _, t in bot.sent)
-        assert any("juftingiz" in t for _, t in bot.sent)
+        assert any("Juftingiz" in t for _, t in bot.sent)
 
     asyncio.run(go())
 
@@ -1046,9 +1036,9 @@ def test_night_chat_is_explained_and_donishmand_is_told_to_listen():
     async def go():
         r, bot, (don, maf, kom, ser, dsh, tin) = _night_runner(["don", "mafiya", "komissar", "serjant",
                                                                  "donishmand", "tinch"])
-        for uid in (don, maf, kom, ser):
-            assert texts.NIGHT_CHAT_HINT in texts.role_card(r.game, uid)
-        assert texts.NIGHT_CHAT_HINT not in texts.role_card(r.game, tin)
+        for uid in (don, maf, kom, ser):  # sheriklar - alohida toza xabar (rol kartasida emas)
+            assert texts.mates_card(r.game, uid) and texts.mates_card(r.game, uid) not in texts.role_card(r.game, uid)
+        assert texts.mates_card(r.game, tin) is None and texts.role_msgs(r.game, tin) == [texts.role_card(r.game, tin)]
         await r._intro(NIGHT, 60)
         got = [t for c, t in bot.sent if c == dsh]
         assert any(texts.DONISHMAND_NIGHT in t for t in got)

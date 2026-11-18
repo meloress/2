@@ -1226,7 +1226,8 @@ async def cmd_role(msg: Message):
     r = PLAYING.get(msg.from_user.id)
     if not r or not r.game:
         return await msg.answer(texts.NO_GAME)
-    await msg.answer(texts.role_card(r.game, msg.from_user.id))
+    for t in texts.role_msgs(r.game, msg.from_user.id):
+        await msg.answer(t)
 
 
 @router.message(Command("shop"), PRIVATE)

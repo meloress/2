@@ -20,15 +20,14 @@ _ROLES = [
     Role("serjant", "👮 Serjant", TOWN, (), "Komissar yordamchisi. Komissar o'lsa, uning o'rnini egallaysiz."),
     Role("doktor", "👨‍⚕️ Doktor", TOWN, ("heal",), "Tunda 1 kishini o'limdan saqlaysiz. O'zingizni ketma-ket 2 tun davolay olmaysiz."),
     Role("daydi", "🍾 Daydi", TOWN, ("visit",), "Tunda bir uyga borasiz. U yerda qotillik bo'lsa, qotilni ko'rasiz."),
-    Role("kezuvchi", "💃 Kezuvchi", TOWN, ("block",), "Nishonga uyqu dori berasiz: u shu tunda harakat qila olmaydi va ertasi kuni ovoz bera olmaydi."),
-    Role("afsungar", "💣 Afsungar", TOWN, (), "Tunda o'ldirilsangiz, qotilingiz ham siz bilan halok bo'ladi. Kunduzi osilsangiz, o'sha tunda tong otguncha xohlagan 1 kishini o'zingiz bilan olib ketasiz. Dushmanni olib ketsangiz, tinch aholi yutganda siz ham yutasiz."),
-    Role("voris", "🧬 Voris", TOWN, (), "Don o'ldirsa - Mafiyaga, Komissar otsa - Serjantga aylanasiz. Boshqa hujumdan (Yollanma, Aka/Uka va boshqalar) oddiy o'lasiz."),
+    Role("kezuvchi", "💃 Kezuvchi", TOWN, ("block",), "Tunda 1 kishini uxlatasiz: u harakat qila olmaydi va ertaga ovoz bera olmaydi."),
+    Role("afsungar", "💣 Afsungar", TOWN, (), "Tunda o'ldirilsangiz, qotilingiz ham siz bilan ketadi. Osilsangiz, tong otguncha 1 kishini o'zingiz bilan olib ketasiz."),
+    Role("voris", "🧬 Voris", TOWN, (), "Don o'ldirsa - Mafiyaga, Komissar otsa - Serjantga aylanasiz."),
     Role("janob", "🎖 Janob", TOWN, (), "Kunduzgi ovoz berishda ovozingiz 2 ta hisoblanadi."),
-    Role("ovchi", "🏹 Ovchi", TOWN, ("check",), "Tunda 1 kishini tanlaysiz - tongda uning roli sizga ochiladi. Kunduzi osish "
-         "boshlanguncha uni o'ldirishingiz yoki rahm qilishingiz mumkin. Tinch aholini o'ldirsangiz, 100-200 💵 "
-         "jarima to'laysiz va bu pul o'sha o'yinchiga o'tadi."),
+    Role("ovchi", "🏹 Ovchi", TOWN, ("check",), "Tunda 1 kishining rolini bilasiz va kunduzi uni o'ldirishingiz mumkin. "
+         "Tinchni o'ldirsangiz, 100-200 💵 jarima."),
     Role("donishmand", "👨‍🏫 Donishmand", TOWN, (), "Tunda Mafiya va Komissar yozishmalarini ismsiz eshitasiz."),
-    Role("suitsid", "🤦 Suitsid", TOWN, (), "Don sizni o'ldirsa, uni ham o'zingiz bilan olib ketasiz va g'olib bo'lasiz. Yollanma yoki Aka/Uka o'ldirsa, bu ishlamaydi."),
+    Role("suitsid", "🤦 Suitsid", TOWN, (), "Don sizni o'ldirsa, uni ham olib ketasiz va g'olib bo'lasiz."),
     Role("qorovul", "👨‍🦳 Qorovul", TOWN, ("guard",), "Tunda 1 kishini himoyalaysiz: u ertaga osilmaydi."),
     Role("podshoh", "🤴 Podshoh", TOWN, (), "Muhim figura. Qorovulsiz osilsangiz, Mafiya va Neytrallar g'alaba qiladi."),
     # --- Mafiya ---
@@ -42,15 +41,14 @@ _ROLES = [
     # --- Neytrallar ---
     Role("sotqin", "🤓 Sotqin", NEUTRAL, (), "Tinchlar orasida yashaysiz. Mafiya yutsa va tirik bo'lsangiz, siz ham yutasiz."),
     Role("qotil", "🔪 Qotil", NEUTRAL, ("kill",), "Har tunda 1 kishini o'ldirasiz. Mafiya sizga tegolmaydi. Oxirgi tirik qoling!"),
-    Role("gazabkor", "🧟 G'azabkor", NEUTRAL, ("rage", "sacrifice"), "Har tunda 1 kishini o'ldirasiz. 3 ta qurbondan keyin o'zingizni qurbon qilib g'olib bo'lasiz. Oxirgi 2 kishi qolsangiz ham g'olibsiz."),
-    Role("sehrgar", "🧙 Sehrgar", NEUTRAL, ("curse",), "Don, Qotil va Komissar sizga tegolmaydi. Tunda 1 kishini la'natlaysiz: o'zi tirik qoladi, lekin o'sha tun uning oldiga kelganlar o'ladi. Omon qoling!"),
+    Role("gazabkor", "🧟 G'azabkor", NEUTRAL, ("rage", "sacrifice"), "Har tunda 1 kishini o'ldirasiz. 3 qurbondan keyin o'zingizni qurbon qilib g'olib bo'lasiz."),
+    Role("sehrgar", "🧙 Sehrgar", NEUTRAL, ("curse",), "Tunda 1 uyni la'natlaysiz: o'sha tun unga kelganlar o'ladi. Don, Qotil va Komissar sizga tegolmaydi."),
     Role("vampir", "🧛 Vampir", NEUTRAL, ("bite",), "Tunda o'yinchini tishlaysiz. Doktor, Qalqon yoki Verbena saqlamasa, u o'ladi."),
-    Role("qaroqchi", "🦹‍♂️ Qaroqchi", NEUTRAL, ("rob",), "O'yinchilardan pul, buyum yoki ovoz huquqini o'g'irlaysiz. Oxirigacha tirik qolsangiz, g'olibsiz."),
-    Role("konchi", "👷‍♂️ Konchi", NEUTRAL, ("dig",), "Har tunda tunnel qazib 10 dan 2000 gacha 💵 va 0 dan 3 tagacha 💎 topishingiz mumkin. "
-         "Ba'zan tunnel qulab, halok bo'lishingiz mumkin (🪖 Temir qalqon bir marta saqlaydi). "
-         "Oxirigacha tirik qolsangiz, g'olibsiz."),
+    Role("qaroqchi", "🦹‍♂️ Qaroqchi", NEUTRAL, ("rob",), "O'yinchilardan pul, buyum yoki ovoz huquqini o'g'irlaysiz."),
+    Role("konchi", "👷‍♂️ Konchi", NEUTRAL, ("dig",), "Har tunda qazib 10 dan 2000 gacha 💵 va 💎 topasiz. "
+         "Tunnel qulashi mumkin (🪖 Temir qalqon saqlaydi)."),
     Role("tulki", "🦊 Tulki", NEUTRAL, (), "Kunduzi osilsangiz, sizga 1-ovoz bergan bilan birga o'lasiz va g'olib bo'lasiz."),
-    Role("aferist", "🤹 Aferist", NEUTRAL, ("steal",), "Boshqa o'yinchining tungi harakatini o'g'irlaysiz. Tirik qolib, g'olib tomonga qo'shilasiz."),
+    Role("aferist", "🤹 Aferist", NEUTRAL, ("steal",), "Boshqa o'yinchining tungi harakatini o'g'irlaysiz."),
 ]
 
 ROLES: dict[str, Role] = {r.code: r for r in _ROLES}

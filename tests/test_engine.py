@@ -336,8 +336,20 @@ def test_serjant_promoted():
 def test_daydi_and_jurnalist():
     g = mk("don", "jurnalist", "daydi", "tinch", "tinch", "doktor", "tinch", "tinch")
     ev = night(g, (1, "mafia_kill", 4), (3, "visit", 4), (6, "heal", 5), (2, "interview", 5))
-    assert next(e for e in ev if e.kind == "witness").data["killers"] == [1]
+    w = next(e for e in ev if e.kind == "witness")
+    assert w.data["killers"] == [1] and w.data["roles"] == ["don"]
     assert next(e for e in ev if e.kind == "interview").data["visitors"] == [6]
+    from mafia_zone import texts
+    _, priv = texts.morning(g, ev)
+    assert any(u == 3 and texts.role("don") in t for u, t in priv)  # Daydi qotilni roli bilan ko'radi
+
+
+def test_daydi_dead_gets_no_visit_result():
+    """La'natlangan uyga borib o'lgan Daydiga "tun tinch o'tdi" kabi natija bormaydi."""
+    g = mk("don", "daydi", "sehrgar", "tinch", "tinch", "tinch", "tinch", "tinch")
+    ev = night(g, (1, "mafia_kill", 4), (3, "curse", 5), (2, "visit", 5))
+    assert not g.get(2).alive
+    assert not any(e.uid == 2 and e.kind in ("result", "witness") for e in ev)
 
 
 def test_konchi_dig():
@@ -349,6 +361,8 @@ def test_konchi_dig():
     pub, priv = texts.morning(g, ev)
     assert any(f"{d['dollars']} 💵" in x and "topdi" in x for x in pub)  # guruhga ham
     assert "10 dan 2000" in texts.role_card(g, 2) and "%" not in texts.role_card(g, 2)
+    g.get(2).items = {"shield": 2}
+    assert "Qalqon" not in texts.role_card(g, 2) and "Jamoa" not in texts.role_card(g, 2)  # buyum/jamoa yozilmaydi
 
 
 def test_konchi_dig_distribution():
@@ -700,7 +714,7 @@ def test_doctor_and_patient_both_told():
         return out
     g = mk("don", "doktor", "tinch", "tinch", "tinch", "tinch")
     to = pms(g, night(g, (1, "mafia_kill", 3), (2, "heal", 3)))
-    assert any("yordam bera oldingiz" in t for t in to[2])
+    assert any("qutqardingiz" in t for t in to[2])
     assert len(to[3]) == 1 and "Doktor" in to[3][0] and "qutqar" in to[3][0]  # bitta xabar, takror emas
     g = mk("don", "doktor", "tinch", "tinch", "tinch", "tinch")
     to = pms(g, night(g, (1, "mafia_kill", 3), (2, "heal", 4)))

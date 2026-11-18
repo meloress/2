@@ -186,6 +186,15 @@ def test_profile_kb_layout_and_sections():
         for d in ("m:pro", "m:buy", "m:gem", "m:pay", "m:gift", "m:groups", "shop", "m:home"):
             assert d in c, d
         assert "x" not in c  # Exchange tugmasi yo'q: dollar Xarid orqali olinadi
+        for item in texts.ALWAYS_SHOWN:  # himoyalar 0 ta bo'lsa ham yoqish/o'chirish tugmasi bor, ON/OFF yozuvisiz
+            assert f"t:{item}" in c
+        assert not any("ON" in b.text or "OFF" in b.text for row in kb.inline_keyboard for b in row)
+        await db.toggle_item(U + 40, "shield")  # 0 ta Qalqonni o'chirish -> qator qty=0, OFF
+        inv = await db.inventory(U + 40)
+        assert [(i.item, i.qty, i.enabled) for i in inv] == [("shield", 0, False)]
+        assert next(b for row in runner.profile_kb(inv, U + 40).inline_keyboard for b in row
+                    if b.callback_data == "t:shield").style == "danger"
+        assert (await db.game_items([U + 40])) == {}  # 0 tasi o'yinga olinmaydi
         log = []
         for what in ("buy", "gem", "groups"):
             await handlers.cb_menu(cq(U + 40, f"m:{what}", log))

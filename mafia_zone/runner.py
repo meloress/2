@@ -211,9 +211,10 @@ def invite_url(uid: int) -> str:
 
 def profile_kb(inv, uid: int | None = None) -> Kb:
     """Profil tugmalari: har buyum ON/OFF (3 tadan qatorda), PRO, hamyon, do'kon, do'st taklif qilish."""
-    toggles = [Btn(text=f"{texts.ITEMS[i.item].split(' ', 1)[0]} - {'🟢 ON' if i.enabled else '🔴 OFF'}",
-                   callback_data=f"t:{i.item}", style="success" if i.enabled else "danger")
-               for i in inv if i.item in texts.ITEMS and i.qty > 0]
+    have = {i.item: i for i in inv}
+    on = lambda c: have[c].enabled if c in have else True  # hali sotib olinmagan - yoqilgan (db.buy ham yoqadi)
+    toggles = [Btn(text=texts.ITEMS[c].split(' ', 1)[0], callback_data=f"t:{c}", style="success" if on(c) else "danger")
+               for c in texts.ITEMS if c in texts.ALWAYS_SHOWN or c in have and have[c].qty > 0]
     rows = grid(toggles, 3) if toggles else []
     rows += [[pro_btn()],
              [Btn(text=texts.BUY_BTN, callback_data="m:buy"), Btn(text=texts.GEM_BTN, callback_data="m:gem")],
@@ -431,7 +432,8 @@ class Runner:
         await send(self.bot, self.chat_id, texts.GAME_STARTED, role_kb)  # botga o'tmasdan rolni ko'rish
 
         for p in self.game.players:
-            await send(self.bot, p.uid, texts.role_card(self.game, p.uid))
+            for t in texts.role_msgs(self.game, p.uid):  # rol, keyin sheriklar alohida
+                await send(self.bot, p.uid, t)
         await self._loop()
 
     # ---------- faza sikli ----------
@@ -504,9 +506,7 @@ class Runner:
             await send(self.bot, self.chat_id, f"{texts.alive_list(g)}\n\n{texts.alive_composition(g)}")
             for p in g.night_actors():
                 if kb := self.night_kb(p.uid):
-                    self._prompt(p.uid, await send(self.bot, p.uid, texts.night_prompt(g, p.uid), kb))
-                    # guruhda ham - faqat o'ziga ko'rinadi (botga o'tmasdan tanlaydi); qaysi biri bosilsa, ikkinchisi o'chadi
-                    self._eph(p.uid, await send_eph(self.bot, self.chat_id, p.uid, texts.night_prompt(g, p.uid), kb))
+                    self._prompt(p.uid, await send(self.bot, p.uid, texts.night_prompt(g, p.uid), kb))  # faqat botda (guruhdagi ephemeral nusxa o'yinga xalal berardi)
                 elif p.role == "donishmand":  # tungi tugmasi yo'q: eshitish ishlayotganini bilsin
                     await send(self.bot, p.uid, f"🌙 <b>{g.day}-tun</b>\n\n{texts.DONISHMAND_NIGHT}")
         elif ph == DAY:
@@ -519,7 +519,6 @@ class Runner:
                 if g.can_vote(p.uid):
                     kb = self.vote_kb(p.uid)
                     self._prompt(p.uid, await send(self.bot, p.uid, texts.vote_pm(g), kb))
-                    self._eph(p.uid, await send_eph(self.bot, self.chat_id, p.uid, texts.vote_pm(g), kb))
         else:
             m = await send(self.bot, self.chat_id, texts.confirm_prompt(g, secs), self._confirm_kb())
             self.meta["confirm_msg"] = m.message_id if m else None

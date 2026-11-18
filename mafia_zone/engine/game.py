@@ -479,9 +479,10 @@ class Game:
             return list(dict.fromkeys(roles0[u] for u in sorted({a[0] for a in alist})))
 
         for u, (k, t, _) in acts.items():
-            if k == "visit" and t in deaths:
-                ev.append(Event("witness", u, t, {"killers": sorted({a[0] for a in deaths[t]}),
-                                                  "killer_roles": killer_roles(deaths[t])}))
+            if k == "visit" and t in deaths and u not in deaths:  # o'zi shu tun o'lgan Daydiga xabar yo'q
+                killers = sorted({a[0] for a in deaths[t]})
+                ev.append(Event("witness", u, t, {"killers": killers, "killer_roles": killer_roles(deaths[t]),
+                                                  "roles": [roles0[x] for x in killers]}))
 
         for t, alist in deaths.items():
             self.get(t).alive = False
@@ -528,7 +529,7 @@ class Game:
         for u, (k, t, _) in acts.items():
             if k == "heal":
                 ev.append(Event("result", u, t, {"kind": k, "ok": t in heal_saved}))
-            elif k == "visit" and t not in deaths:  # hujum bo'lib, nishon omon qolgan bo'lsa - shuni ko'radi
+            elif k == "visit" and t not in deaths and u not in deaths:  # hujum bo'lib, nishon omon qolgan bo'lsa - shuni ko'radi
                 ev.append(Event("result", u, t, {"kind": k, "ok": False, "attacked": t in why}))
         for t, alist in attacks.items():  # ta'sir qilmagan (immunitet) hujum - nishon boshqa sababdan o'lsa ham "omon"
             for u, k, _ in alist:

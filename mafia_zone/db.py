@@ -838,7 +838,8 @@ async def stats() -> dict:
 # ---------- buyumlar ----------
 async def inventory(uid: int) -> list[Inventory]:
     async with Session() as s:
-        return list((await s.scalars(select(Inventory).where(Inventory.user_id == uid, Inventory.qty > 0))).all())
+        # 0 tasi ham (profil: 0 ta himoyani ham yoqib/o'chirib qo'yish mumkin); o'yinga faqat qty > 0 olinadi
+        return list((await s.scalars(select(Inventory).where(Inventory.user_id == uid, Inventory.qty >= 0))).all())
 
 
 async def _add_item(s, uid: int, item: str, n: int) -> None:
@@ -882,10 +883,17 @@ async def change_item(uid: int, item: str, n: int) -> None:
 
 
 async def toggle_item(uid: int, item: str) -> None:
-    async with Session.begin() as s:
-        inv = await s.get(Inventory, (uid, item))
-        if inv:
-            inv.enabled = not inv.enabled
+    """Yoqish/o'chirish. Hali yo'q buyum ham (0 ta): qator qty=0 bilan yaratiladi - sotib olinganda db.buy yana yoqadi."""
+    from sqlalchemy.exc import IntegrityError
+    try:
+        async with Session.begin() as s:
+            inv = await s.get(Inventory, (uid, item))
+            if inv:
+                inv.enabled = not inv.enabled
+            else:
+                s.add(Inventory(user_id=uid, item=item, qty=0, enabled=False))
+    except IntegrityError:  # bir vaqtda ikki bosish
+        pass
 
 
 async def game_items(uids: list[int]) -> dict[int, dict[str, int]]:
