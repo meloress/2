@@ -112,6 +112,18 @@ def test_afsungar_takes_don_and_mafiya_promoted():
     assert g.get(2).role == "don" and "promoted" in kinds(ev)
 
 
+def test_don_heir_order():
+    """Don o'lsa navbat: Mafiya -> Yollanma -> Advokat -> Jurnalist (o'yin raqamidan qat'i nazar); Aka/Uka - hech qachon."""
+    for roles, heir in ((("don", "jurnalist", "advokat", "yollanma", "mafiya"), 5),
+                        (("don", "jurnalist", "advokat", "yollanma", "aka"), 4),
+                        (("don", "jurnalist", "uka", "advokat", "aka"), 4),
+                        (("don", "jurnalist", "aka", "uka", "tinch"), 2)):
+        g = mk(*roles, "tinch", "tinch", "tinch", "tinch", "tinch")
+        g.get(1).alive = False
+        g._after_deaths([])
+        assert g.get(heir).role == "don" and sum(p.role == "don" for p in g.alive()) == 1, roles
+
+
 def test_afsungar_wins_with_town_after_revenge():
     g = mk("don", "afsungar", "tinch", "tinch")
     night(g, (1, "mafia_kill", 2))
