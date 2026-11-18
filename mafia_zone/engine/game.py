@@ -335,13 +335,13 @@ class Game:
             ev.append(Event("blocked", t))
 
         # 1b. Aferist
-        mafia_stolen = False
+        mafia_stolen: int | None = None
         for u in [u for u, a in acts.items() if a[0] == "steal"]:
             _, t, _ = acts.pop(u)
             stolen = acts.get(t)
             if stolen and stolen[0] not in ("steal", "sacrifice", "block"):  # uxlatish 1a da bajarilib bo'lgan
                 if m and t == m[0] and stolen[0] == "mafia_kill":
-                    mafia_stolen = True
+                    mafia_stolen = u  # o'g'irlagan Aferist (hujumni o'zi bajaradi)
                 del acts[t]
                 acts[u] = stolen
                 ev.append(Event("stolen", u, t, {"kind": stolen[0]}))
@@ -544,9 +544,12 @@ class Game:
                     if x == m[1] and u != m[0]:
                         self.get(u).score += 2
             # "killed" - aynan mafiya o'ldirgan bo'lsa (Don uxlab qolgan tunda boshqa birov o'ldirsa - mafiyaniki emas)
-            r = "blocked" if don_blocked else "stolen" if mafia_stolen else reason(m[0], m[1])
+            r = "blocked" if don_blocked else "stolen" if mafia_stolen is not None else reason(m[0], m[1])
             killed = r is None and any(a[0] == m[0] for a in deaths.get(m[1], ()))
-            ev.append(Event("mafia_result", m[0], m[1], {"killed": killed, "why": None if killed else r}))
+            data = {"killed": killed, "why": None if killed else r}
+            if mafia_stolen is not None:  # nishon baribir o'lishi mumkin - Aferist qo'li bilan: mafiyaga haqiqat aytiladi
+                data["stolen_killed"] = any(a[0] == mafia_stolen for a in deaths.get(m[1], ()))
+            ev.append(Event("mafia_result", m[0], m[1], data))
         elif self.by_role("don"):
             ev.append(Event("mafia_idle"))
 

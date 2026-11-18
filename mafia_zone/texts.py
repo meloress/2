@@ -549,6 +549,8 @@ def morning(g: Game, ev: list[Event]) -> tuple[list[str], list[tuple[int, str]]]
                 immune.add(e.target)
             why = WHY.get(e.data.get("why"))
             text = (f"🎯 Mafiyaning nishoni <b>{n(e.target)}</b> o'ldirildi." if e.data["killed"]
+                    else f"🤹 Mafiyaning nishoni <b>{n(e.target)}</b> o'ldirildi, lekin hujumni Aferist o'g'irlab, "
+                         "o'zi bajardi." if e.data.get("stolen_killed")
                     else f"😤 Mafiyaning nishoni <b>{n(e.target)}</b> bu tun omon qoldi" + (f": {why}." if why else "."))
             priv += [(p.uid, text) for p in g.players if p.alive and p.team == MAFIA]
         elif k == "revenge":

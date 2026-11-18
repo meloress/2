@@ -1221,7 +1221,16 @@ def test_failed_attack_says_why():
 
     g = mk("don", "aferist", "tinch", "tinch", "tinch", "tinch")  # Aferist o'g'irladi (nishonni u o'ldirdi)
     g.submit(1, "mafia_kill", 3), g.submit(2, "steal", 1)
-    assert _mafia_why(g.resolve_night()) == [(False, "stolen")]
+    ev = g.resolve_night()
+    assert _mafia_why(ev) == [(False, "stolen")] and not g.get(3).alive
+    from mafia_zone import texts
+    mafia_pm = [t for u, t in texts.morning(g, ev)[1] if u == 1 and "Mafiyaning nishoni" in t]
+    assert mafia_pm and "o'ldirildi" in mafia_pm[0] and "Aferist" in mafia_pm[0] and "omon" not in mafia_pm[0]
+
+    g = mk("don", "aferist", "doktor", "tinch", "tinch", "tinch")  # o'g'irlandi, lekin Doktor qutqardi
+    g.submit(1, "mafia_kill", 4), g.submit(2, "steal", 1), g.submit(3, "heal", 4)
+    ev = g.resolve_night()
+    assert g.get(4).alive and [t for u, t in texts.morning(g, ev)[1] if u == 1 and "omon qoldi" in t]
 
     g = mk("don", "komissar", "sehrgar", "voris", "qotil", *["tinch"] * 8, p6={"verbena": 1})
     g.submit(2, "shoot", 3)  # Sehrgarga Komissar o'qi ta'sir qilmaydi
