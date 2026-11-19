@@ -46,6 +46,13 @@ RANKS = [(0, "🔰 Yangi boshlovchi"), (3, "🔫 Ko'cha bezori"), (10, "🕶 Gan
 
 def rank(wins: int) -> str:
     return [title for need, title in RANKS if wins >= need][-1]
+
+
+def rank_tag(wins: int) -> str:
+    """Guruhdagi a'zo tegi: "Gangster 14". Telegram: 16 belgigacha, emojisiz."""
+    t = rank(wins).split(" ", 1)[1].replace("Yangi boshlovchi", "Boshlovchi")
+    s = f"{t} {wins}"
+    return s if len(s) <= 16 else f"{t}{wins}"[-16:]
 WINNER = {TOWN: "👨 Tinch aholi g'alaba qildi!", MAFIA: "🤵 Mafiya g'alaba qildi!",
           "qotil": "🔪 Qotil yakka g'alaba qildi!", "vampir": "🧛 Vampir yakka g'alaba qildi!",
           "gazabkor": "🧟 G'azabkor yakka g'alaba qildi!",

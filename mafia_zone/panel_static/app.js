@@ -1060,7 +1060,7 @@
   }
 
   const GSET = [["lobby", "Ro'yxat vaqti", 30, 86400], ["night", "Tun", 15, 3600], ["day", "Kun (muhokama)", 15, 10800], ["vote", "Ovoz berish", 15, 3600]];  // = config.TIMER_RANGES
-  const GFLAGS = [["items", "Buyumlar ishlaydi"], ["afk", "AFK o'yinchilarni chiqarish"], ["confirm", "Osishdan oldin 👍/👎 tasdiq"]];
+  const GFLAGS = [["items", "Buyumlar ishlaydi"], ["afk", "AFK o'yinchilarni chiqarish"], ["confirm", "Osishdan oldin 👍/👎 tasdiq"], ["rank_tag", "Unvon tegi (a'zo tegi = unvon + g'alabalar)"]];
   function groupSettings(g, reload) {
     const owner = can("owner");
     const inputs = {}, flags = {};

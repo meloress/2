@@ -552,7 +552,7 @@ async def api_group_settings(req: web.Request) -> web.Response:
     for k, (lo, hi) in SETTING_RANGES.items():
         if k in d:
             new[k] = as_int(d[k], lo, hi, k)
-    for k in ("items", "afk", "confirm"):
+    for k in ("items", "afk", "confirm", "rank_tag"):
         if k in d:
             if not isinstance(d[k], bool):
                 raise Bad(f"{k}: ha/yo'q")

@@ -22,7 +22,8 @@ TIMER_RANGES = {"lobby": (30, 86400, 30), "night": (15, 3600, 15), "day": (15, 1
 DEFAULT_SETTINGS = {"lobby": 120, "night": 60, "day": 60, "vote": 45, "items": True, "afk": True, "confirm": True, "disabled": [],
                     # 🛡 moderatsiya: avtomatik tozalash standart o'chiq (guruh admini /settings dan yoqadi)
                     "mod_ads": False, "mod_swear": False, "mod_swear_min": 30, "mod_warn_max": 3, "mod_report": True,
-                    "mod_bots": True}  # mod_bots: oddiy a'zo qo'shgan bot darhol chiqariladi
+                    "mod_bots": True,  # mod_bots: oddiy a'zo qo'shgan bot darhol chiqariladi
+                    "rank_tag": True}  # rank_tag: o'yin tugagach o'yinchilarning guruhdagi tegi = "Unvon G'alabalar"
 
 # Iqtisod (spec, 7-bo'lim)
 REWARD_PLAY, REWARD_WIN, REF_BONUS = 0, 40, 50  # yutsa 40$, yutqazsa 0

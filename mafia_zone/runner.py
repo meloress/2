@@ -80,6 +80,17 @@ async def _call(fn, *a, **kw):
 _BG: set[asyncio.Task] = set()
 
 
+async def set_rank_tags(bot: Bot, chat_id: int, uids: list[int]) -> None:
+    """O'yin tugagach: a'zolarning guruhdagi tegi = unvon + g'alabalar ("Gangster 14").
+    Botda "Teglarni boshqarish" huquqi bo'lmasa - hech narsa qilinmaydi; admin/egada teg yo'q (_call None qaytaradi)."""
+    me = await _call(bot.get_chat_member, chat_id, bot.id)
+    if not getattr(me, "can_manage_tags", False):
+        return
+    for uid in uids:
+        if u := await db.get_user(uid):
+            await _call(bot.set_chat_member_tag, chat_id=chat_id, user_id=uid, tag=texts.rank_tag(u.wins))
+
+
 def spawn(coro) -> asyncio.Task:
     """Fon vazifasi. Havola saqlanadi: aks holda Python uni tugamasdan yig'ishtirib yuborishi mumkin."""
     t = asyncio.create_task(coro)
@@ -758,6 +769,8 @@ class Runner:
             inv = await db.inventory(p.uid) if u else []
             await send(self.bot, p.uid, texts.result_pm(p.won, reward, u, inv), profile_kb(inv, p.uid) if u else None,
                        effect=EFFECT_WIN if p.won else None)
+        if self.s.get("rank_tag", True):
+            spawn(set_rank_tags(self.bot, self.chat_id, [p.uid for p in g.players if p.uid < FAKE_BASE]))
 
     async def abort(self, text: str = texts.STOPPED) -> None:
         if self.game_id:

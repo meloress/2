@@ -19,8 +19,18 @@ runner.GROUP_PER_MIN = 10 ** 9
 
 
 class FakeBot:
+    id = 1
+    can_tag = True  # botda "Teglarni boshqarish" huquqi
+
     def __init__(self):
         self.sent, self._id = [], 0
+
+    async def get_chat_member(self, chat_id, uid):
+        return SimpleNamespace(status="administrator", can_manage_tags=self.can_tag)
+
+    async def set_chat_member_tag(self, chat_id, user_id, tag=None):
+        self.tags = getattr(self, "tags", {}) | {(chat_id, user_id): tag}
+        return True
 
     async def send_message(self, chat_id, text, **kw):
         self._id += 1
@@ -1323,4 +1333,24 @@ def test_top_groups_and_donate():
         assert 'href="https://t.me/+inv7772"' in text and Bot.made == 1  # havola bir marta yaratiladi
         assert rows[-7772]["gems"] == 3 and "Donor" not in text and "· 3💎" in text  # nom, ball va donat olmos
         assert_telegram_html(text)
+    asyncio.run(go())
+
+
+def test_rank_tags_after_game():
+    from mafia_zone import texts
+    assert texts.rank_tag(0) == "Boshlovchi 0" and texts.rank_tag(14) == "Gangster 14"
+    assert texts.rank_tag(3) == "Ko'cha bezori 3" and texts.rank_tag(999) == "Krestniy ota 999"
+    assert all(len(texts.rank_tag(w)) <= 16 for w in (0, 9, 99, 999, 1000, 99999))
+
+    async def go():
+        await db.init()
+        for uid in (7001, 7002):
+            await db.upsert_user(uid, f"o'yinchi {uid}", None)
+        bot = FakeBot()
+        await runner.set_rank_tags(bot, -700, [7001, 7002])
+        assert bot.tags == {(-700, 7001): "Boshlovchi 0", (-700, 7002): "Boshlovchi 0"}
+        bot = FakeBot()
+        bot.can_tag = False  # huquq yo'q - teg qo'yilmaydi
+        await runner.set_rank_tags(bot, -700, [7001])
+        assert not hasattr(bot, "tags")
     asyncio.run(go())

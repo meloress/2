@@ -266,7 +266,7 @@ async def cmd_rules(msg: Message):
 TIMERS = {"lobby": "👥 Ro'yxat", "night": "🌙 Tun", "day": "🌆 Kun", "vote": "🗳 Ovoz"}  # chegara/qadam: config.TIMER_RANGES
 
 
-FLAGS = ("items", "afk", "confirm")
+FLAGS = ("items", "afk", "confirm", "rank_tag")
 
 
 def settings_text(s: dict) -> str:
@@ -281,6 +281,7 @@ def settings_kb(s: dict) -> Kb:
     rows.append([Btn(text=f"🎒 Buyumlar: {'✅' if s['items'] else '❌'}", callback_data="s:items")])
     rows.append([Btn(text=f"😴 AFK chiqarish: {'✅' if s['afk'] else '❌'}", callback_data="s:afk")])
     rows.append([Btn(text=f"🪢 Osishni tasdiqlash: {'✅' if s['confirm'] else '❌'}", callback_data="s:confirm")])
+    rows.append([Btn(text=f"🏅 Unvon tegi: {'✅' if s['rank_tag'] else '❌'}", callback_data="s:rank_tag")])
     rows.append([Btn(text="🎭 Rollar", callback_data="s:roles")])
     rows.append([Btn(text=texts.MOD_SETTINGS_BTN, callback_data="s:mod")])
     rows.append([Btn(text="❌ Yopish", callback_data="s:close")])
