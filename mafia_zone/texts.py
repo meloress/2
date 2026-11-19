@@ -1174,9 +1174,9 @@ def _place(i: int) -> str:
 
 
 def _top(title: str, entries: list[str]) -> str:
-    """Har o'rin 2 qator: ism, ostida └ raqamlar."""
+    """Har o'rin 2 qator (ism · unvon, ostida └ raqamlar so'z bilan), o'rinlar orasida bo'sh qator: telefonda o'qishga oson."""
     head = f"🏆 <b>{title}</b>"
-    return f"{head}\n\n" + ("\n".join(entries) if entries else "— hali o'yinlar yo'q —")
+    return f"{head}\n\n" + ("\n\n".join(entries) if entries else "— hali o'yinlar yo'q —")
 
 
 def top(rows, title: str, me: tuple[int, int, int] | None = None, show_me: bool = False, head: str = "") -> str:
@@ -1185,13 +1185,13 @@ def top(rows, title: str, me: tuple[int, int, int] | None = None, show_me: bool 
     for i, (uid, name, w, gm) in enumerate(rows):
         w, gm = w or 0, gm or 0
         rate = round(100 * w / gm) if gm else 0
-        entries.append(f"{_place(i)} {mention(uid, name or '?')}\n"
-                       f"└ 🏆 {w} · 🎮 {gm} · {rate}% · {rank(w)}")
+        entries.append(f"{_place(i)} {mention(uid, name or '?')} · {rank(w)}\n"
+                       f"└ <b>{w}</b> g'alaba · {gm} o'yin · {rate}%")
     text = _top(title, entries)
     if head:
         text = text.replace("\n\n", f"\n{head}\n\n", 1)
     if me:
-        text += f"\n\n📍 Siz: {me[0]}-o'rin · 🏆 {me[1]} · 🎮 {me[2]}"
+        text += f"\n\n📍 Siz: <b>{me[0]}</b>-o'rin · {me[1]} g'alaba · {me[2]} o'yin"
     elif show_me:
         text += "\n\n📍 Siz hali reytingda yo'qsiz"
     return text
@@ -1385,6 +1385,9 @@ def _by(reason: str, admin: str | None) -> str:
 
 def mod_muted(who: str, secs: int, reason: str, admin: str | None) -> str:
     return f"🔇 {who} <b>{mod_dur(secs)}</b>ga mute qilindi.{_by(reason, admin)}"
+
+
+UNMUTE_BTN = "🔊 Mutedan chiqarish"
 
 
 def mod_unmuted(who: str, admin: str | None) -> str:

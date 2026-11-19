@@ -68,7 +68,7 @@ def test_month_helpers_use_tashkent_time():
 def test_top_text_shows_my_place_and_season_header():
     rows = [(1, "Ali", 5, 9)]
     text = texts.top(rows, "Oylik reyting", me=(37, 4, 12))
-    assert "📍 Siz: 37-o'rin · 🏆 4 · 🎮 12" in text
+    assert "📍 Siz: <b>37</b>-o'rin · 4 g'alaba · 12 o'yin" in text
     assert "📍 Siz hali reytingda yo'qsiz" in texts.top(rows, "X", me=None, show_me=True)
     assert texts.top(rows, "X", head="HEAD").startswith(f"🏆 <b>X</b>\nHEAD\n\n")
     assert "📍" not in texts.top(rows, "X")  # guruhdagi /top - shaxsiy qator yo'q

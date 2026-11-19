@@ -8,7 +8,8 @@ def test_top_compact_two_lines_per_player():
     lines = text.split("\n")
     assert lines[0] == "🏆 <b>Umumiy reyting</b>"
     assert "🥇" in text and "🥈" in text and "🥉" in text and "4️⃣" in text
-    assert "└ 🏆 120 · 🎮 340 · 35%" in text  # yutish foizi
+    assert "└ <b>120</b> g'alaba · 340 o'yin · 35%" in text  # yutish foizi
+    assert "\n\n🥈" in text  # o'rinlar orasida bo'sh qator
     assert "· 0%" in text  # 0 o'yin - nolga bo'linmaydi
     assert "B" * 60 not in text and "…" in text  # juda uzun ism qisqaradi
     assert texts.rank(120) in text

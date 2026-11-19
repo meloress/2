@@ -178,7 +178,7 @@ from aiogram.types import (CallbackQuery, ChatPermissions, InlineKeyboardButton 
                            InlineKeyboardMarkup as Kb, Message)
 
 from . import db, texts  # noqa: E402
-from .runner import _call, send, send_eph  # noqa: E402
+from .runner import _call, edit, send, send_eph  # noqa: E402
 
 log = logging.getLogger(__name__)
 router = Router(name="moderation")
@@ -365,7 +365,30 @@ async def cmd_mod(msg: Message, bot: Bot, command: CommandObject):
         text = texts.mod_no_warns(_who(t)) if left is None else texts.mod_unwarned(_who(t), left, mx)
     if not ok:
         return await me_only(msg, texts.MOD_NO_RIGHTS)
-    await send(bot, chat, text)
+    await send(bot, chat, text, unmute_kb(t.id) if name == "mute" else None)
+
+
+def unmute_kb(uid: int) -> Kb:
+    """Mute xabari ostida: admin bir bosishda chiqaradi (GroupHelpBot kabi)."""
+    return Kb(inline_keyboard=[[Btn(text=texts.UNMUTE_BTN, callback_data=f"um:{uid}")]])
+
+
+@router.callback_query(F.data.startswith("um:"))
+async def cb_unmute(cq: CallbackQuery, bot: Bot):
+    m = cq.message
+    try:
+        uid = int(cq.data.split(":")[1])
+    except (ValueError, IndexError):
+        return await cq.answer()
+    if not m or not await can_moderate(bot, m.chat.id, cq.from_user.id):
+        return await cq.answer(texts.MOD_ONLY_ADMIN, show_alert=True)
+    if not await unmute(bot, m.chat.id, uid):
+        return await cq.answer(texts.MOD_NO_RIGHTS, show_alert=True)
+    who = getattr(await _call(bot.get_chat_member, m.chat.id, uid), "user", None)
+    me = cq.from_user  # chiqargan admin: ismi + @useri
+    by = _who(me) + (f" (@{me.username})" if me.username else "")
+    await edit(bot, m.chat.id, m.message_id, texts.mod_unmuted(_who(who) if who else texts.mention(uid, "?"), by))
+    await cq.answer("🔊")
 
 
 # ---------- avtomatik: reklama va so'kinish (handlers.drop_commands chaqiradi) ----------
@@ -424,7 +447,7 @@ async def auto(msg: Message, bot: Bot) -> bool:
             return False  # o'chirib bo'lmadi (huquq yo'q) - jazo ham yo'q
         secs = int(s["mod_swear_min"]) * 60
         if await mute(bot, chat, uid, secs):
-            await send(bot, chat, texts.mod_swear_muted(_who(msg.from_user), secs))
+            await send(bot, chat, texts.mod_swear_muted(_who(msg.from_user), secs), unmute_kb(uid))
         return True
     if s.get("mod_ads"):
         from . import runner

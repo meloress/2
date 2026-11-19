@@ -196,6 +196,17 @@ def test_mod_commands():
         assert "30 daqiqa" in bot.sent[-1][1] and "haqorat" in bot.sent[-1][1] and "admin" in bot.sent[-1][1].lower()
         await mod.cmd_mod(gmsg(bot, chat, ADMIN, reply=reply_to(MEMBER)), bot, cmd("mute"))  # muddatsiz - 1 soat
         assert 3590 <= (bot.restricted[-1][3] - db.now()).total_seconds() <= 3610
+        # 🔊 tugma: oddiy a'zo bosolmaydi, admin bossa - chiqariladi va xabar "endi yoza oladi" bo'ladi
+        assert bot.sent[-1][2].inline_keyboard[0][0].callback_data == f"um:{MEMBER}"
+        answers = []
+        press = lambda uid: NS(from_user=user(uid), data=f"um:{MEMBER}", message=NS(chat=NS(id=chat), message_id=bot._id),
+                               answer=lambda t=None, **kw: asyncio.sleep(0, answers.append(t)))
+        await mod.cb_unmute(press(OTHER), bot)
+        assert answers[-1] == texts.MOD_ONLY_ADMIN and MEMBER in bot.muted
+        await mod.cb_unmute(press(ADMIN), bot)
+        assert MEMBER not in bot.muted and "endi yoza oladi" in bot.edited[-1][2] and bot.edited[-1][1] == bot._id
+        assert f"(@user{ADMIN})" in bot.edited[-1][2]  # chiqargan adminning useri
+        await mod.cmd_mod(gmsg(bot, chat, ADMIN, reply=reply_to(MEMBER)), bot, cmd("mute"))
         await mod.cmd_mod(gmsg(bot, chat, ADMIN, reply=reply_to(MEMBER)), bot, cmd("unmute"))
         assert bot.restricted[-1][2].can_send_messages is True and MEMBER not in bot.muted
         # warn: 3 ta -> ban, ogohlantirishlar nolga tushadi
@@ -244,6 +255,7 @@ def test_auto_swear_and_ads():
         m = gmsg(bot, chat, MEMBER, "salom j.a.l.a.b")
         assert await mod.auto(m, bot) and m.deleted
         assert MEMBER in bot.muted and "30 daqiqa" in bot.sent[-1][1] and "so'kingani" in bot.sent[-1][1]
+        assert bot.sent[-1][2].inline_keyboard[0][0].callback_data == f"um:{MEMBER}"  # 🔊 tugma
         m = gmsg(bot, chat, ADMIN, "jalab")
         assert not await mod.auto(m, bot) and not m.deleted  # admin jazolanmaydi
         m = gmsg(bot, chat, MEMBER, "salom hammaga, kecha zo'r o'yin bo'ldi")
