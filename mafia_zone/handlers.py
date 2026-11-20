@@ -634,6 +634,21 @@ async def cmd_uncouple(msg: Message):
     await msg.reply(texts.couple_broken(me.telegram_id, me.full_name, p, await _name(p)))
 
 
+@router.message(Command("mepro"))
+async def cmd_mepro(msg: Message):
+    """Pro kartochkasi: guruhda hammaga (reply), botda - o'ziga. Pro bo'lmasa - "Pro olish" tugmasi."""
+    u = await _user(msg)
+    if not u:
+        return
+    kb = None
+    if not pro.is_pro(u.telegram_id) and not pro.is_owner(u.telegram_id):
+        btn = (Btn(text=texts.MEPRO_BTN, callback_data="m:pro", icon_custom_emoji_id=pro.BADGE_ID)
+               if msg.chat.type == "private" else
+               Btn(text=texts.MEPRO_BTN, url=bot_link("pro"), icon_custom_emoji_id=pro.BADGE_ID))
+        kb = Kb(inline_keyboard=[[btn]])
+    await msg.reply(texts.mepro(u.telegram_id, u.full_name, u.games, u.wins, u.diamonds), reply_markup=kb)
+
+
 @router.message(Command("mycouple"))
 async def cmd_mycouple(msg: Message):
     me = await _user(msg)
@@ -701,6 +716,8 @@ async def cmd_start(msg: Message, bot: Bot, command: CommandObject):
                 await send(bot, who, texts.ref_bonus(name))
     if arg == "panel":
         return await send_panel_link(msg)
+    if arg == "pro":  # guruhdagi /mepro "Pro olish" tugmasi
+        return await cmd_pro(msg)
     if arg.startswith("join"):
         u = await db.get_user(msg.from_user.id)
         if u and u.dollars <= config.DEBT_LIMIT:
@@ -1528,11 +1545,40 @@ async def on_private_text(msg: Message):
         await msg.answer(texts.start_pm())
 
 
+def bot_rights(m) -> dict[str, bool]:
+    """Botning guruhdagi kerakli huquqlari (texts.BOT_RIGHTS)."""
+    adm = m is not None and getattr(m, "status", None) == "administrator"
+    return {k: adm and bool(getattr(m, k, False)) for k in texts.BOT_RIGHTS}
+
+
+def ready_kb(rights: dict[str, bool]) -> Kb | None:
+    return None if all(rights.values()) else Kb(inline_keyboard=[[Btn(text=texts.READY_BTN, callback_data="ready")]])
+
+
 @router.my_chat_member()
-async def on_bot_removed(upd: ChatMemberUpdated):
-    """Bot guruhdan chiqarildi: o'yin to'xtaydi, o'yinchilar boshqa o'yinga kira oladi."""
-    if upd.new_chat_member.status in ("left", "kicked") and (r := RUNNERS.get(upd.chat.id)):
-        await r.abort()
+async def on_bot_member(upd: ChatMemberUpdated, bot: Bot):
+    """Bot guruhdan chiqarildi: o'yin to'xtaydi. Guruhga yangi qo'shildi: salom + kerakli admin huquqlari."""
+    new, old = upd.new_chat_member.status, upd.old_chat_member.status
+    if new in ("left", "kicked"):
+        if r := RUNNERS.get(upd.chat.id):
+            await r.abort()
+        return
+    if upd.chat.type in ("group", "supergroup") and old in ("left", "kicked") and new in ("member", "administrator"):
+        rights = bot_rights(upd.new_chat_member)
+        await send(bot, upd.chat.id, texts.bot_added(rights), ready_kb(rights))
+
+
+@router.callback_query(F.data == "ready")
+async def cb_ready(cq: CallbackQuery, bot: Bot):
+    """«Tayyor ✅»: huquqlar qayta tekshiriladi; hammasi bo'lsa - xabar "tayyor" bo'ladi, tugma yo'qoladi."""
+    m = cq.message
+    if not m:
+        return await cq.answer()
+    rights = bot_rights(await _call(bot.get_chat_member, m.chat.id, bot.id))
+    await edit(bot, m.chat.id, m.message_id, texts.bot_added(rights), ready_kb(rights))
+    if all(rights.values()):
+        return await cq.answer("✅")
+    await cq.answer(texts.READY_NOT_YET, show_alert=True)
 
 
 @router.message(F.migrate_to_chat_id)

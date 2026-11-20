@@ -14,7 +14,7 @@ ITEMS = {"shield": "🛡 Qalqon", "verbena": "🌿 Verbena", "doc": "📄 Hujjat
 ITEM_ABOUT = {
     "shield": "tunda hujumdan 1 marta saqlaydi",
     "verbena": "Vampir tishlashidan 1 marta saqlaydi",
-    "doc": "tekshiruvda 1 marta \"Tinch\" ko'rsatadi (mafiya va yakka rollar uchun)",
+    "doc": "tekshiruvda 1 marta \"Tinch\" ko'rsatadi (mafiya va yakka rollar uchun, Ovchiga ishlamaydi)",
     "mask": "osilsangiz, rolingiz guruhga ochilmaydi",
     "votesave": "osilishdan 1 marta saqlaydi",
     "ticket": "keyingi o'yinda oddiy Tinch o'rniga maxsus rol kafolatlanadi",
@@ -899,6 +899,43 @@ TITLE_HAVE = "👑 Sizda Vip toifasi bor — cheksiz Pro 3."
 
 def _pro_date(t) -> str:
     return f"{t + PRO_TZ:%d.%m.%Y}"
+
+
+BOT_RIGHTS = {"can_delete_messages": "Xabarlarni o'chirish", "can_restrict_members": "O'yinchilarni bloklash",
+              "can_pin_messages": "Xabarlarni pin qilish"}
+READY_BTN = "Tayyor ✅"
+READY_NOT_YET = "Hali hamma huquqlar berilmagan. Botni admin qilib, belgilangan huquqlarni yoqing."
+
+
+def bot_added(rights: dict[str, bool]) -> str:
+    """Bot guruhga qo'shilganda: kerakli admin huquqlari ✅/❌ bilan; hammasi bo'lsa - "tayyor"."""
+    lines = "\n".join(f"{'✅' if rights.get(k) else '❌'} {v}" for k, v in BOT_RIGHTS.items())
+    end = ("🎉 Hammasi tayyor! O'yinni boshlash uchun: /game" if all(rights.get(k) for k in BOT_RIGHTS)
+           else "O'yin o'ynash uchun menga <b>admin huquqlarini</b> bering, so'ng «Tayyor ✅» ni bosing.")
+    return f"👋 Salom! Men <b>Admiral Mafia</b> o'yinining rasmiy botiman.\n\n{lines}\n\n{end}"
+
+
+MEPRO_BTN = "Pro olish"
+
+
+def mepro(uid: int, name: str, games: int, wins: int, diamonds: int) -> str:
+    """/mepro: Pro kartochkasi (toifa, daraja, muddat, o'yinlar, olmos); Pro bo'lmasa - "Pro emas" + /pro."""
+    who, end, title = mention(uid, name), pro.until(uid), pro.title(uid)
+    if not end and not pro.is_owner(uid):
+        return f"❌ {who} — {bold('Pro')} emas!\n\nPro olish uchun: /pro"
+    if pro.is_owner(uid):
+        kind = f"{pro.owner_badge()} {pro.CREATOR_TAG}"
+    elif title:
+        kind = f"{pro.badge()} {pro.VIP_TAG} (guruh egasi)"
+    else:
+        kind = f"{pro.badge()} Pro a'zo"
+    rows = [who, f"<b>Toifa:</b> {kind}"]
+    if end:
+        t = pro.tier(uid)
+        rows.append(f"<b>Daraja:</b> {TIER_ICON[t]} Pro {t}")
+        rows.append("<b>Muddat:</b> " + ("cheksiz" if title else f"{_pro_date(end)} gacha"))
+    rate = round(100 * wins / games) if games else 0
+    return "\n".join(rows) + f"\n\n🎮 {games} o'yin | {rate}% g'alaba\n💎 <b>{diamonds}</b> olmos"
 
 
 def _pro_have(uid: int) -> str:

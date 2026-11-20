@@ -392,7 +392,7 @@ class Game:
             if k == "check":
                 if self.get(t).team != self.get(u).team:  # haqiqiy jamoa bo'yicha (niqob ballga ta'sir qilmaydi)
                     self.get(u).score += 3
-                ev.append(Event("checked", u, t, {"result": self._appear(t, disguised, docced, ev)}))
+                ev.append(Event("checked", u, t, {"result": self._appear(t, disguised, docced, ev, roles0[u])}))
             elif k == "interview":
                 ev.append(Event("interview", u, t, {"visitors": [x for x in visitors.get(t, []) if x != u]}))
             elif k == "dig":
@@ -581,11 +581,16 @@ class Game:
         self._check_win(ev)
         return ev
 
-    def _appear(self, t: int, disguised: set, docced: set, ev: list) -> str:
+    def _appear(self, t: int, disguised: set, docced: set, ev: list, by: str = "") -> str:
         """Tekshiruvda ko'rinadigan rol: aniq rol; niqob, Hujjat va Sotqin - Tinch aholi.
-        Hujjat faqat mafiya va yakka rollarda sarflanadi: tinch aholiga yashirinish kerak emas."""
+        Hujjat faqat mafiya va yakka rollarda sarflanadi: tinch aholiga yashirinish kerak emas.
+        Ovchiga Hujjat umuman ishlamaydi (sarflanmaydi ham); niqob va Sotqin unga ham ishlaydi."""
         v = self.get(t)
-        if t in disguised or v.role == "sotqin" or t in docced:
+        if t in disguised or v.role == "sotqin":
+            return "tinch"
+        if by == "ovchi":
+            return v.role
+        if t in docced:
             return "tinch"
         if v.team != TOWN and self._use(v, "doc", ev):
             docced.add(t)

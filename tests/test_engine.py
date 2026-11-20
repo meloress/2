@@ -747,10 +747,10 @@ def test_doc_only_for_mafia_and_neutrals():
 
 
 def test_doc_covers_every_check_that_night():
-    g = mk("don", "komissar", "ovchi", "tinch", "tinch", "tinch", "tinch", p1={"doc": 1})
+    g = mk("don", "komissar", "komissar", "tinch", "tinch", "tinch", "tinch", p1={"doc": 1})
     ev = night(g, (2, "check", 1), (3, "check", 1))
     assert [e.data["result"] for e in ev if e.kind == "checked"] == ["tinch", "tinch"]
-    assert kinds(ev).count("item_used") == 1
+    assert kinds(ev).count("item_used") == 1  # (Ovchiga Hujjat ishlamaydi: test_doc_does_not_fool_ovchi)
 
 
 def test_suitsid_shield_not_used_against_mafia():
@@ -1343,3 +1343,14 @@ def test_konchi_always_from_15():
             assert "konchi" in deal(n, random.Random(seed)), (n, seed)
     assert all("konchi" not in deal(20, random.Random(s), frozenset({"konchi"})) for s in range(20))  # o'chirilgan
     assert not all("konchi" in deal(14, random.Random(s)) for s in range(40))  # 14 da - tasodifiy
+
+
+def test_doc_does_not_fool_ovchi():
+    """Ovchiga Hujjat ishlamaydi va sarflanmaydi; o'sha tun Komissarga esa ishlaydi."""
+    g = mk("don", "ovchi", "komissar", "tinch", "tinch", "tinch", "tinch", p1={"doc": 1})
+    ev = night(g, (2, "check", 1), (3, "check", 1))
+    res = {e.uid: e.data["result"] for e in ev if e.kind == "checked"}
+    assert res == {2: "don", 3: "tinch"} and g.get(1).items["doc"] == 0
+    g = mk("don", "ovchi", "tinch", "tinch", "tinch", "tinch", p1={"doc": 1})
+    ev = night(g, (2, "check", 1))
+    assert [e.data["result"] for e in ev if e.kind == "checked"] == ["don"] and g.get(1).items["doc"] == 1

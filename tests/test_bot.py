@@ -619,10 +619,59 @@ def test_bot_removed_aborts_game():
         await db.init()
         bot = CleanBot()
         r = runner.Runner(bot, -998, dict(runner.config.DEFAULT_SETTINGS))
-        upd = SimpleNamespace(chat=SimpleNamespace(id=-998), new_chat_member=SimpleNamespace(status="kicked"))
-        await handlers.on_bot_removed(upd)
+        upd = SimpleNamespace(chat=SimpleNamespace(id=-998, type="group"), new_chat_member=SimpleNamespace(status="kicked"),
+                              old_chat_member=SimpleNamespace(status="member"))
+        await handlers.on_bot_member(upd, bot)
         assert -998 not in runner.RUNNERS
     asyncio.run(t())
+
+
+def test_bot_added_asks_for_rights_and_ready_button():
+    from mafia_zone import handlers, texts
+
+    async def t():
+        bot = FakeBot()
+        upd = SimpleNamespace(chat=SimpleNamespace(id=-996, type="supergroup"),
+                              old_chat_member=SimpleNamespace(status="left"),
+                              new_chat_member=SimpleNamespace(status="member"))
+        await handlers.on_bot_member(upd, bot)
+        text = bot.sent[-1][1]
+        assert bot.sent[-1][0] == -996 and "Admiral Mafia" in text and text.count("❌") == 3 and "admin huquqlarini" in text
+        # «Tayyor ✅»: huquq yo'q - ogohlantirish; hammasi berilgach - "tayyor", tugma yo'qoladi
+        answers = []
+        cq = SimpleNamespace(message=SimpleNamespace(chat=SimpleNamespace(id=-996), message_id=5),
+                             answer=lambda t=None, **kw: asyncio.sleep(0, answers.append(t)))
+        bot.get_chat_member = lambda c, u: asyncio.sleep(0, SimpleNamespace(status="member"))
+        await handlers.cb_ready(cq, bot)
+        assert answers[-1] == texts.READY_NOT_YET
+        full = dict(status="administrator", can_delete_messages=True, can_restrict_members=True, can_pin_messages=True)
+        bot.get_chat_member = lambda c, u: asyncio.sleep(0, SimpleNamespace(**full))
+        await handlers.cb_ready(cq, bot)
+        assert answers[-1] == "✅" and "Hammasi tayyor" in bot.sent[-1][1] and "/game" in bot.sent[-1][1]
+        # admin qilib qo'shilsa - darhol "tayyor"; boshqa o'zgarish (a'zo -> admin) - xabarsiz
+        n = len(bot.sent)
+        await handlers.on_bot_member(SimpleNamespace(chat=upd.chat, old_chat_member=SimpleNamespace(status="member"),
+                                                     new_chat_member=SimpleNamespace(**full)), bot)
+        assert len(bot.sent) == n
+        await handlers.on_bot_member(SimpleNamespace(chat=upd.chat, old_chat_member=SimpleNamespace(status="kicked"),
+                                                     new_chat_member=SimpleNamespace(**full)), bot)
+        assert "Hammasi tayyor" in bot.sent[-1][1] and bot.sent[-1][1].count("✅") == 3
+    asyncio.run(t())
+
+
+def test_mepro_card():
+    from datetime import timedelta
+    from mafia_zone import pro, texts
+    uid = 7301
+    pro.set_user(uid, None, None)
+    t = texts.mepro(uid, "Ali", 417, 133, 9)
+    assert "Pro" in t and "emas" in t and "/pro" in t
+    pro.set_user(uid, db.now() + timedelta(days=3), None, 2)
+    t = texts.mepro(uid, "Ali", 417, 133, 9)
+    assert "Pro a'zo" in t and "Pro 2" in t and "gacha" in t and "417 o'yin | 32% g'alaba" in t and "<b>9</b> olmos" in t
+    pro.set_user(uid, db.now() + timedelta(days=3), None, 3, "Guruh Owner")
+    assert "cheksiz" in texts.mepro(uid, "Ali", 0, 0, 0) and "0% g'alaba" in texts.mepro(uid, "Ali", 0, 0, 0)
+    pro.set_user(uid, None, None)
 
 
 def test_phase_timer_starts_after_buttons_are_sent():
