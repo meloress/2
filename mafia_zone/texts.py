@@ -199,6 +199,7 @@ GAME_EXISTS = "⚠️ Bu guruhda o'yin allaqachon ketmoqda."
 NOT_ADMIN_WARN = "⚠️ Botni admin qiling (xabarlarni o'chirish huquqi bilan), aks holda tungi xabarlarni o'chira olmayman."
 JOINED = "✅ " + "𝐌𝐮𝐯𝐚𝐟𝐟𝐚𝐪𝐢𝐲𝐚𝐭𝐥𝐢 𝐫𝐨'𝐲𝐱𝐚𝐭𝐝𝐚𝐧 𝐨'𝐭𝐝𝐢𝐧𝐠𝐢𝐳!"
 ALREADY_IN_GAME = "⚠️ Siz allaqachon boshqa o'yindasiz."
+ALREADY_JOINED = "☑️ " + "𝐒𝐢𝐳 𝐚𝐥𝐥𝐚𝐪𝐚𝐜𝐡𝐨𝐧 𝐨'𝐲𝐢𝐧𝐠𝐚 𝐪𝐨'𝐬𝐡𝐢𝐥𝐠𝐚𝐧𝐬𝐢𝐳!"
 NO_LOBBY = "⚠️ Bu guruhda ro'yxatdan o'tish ketmayapti."
 NO_LOBBY_START = "⚠️ Ro'yxat ochiq emas. Avval /game bilan ro'yxatni oching."
 NO_GAME_HERE = "🎮 Hozir bu guruhda o'yin yo'q. /game bilan boshlang!"
@@ -919,23 +920,24 @@ MEPRO_BTN = "Pro olish"
 
 
 def mepro(uid: int, name: str, games: int, wins: int, diamonds: int) -> str:
-    """/mepro: Pro kartochkasi (toifa, daraja, muddat, o'yinlar, olmos); Pro bo'lmasa - "Pro emas" + /pro."""
+    """/mepro: Pro kartochkasi (toifa, daraja, o'yinlar, olmos); Pro bo'lmasa - "Pro emas" + /pro."""
     who, end, title = mention(uid, name), pro.until(uid), pro.title(uid)
+    # yozuvlar JOINED kabi matematik qalin (bold); raqamlar oddiy
     if not end and not pro.is_owner(uid):
-        return f"❌ {who} — {bold('Pro')} emas!\n\nPro olish uchun: /pro"
+        return f"❌ {who} — {bold('Pro emas!')}\n\n{bold('Pro olish uchun:')} /pro"
     if pro.is_owner(uid):
         kind = f"{pro.owner_badge()} {pro.CREATOR_TAG}"
     elif title:
-        kind = f"{pro.badge()} {pro.VIP_TAG} (guruh egasi)"
+        kind = f"{pro.badge()} {pro.VIP_TAG} {bold('(guruh egasi)')}"
     else:
-        kind = f"{pro.badge()} Pro a'zo"
-    rows = [who, f"<b>Toifa:</b> {kind}"]
+        kind = pro.badge() + " " + bold("Pro a'zo")
+    rows = [who, f"{bold('Toifa:')} {kind}"]
     if end:
         t = pro.tier(uid)
-        rows.append(f"<b>Daraja:</b> {TIER_ICON[t]} Pro {t}")
-        rows.append("<b>Muddat:</b> " + ("cheksiz" if title else f"{_pro_date(end)} gacha"))
+        rows.append(f"{bold('Daraja:')} {TIER_ICON[t]} {bold('Pro')} {t}")
     rate = round(100 * wins / games) if games else 0
-    return "\n".join(rows) + f"\n\n🎮 {games} o'yin | {rate}% g'alaba\n💎 <b>{diamonds}</b> olmos"
+    stats = f"🎮 {games} " + bold("o'yin") + f" | {rate}% " + bold("g'alaba") + f"\n💎 {diamonds} " + bold("olmos")
+    return "\n".join(rows) + "\n\n" + stats
 
 
 def _pro_have(uid: int) -> str:

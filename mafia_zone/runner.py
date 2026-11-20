@@ -400,11 +400,13 @@ class Runner:
 
     def join(self, uid: int, name: str, side: str | None = None) -> str:
         if self.game:
-            return texts.NO_LOBBY
+            return texts.ALREADY_JOINED if self.game.get(uid) else texts.NO_LOBBY
         if self.teams and side not in ("oq", "qora"):
             return texts.TEAM_PICK
         if PLAYING.get(uid) not in (None, self):
             return texts.ALREADY_IN_GAME
+        if any(u == uid for u, _ in self.members) and (not self.teams or self.sides.get(uid) == side):
+            return texts.ALREADY_JOINED  # qayta bosdi (Oq-Qora: jamoa almashtirish - qo'shilish emas)
         if len(self.members) >= MAX_PLAYERS:
             NEXT[self.chat_id].add(uid)
             return texts.LOBBY_FULL

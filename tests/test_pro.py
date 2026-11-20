@@ -156,7 +156,8 @@ def test_pro_buttons_profile_and_lobby_name():
     pro.set_user(5, db.now() + timedelta(days=2), "Shoh")
     bot = SimpleNamespace()
     r = runner.Runner(bot, -1991, dict(config.DEFAULT_SETTINGS))
-    assert r.join(5, "Ali") == texts.JOINED and r.members[-1] == (5, "Ali")  # nickname ko'rsatishda
+    assert r.join(5, "Ali") == texts.JOINED and r.members[-1] == (5, "Ali")
+    assert r.join(5, "Ali") == texts.ALREADY_JOINED and len(r.members) == len(set(r.members))  # qayta bosdi  # nickname ko'rsatishda
     r.game = Game(-1991, 1, [Player(4, "Vali", "don"), Player(5, "Ali", "mafiya"), Player(6, "Hasan", "tinch")],
                   phase="voting")
     r.game_id = 3

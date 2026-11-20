@@ -665,12 +665,13 @@ def test_mepro_card():
     uid = 7301
     pro.set_user(uid, None, None)
     t = texts.mepro(uid, "Ali", 417, 133, 9)
-    assert "Pro" in t and "emas" in t and "/pro" in t
+    assert texts.bold("Pro emas!") in t and "/pro" in t
     pro.set_user(uid, db.now() + timedelta(days=3), None, 2)
     t = texts.mepro(uid, "Ali", 417, 133, 9)
-    assert "Pro a'zo" in t and "Pro 2" in t and "gacha" in t and "417 o'yin | 32% g'alaba" in t and "<b>9</b> olmos" in t
+    assert texts.bold("Pro a'zo") in t and texts.bold("Daraja:") in t and "Muddat" not in t
+    assert "417 " + texts.bold("o'yin") + " | 32% " + texts.bold("g'alaba") in t and "9 " + texts.bold("olmos") in t
     pro.set_user(uid, db.now() + timedelta(days=3), None, 3, "Guruh Owner")
-    assert "cheksiz" in texts.mepro(uid, "Ali", 0, 0, 0) and "0% g'alaba" in texts.mepro(uid, "Ali", 0, 0, 0)
+    assert texts.bold("(guruh egasi)") in texts.mepro(uid, "Ali", 0, 0, 0)
     pro.set_user(uid, None, None)
 
 
