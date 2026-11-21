@@ -528,8 +528,7 @@ class Runner:
             if ph == NIGHT:
                 ev = g.resolve_night()
             elif ph == DAY:
-                g.start_voting()
-                ev = None
+                ev = g.start_voting() or None  # Afsungar tanlamagan bo'lsa - qotillaridan biri baribir ketadi
             elif ph == VOTING:
                 ev = g.resolve_vote()
             else:
@@ -730,6 +729,8 @@ class Runner:
             for e in ev:
                 if e.kind == "checked" and [e.uid, e.target] in g.hunt:
                     await send(self.bot, e.uid, texts.hunt_pm(g, e.target, e.data["result"]), kb)
+            if g.vendetta and any(e.kind == "killed" and e.target == g.vendetta[0] for e in ev):
+                await send(self.bot, g.vendetta[0], texts.VENDETTA_PM, self.vendetta_kb())
         if g.phase != FINISHED:  # har qanday o'limdan keyin so'nggi so'z
             hanged = {e.target for e in ev if e.kind == "hanged"}
             hunted = {e.target for e in ev if e.kind == "hunted"}
@@ -738,6 +739,25 @@ class Runner:
                 self.last_words[uid] = time.time() + LAST_WORDS_SECS
                 await send(self.bot, uid, texts.death_pm(uid in hanged, uid in hunted, uid in collapsed))
                 spawn(self._last_words_timeout(uid, self.last_words[uid]))
+
+    def vendetta_kb(self) -> Kb:
+        """Tunda o'ldirilgan Afsungarga: qotillarning faqat rollari (kimligi emas) + Kechirish."""
+        g = self.game
+        pre = f"av:{self.game_id}:{g.day}"
+        rows = [[Btn(text=f"💀 {texts.role(g.get(u).role)}", callback_data=f"{pre}:{i}")] for i, u in enumerate(g.vendetta[1])]
+        return Kb(inline_keyboard=rows + [[Btn(text=texts.VENDETTA_FORGIVE_BTN, callback_data=f"{pre}:f")]])
+
+    async def on_vendetta(self, uid: int, day: int, idx: int | None) -> list | None:
+        """Afsungar kunduzi qotilini olib ketdi yoki kechirdi. O'yin tugasa - faza sikli ko'radi."""
+        async with self.lock:
+            g = self.game
+            ev = g.afsungar_take(uid, idx) if g and g.day == day else None
+            if ev is None:
+                return None
+            await self.save()
+        if idx is not None:
+            await self._announce(DAY, ev)
+        return ev
 
     async def on_hunt(self, uid: int, day: int) -> bool:
         """Ovchi kunduzi "💀 O'ldirish" bosdi: o'ldirish, jarima (pul o'ldirilganga), e'lon, so'nggi so'z.
@@ -812,6 +832,8 @@ class Runner:
         return Kb(inline_keyboard=rows + [skip] + back)
 
     async def on_action(self, uid: int, day: int, kind: str, target: int) -> bool:
+        if kind == "blast":  # osilgan Afsungar: tanlagani shu zahoti o'ladi
+            return await self._blast(uid, day, target)
         async with self.lock:
             g = self.game
             again = g is not None and (uid in g.actions or uid in g.mafia_votes)  # tanlovni almashtirdi
@@ -836,6 +858,21 @@ class Runner:
             for m in g.teammates(uid):
                 if m.alive:
                     await send(self.bot, m.uid, texts.mafia_voted(texts.dn(me), texts.dn(g.get(target))))
+        return True
+
+    async def _blast(self, uid: int, day: int, target: int) -> bool:
+        async with self.lock:
+            g = self.game
+            ev = g.blast_now(uid, target) if g and g.day == day else None
+            if not ev:
+                return False
+            await self.save()
+            self.prompts.pop(uid, None)
+        await self._announce(NIGHT, ev)
+        if g.phase == NIGHT:  # yangi Don / Komissar tunning o'rtasida - harakat tugmasi kerak
+            for e in ev:
+                if e.kind == "promoted" and (kb := self.night_kb(e.uid)):
+                    self._prompt(e.uid, await send(self.bot, e.uid, texts.night_prompt(g, e.uid), kb))
         return True
 
     async def on_vote(self, uid: int, day: int, target: int) -> bool:

@@ -1409,6 +1409,23 @@ async def cb_action(cq: CallbackQuery):
     await cq.answer()
 
 
+@router.callback_query(F.data.startswith("av:"))
+async def cb_vendetta(cq: CallbackQuery):
+    """Tunda o'ldirilgan Afsungar kunduzi: qotillaridan birini olib ketadi (rol tugmasi) yoki kechiradi."""
+    _, gid, day, pick = cq.data.split(":")
+    r = PLAYING.get(cq.from_user.id)
+    if _stale(r, gid, day, DAY):
+        await _call(cq.message.edit_reply_markup, reply_markup=None)
+        return await alert(cq, texts.VENDETTA_LATE)
+    ev = await r.on_vendetta(cq.from_user.id, int(day), None if pick == "f" else int(pick))
+    if ev is None:
+        return await alert(cq, texts.VENDETTA_NO)
+    await _call(cq.message.edit_reply_markup, reply_markup=None)
+    if pick == "f":
+        await send(cq.bot, cq.from_user.id, texts.VENDETTA_FORGAVE)
+    await cq.answer()
+
+
 @router.callback_query(F.data.startswith("h:"))
 async def cb_hunt(cq: CallbackQuery):
     """Ovchi kunduzi tongda roli ochilgan nishonni o'ldiradi (osish boshlanguncha). Xabar o'chirilmaydi:

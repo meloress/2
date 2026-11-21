@@ -150,7 +150,18 @@ def test_morning_renders_every_event_kind():
                     seen |= {e.kind for e in hev}
             if g.phase == FINISHED:
                 break
-            g.start_voting()
+            if g.vendetta and rng.random() < 0.6:  # Afsungar kunduzi: olib ketadi / kechiradi / kutadi
+                pick = rng.choice([None] + list(range(len(g.vendetta[1]))))
+                if aev := g.afsungar_take(g.vendetta[0], pick):
+                    texts.morning(g, aev)
+                    seen |= {e.kind for e in aev}
+                if g.phase == FINISHED:
+                    break
+            vev = g.start_voting()
+            texts.morning(g, vev)
+            seen |= {e.kind for e in vev}
+            if g.phase == FINISHED:
+                break
             for p in g.alive():
                 if g.can_vote(p.uid):
                     g.cast_vote(p.uid, rng.choice([None] + [x.uid for x in g.alive() if x.uid != p.uid]))
@@ -160,7 +171,7 @@ def test_morning_renders_every_event_kind():
         json.dumps(g.to_dict())
     expected = {"blocked", "stolen", "steal_empty", "robbed", "checked", "interview", "dug", "saved", "item_used",
                 "killed", "revenge", "linked", "transformed", "promoted", "hunted", "witness",
-                "hanged", "no_hang", "guard_saved", "tulki", "game_over"}
+                "hanged", "no_hang", "guard_saved", "tulki", "suitsid_won", "forgave", "game_over"}
     assert expected <= seen, expected - seen
 
 
@@ -390,6 +401,34 @@ def test_hanged_afsungar_gets_night_buttons():
             assert pm and texts.ROLE_PROMPT["afsungar"] in pm[0]
             assert r.night_kb(2).inline_keyboard[0][0].callback_data.startswith("a:57:1:blast:")
             assert await r.on_action(2, 1, "blast", 1) and r.live_lines == []  # guruhga yozilmaydi
+            # darhol: Don shu zahoti o'ldi va guruhga e'lon qilindi (tong kutilmaydi)
+            assert not r.game.get(1).alive and any("yolg'iz ketmadi" in t for c, t in bot.sent if c == -4446)
+        finally:
+            r.close()
+
+    asyncio.run(go())
+
+
+def test_night_killed_afsungar_picks_killer_by_role():
+    """Tunda o'ldirilgan Afsungar: botda qotillarning faqat rollari, bittasini olib ketadi yoki kechiradi."""
+    from mafia_zone.engine.game import Game, Player
+
+    async def go():
+        await db.init()
+        bot = FakeBot()
+        r = runner.Runner(bot, -4447, {"night": 10})
+        r.game, r.game_id = Game(-4447, 1, [Player(1, "Ali", "don"), Player(2, "b", "mafiya"),
+                                            Player(3, "c", "afsungar"), *[Player(i, f"t{i}", "tinch") for i in range(4, 8)]]), 58
+        try:
+            ev = r.game.resolve_night() if r.game.submit(1, "mafia_kill", 3) else None
+            await r._announce(NIGHT, ev)
+            assert texts.VENDETTA_PM in [t for c, t in bot.sent if c == 3]
+            kb = r.vendetta_kb()
+            labels = [b.text for row in kb.inline_keyboard for b in row]
+            assert "Ali" not in " ".join(labels) and texts.role("don") in labels[0] and labels[-1] == texts.VENDETTA_FORGIVE_BTN
+            assert [b.callback_data for row in kb.inline_keyboard for b in row] == ["av:58:1:0", "av:58:1:f"]
+            assert await r.on_vendetta(3, 1, 0) and not r.game.get(1).alive
+            assert await r.on_vendetta(3, 1, 0) is None  # bir marta
         finally:
             r.close()
 

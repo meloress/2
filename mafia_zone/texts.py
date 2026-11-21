@@ -326,7 +326,7 @@ ROLE_PROMPT = {
     "qaroqchi": "🦹‍♂️ Qaroqchi, kimning cho'ntagini yengillatamiz?",
     "konchi": "👷‍♂️ Konchi, kirka tayyor. Qazishni boshlaymizmi?",
     "aferist": "🤹 Aferist, bu tun kimning harakatini o'g'irlaymiz?",
-    "afsungar": "💣 Sizni osishdi, lekin yolg'iz ketmaysiz! Tong otguncha kimni o'zingiz bilan olib ketasiz?",
+    "afsungar": "💣 Sizni osishdi, lekin yolg'iz ketmaysiz! Kimni o'zingiz bilan olib ketasiz? Tanlaganingiz shu zahoti o'ladi.",
 }
 
 
@@ -387,6 +387,7 @@ RESULT = {  # (harakat, muvaffaqiyat) -> shaxsiy xabar; {t} - nishon
     ("visit", False): "🍾 {t}ning uyi oldida tun tinch o'tdi — qotillik bo'lmadi.",
     ("pair", False): "👊 Sherigingiz boshqa nishonni tanladi — {t}ga hujum bo'lmadi.",
     ("blast", True): "💥 Siz {t}ni o'zingiz bilan olib ketdingiz!",
+    ("vendetta_auto", True): "⌛️ Vaqt tugadi — qotilingiz {t} baribir siz bilan ketdi!",
     ("curse", True): "🔮 La'natingiz ishladi: {t} la'natlangan uyga kirib, halok bo'ldi.",  # {t} - kelgan odam
     ("curse_empty", False): "🔮 Bu tun {t}ning oldiga hech kim kelmadi.",
 }
@@ -595,6 +596,8 @@ def morning(g: Game, ev: list[Event]) -> tuple[list[str], list[tuple[int, str]]]
                 priv.append((q.uid, f"👨‍🦳 Siz himoyalagan <b>{n(e.target)}</b>ni dordan qutqardingiz!"))
         elif k == "tulki":
             pub.append(f"🦊 {w(e.uid)} ayyorlik qildi: unga birinchi ovoz bergan {w(e.target)} ham u bilan ketdi!")
+        elif k == "suitsid_won":
+            pub.append(f"{role('suitsid')} aynan shuni istagan edi — <b>{pm(g, e.target)}</b> g'olib bo'ldi!")
         elif k == "blocked":
             priv.append((e.uid, "💤 Kimdir sizga uyqu dori berdi: bu tun hech narsa qila olmadingiz, "
                                 "ertaga <b>ovoz bera olmaysiz</b>."))
@@ -675,6 +678,13 @@ def morning(g: Game, ev: list[Event]) -> tuple[list[str], list[tuple[int, str]]]
     return pub, priv
 
 
+VENDETTA_PM = ("💣 <b>Sizni o'ldirishdi, lekin qasos sizning qo'lingizda!</b>\n\n"
+               "Qotilingizni o'zingiz bilan olib ketasizmi yoki kechirasizmi? Osish boshlanguncha tanlang — "
+               "tanlamasangiz, bittasi baribir siz bilan ketadi.")
+VENDETTA_FORGIVE_BTN = "🕊 Kechirish"
+VENDETTA_FORGAVE = "🕊 Siz qotilingizni kechirdingiz."
+VENDETTA_LATE = "⌛️ Kech qoldingiz: osish boshlandi."
+VENDETTA_NO = "❌ Bu tanlov endi mumkin emas"
 HUNT_BTN = "💀 O'ldirish"
 HUNT_LATE = "⌛️ Kech qoldingiz: osish boshlandi, endi o'ldira olmaysiz."
 HUNT_NO = "❌ Endi o'ldira olmaysiz"

@@ -106,8 +106,9 @@ class Game:
     pairs: dict = field(default_factory=dict)  # 💞 paralar o'yini: uid -> jufti (ikki tomonlama)
     couple_mode: bool = False  # 💞 tomonlar yo'q: oxirgi tirik juft yutadi
     bros: list = field(default_factory=list)  # Aka va Uka uid'lari: biri Don bo'lsa ham bog'lanish qoladi
-    bomb: int | None = None  # kunduzi osilgan Afsungar: keyingi tunda tong otguncha 1 kishini olib ketadi
+    bomb: int | None = None  # kunduzi osilgan Afsungar: shu tun tanlagan 1 kishini darhol olib ketadi (blast_now)
     hunt: list = field(default_factory=list)  # [[Ovchi, nishon]]: tongda roli ochildi - kunduzi o'ldirishi mumkin
+    vendetta: list = field(default_factory=list)  # [Afsungar, [qotillar]]: tunda o'ldirildi - kunduzi bittasini olib ketadi
     sides: dict = field(default_factory=dict)  # ⚪⚫ Oq-Qora o'yini: uid -> "oq"/"qora"; bo'sh - oddiy o'yin
 
     # ---------- yaratish va saqlash ----------
@@ -311,8 +312,7 @@ class Game:
                 p.score -= 2  # tunda harakat qilmadi
         # Tun boshidagi rollar: matnlarda shu ko'rsatiladi (Ovchi jarimasi, Voris o'zgarishidan oldingi holat)
         roles0 = {p.uid: p.role for p in self.players}
-        bomb, blast = self.bomb, self.actions.get(self.bomb) if self.bomb is not None else None
-        self.bomb = None  # faqat bitta tun
+        self.bomb = None  # osilgan Afsungar tanlovi faqat shu tun (tanlasa - darhol, blast_now)
         # acts: actor -> (kind, target, harakat egasining roli)
         acts = {u: (k, t, self.get(u).role) for u, (k, t) in self.actions.items()
                 if self.get(u).alive and k != SKIP and (t is None or self._alive(t))}
@@ -455,11 +455,9 @@ class Game:
                 why[t] = "transformed"
                 continue
             only_bites = all(a[1] == "bite" for a in alist)
-            # Suitsid mafiya qo'lida o'lib yutadi: unga qalqon/verbena zarar - ishlatilmaydi
-            wants = v.role == "suitsid" and any(a[1] == "mafia_kill" for a in alist)
-            if not wants and only_bites and self._use(v, "verbena", ev):
+            if only_bites and self._use(v, "verbena", ev):
                 why[t] = "verbena"
-            elif not wants and self._use(v, "shield", ev):
+            elif self._use(v, "shield", ev):
                 why[t] = "shield"
             else:
                 deaths[t] = alist
@@ -499,31 +497,14 @@ class Game:
                 self.get(u).alive = False
                 ev.append(Event("collapsed", target=u, data={"tunnel": tunnel, "role": roles0[u]}))
 
-        # 5. Qasos
+        # 5. Qasos: tunda o'ldirilgan Afsungar kunduzi qotillaridan birini olib ketadi yoki kechiradi (afsungar_take);
+        # tanlamasa - osish boshlanganda tasodifiy bittasi (start_voting)
+        self.vendetta = []
         for t, alist in deaths.items():
-            v = self.get(t)
-            if v.role == "afsungar":
-                avengers = {a[0] for a in alist}
-            elif v.role == "suitsid" and any(a[1] == "mafia_kill" for a in alist):
-                avengers = {a[0] for a in alist if a[1] == "mafia_kill"}
-                v.won = True
-            else:
-                continue
-            # qotil dushman bo'lsa - Afsungar yutish shartini bajardi (qotil shu tun boshqa sababdan o'lgan bo'lsa ham)
-            if v.role == "afsungar" and any(ROLES[roles0[u]].team != TOWN for u in avengers):
-                v.avenged = True
-            for u in sorted(avengers):
-                if self.get(u).alive:
-                    self.get(u).alive = False
-                    ev.append(Event("revenge", t, u))
-        if blast and blast[0] == "blast" and blast[1] is not None:  # osilgan Afsungar tanlagani - himoya yordam bermaydi
-            t = blast[1]
-            if ROLES[roles0[t]].team != TOWN:
-                self.get(bomb).avenged = True
-            ev.append(Event("result", bomb, t, {"kind": "blast", "ok": True}))
-            if self.get(t).alive:
-                self.get(t).alive = False
-                ev.append(Event("revenge", bomb, t))
+            if self.get(t).role == "afsungar":
+                killers = sorted(u for u in {a[0] for a in alist} if self.get(u).alive)
+                if killers:
+                    self.vendetta = [t, killers]
 
         # Shaxsiy natijalar: Doktor, Daydi (qotillik bo'lmasa), hujum qilganlar (mafiya ovozi - quyida, jamoaga)
         for u, (k, t, _) in acts.items():
@@ -561,6 +542,43 @@ class Game:
         self.hunt = [[u, t] for u, (k, t, src) in acts.items()
                      if k == "check" and src == "ovchi" and self.get(u).role == "ovchi" and self._alive(u) and self._alive(t)]
         self._check_win(ev)
+        return ev
+
+    def _revenge(self, afs: int, t: int, ev: list) -> None:
+        """Afsungar t ni olib ketadi: himoya ishlamaydi; dushman bo'lsa - tinchlar yutganda o'lgan bo'lsa ham yutadi."""
+        v = self.get(t)
+        if v.team != TOWN:
+            self.get(afs).avenged = True
+        if v.alive:
+            v.alive = False
+            ev.append(Event("revenge", afs, t))
+        self._after_deaths(ev)
+        self._check_win(ev)
+
+    def afsungar_take(self, uid: int, idx: int | None) -> list[Event] | None:
+        """Tunda o'ldirilgan Afsungar kunduzi: idx - qotillar ro'yxatidan biri (olib ketadi), None - kechiradi.
+        None qaytsa - mumkin emas (vaqt o'tdi yoki tanlangan qotil allaqachon o'lgan)."""
+        if self.phase != DAY or not self.vendetta or self.vendetta[0] != uid:
+            return None
+        killers = self.vendetta[1]
+        if idx is None:
+            self.vendetta = []
+            return [Event("forgave", uid)]
+        if not 0 <= idx < len(killers) or not self._alive(killers[idx]):
+            return None
+        self.vendetta = []
+        ev = [Event("result", uid, killers[idx], {"kind": "blast", "ok": True})]
+        self._revenge(uid, killers[idx], ev)
+        return ev
+
+    def blast_now(self, uid: int, target: int) -> list[Event] | None:
+        """Kunduzi osilgan Afsungar tanlagan odamni shu zahoti olib ketadi (tong kutilmaydi)."""
+        if self.phase != NIGHT or self.bomb != uid or target not in self.targets(uid, "blast"):
+            return None
+        self.bomb = None
+        self.actions.pop(uid, None)
+        ev = [Event("result", uid, target, {"kind": "blast", "ok": True})]
+        self._revenge(uid, target, ev)
         return ev
 
     def hunter_kill(self, uid: int) -> list[Event] | None:
@@ -629,9 +647,21 @@ class Game:
                 ev.append(Event("promoted", mafia[0].uid, data={"role": "don"}))
 
     # ---------- kun ----------
-    def start_voting(self) -> None:
+    def start_voting(self) -> list[Event]:
+        ev: list[Event] = []
+        if self.vendetta:  # Afsungar kun oxirigacha tanlamadi - qotillaridan biri baribir ketadi
+            afs, killers = self.vendetta
+            alive = [u for u in killers if self._alive(u)]
+            self.vendetta = []
+            if alive:
+                t = random.Random(f"{self.seed}:{self.day}:vendetta").choice(alive)
+                ev.append(Event("result", afs, t, {"kind": "vendetta_auto", "ok": True}))
+                self._revenge(afs, t, ev)
+        if self.phase == FINISHED:
+            return ev
         self.phase, self.votes, self.vote_log = VOTING, {}, []
         self.hunt = []  # Ovchi faqat osish boshlanguncha o'ldira oladi
+        return ev
 
     def can_vote(self, uid: int) -> bool:
         p = self.get(uid)
@@ -707,8 +737,12 @@ class Game:
         v.alive = False
         if self._use(v, "mask", ev):  # 🎭 Maska faqat osilganda: guruhga roli ochilmaydi (o'yin oxirigacha)
             data = {**data, "masked": True}
-        if v.role == "afsungar":  # keyingi tunda tong otguncha bir kishini olib ketadi
+        if v.role == "afsungar":  # tun boshida bir kishini tanlaydi - u darhol o'ladi (blast_now)
             self.bomb = t
+        if v.role == "suitsid":  # maqsadi - kunduzi osilish (Oq-Qora / paralar o'yinida shaxsiy g'alaba yo'q: _finish)
+            v.won = True
+            if not data.get("masked") and not self.sideless:
+                ev.append(Event("suitsid_won", target=t))
         for u, x in self.votes.items():  # dushmanni osishga ovoz +2, jamoadoshni -1
             if x == t:
                 self.get(u).score += 2 if self.get(u).team != v.team else -1

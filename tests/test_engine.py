@@ -3,7 +3,7 @@ import random
 
 import pytest
 
-from mafia_zone.engine.game import DAY, FINISHED, MAX_DAYS, Game, Player
+from mafia_zone.engine.game import COUPLE, DAY, FINISHED, MAX_DAYS, VOTING, Game, Player
 from mafia_zone.engine.roles import MAFIA, ROLES, TOWN
 from mafia_zone.engine.setup import deal
 
@@ -106,10 +106,27 @@ def test_don_absent_mafia_majority():
 
 
 def test_afsungar_takes_don_and_mafiya_promoted():
+    """Tunda o'ldirilgan Afsungar kunduzi qotilini (faqat roli ko'rinadi) tanlab olib ketadi."""
     g = mk("don", "mafiya", "afsungar", "tinch", "tinch", "tinch", "tinch")
-    ev = night(g, (1, "mafia_kill", 3))
-    assert not g.get(3).alive and not g.get(1).alive
-    assert g.get(2).role == "don" and "promoted" in kinds(ev)
+    night(g, (1, "mafia_kill", 3))
+    assert not g.get(3).alive and g.get(1).alive and g.vendetta == [3, [1]]  # tongda hali hech kim ketmadi
+    assert g.afsungar_take(5, 0) is None and g.afsungar_take(3, 7) is None  # boshqa odam / yo'q tugma
+    ev = g.afsungar_take(3, 0)
+    assert not g.get(1).alive and any(e.kind == "revenge" and e.uid == 3 and e.target == 1 for e in ev)
+    assert g.get(2).role == "don" and "promoted" in kinds(ev) and g.get(3).avenged
+    assert g.vendetta == [] and g.afsungar_take(3, 0) is None  # bir marta
+
+
+def test_afsungar_may_forgive_or_loses_choice_at_voting():
+    g = mk("don", "mafiya", "afsungar", "tinch", "tinch", "tinch", "tinch")
+    night(g, (1, "mafia_kill", 3))
+    assert [e.kind for e in g.afsungar_take(3, None)] == ["forgave"] and g.get(1).alive and not g.get(3).avenged
+    g = mk("don", "mafiya", "afsungar", "tinch", "tinch", "tinch", "tinch")
+    night(g, (1, "mafia_kill", 3))
+    ev = g.start_voting()  # kun oxirigacha tanlamadi - qotil baribir ketadi
+    assert not g.get(1).alive and any(e.kind == "revenge" and e.target == 1 for e in ev) and g.phase == VOTING
+    assert any(e.kind == "result" and e.data["kind"] == "vendetta_auto" for e in ev)
+    assert g.afsungar_take(3, 0) is None  # osish boshlangach - kech
 
 
 def test_don_heir_order():
@@ -127,25 +144,29 @@ def test_don_heir_order():
 def test_afsungar_wins_with_town_after_revenge():
     g = mk("don", "afsungar", "tinch", "tinch")
     night(g, (1, "mafia_kill", 2))
+    g.afsungar_take(2, 0)
     assert g.winner == TOWN and g.get(2).won  # Donni olib ketdi - o'lgan bo'lsa ham yutadi
 
 
-def test_afsungar_wins_when_killer_also_dies_same_night():
+def test_afsungar_no_choice_when_killer_already_dead():
     g = mk("don", "afsungar", "komissar", "tinch", "tinch")
     night(g, (1, "mafia_kill", 2), (3, "shoot", 1))  # Don Afsungarni o'ldirdi, Komissar Donni otdi - bir tunda
-    assert g.winner == TOWN and g.get(2).won
+    assert g.winner == TOWN and g.vendetta == [] and not g.get(2).won  # olib ketadigan qotil qolmadi
 
 
-def test_hanged_afsungar_takes_chosen_one_next_night():
+def test_hanged_afsungar_takes_chosen_one_at_once():
     g = mk("don", "mafiya", "afsungar", "doktor", "tinch", "tinch", "tinch")
     night(g)
     vote(g, (1, 3), (2, 3), (5, 3))
     assert not g.get(3).alive and g.phase != FINISHED
     assert g.available_actions(3) == ["blast"] and 3 not in g.targets(3, "blast") and 1 in g.targets(3, "blast")
-    assert g.submit(4, "heal", 4) and not g.all_acted()  # o'lgan Afsungar ham kutiladi
-    ev = night(g, (3, "blast", 2), (4, "heal", 2))  # Doktor ham saqlay olmaydi
+    assert g.submit(4, "heal", 2) and not g.all_acted()  # o'lgan Afsungar ham kutiladi
+    assert g.blast_now(3, 3) is None and g.blast_now(5, 2) is None
+    ev = g.blast_now(3, 2)  # shu zahoti - tong kutilmaydi, Doktor ham saqlay olmaydi
     assert not g.get(2).alive and any(e.kind == "revenge" and e.uid == 3 and e.target == 2 for e in ev)
-    assert g.get(3).avenged and g.available_actions(3) == []  # faqat bitta tun
+    assert g.get(3).avenged and g.available_actions(3) == [] and g.blast_now(3, 1) is None  # bir marta
+    night(g, (4, "heal", 5))
+    assert not g.get(2).alive
 
 
 def test_hanged_afsungar_may_skip_and_wins_with_town():
@@ -157,7 +178,7 @@ def test_hanged_afsungar_may_skip_and_wins_with_town():
     g = mk("don", "afsungar", "tinch", "tinch", "tinch")
     night(g)
     vote(g, (3, 2), (4, 2))
-    night(g, (2, "blast", 1))
+    g.blast_now(2, 1)
     assert g.winner == TOWN and g.get(2).won
 
 
@@ -168,9 +189,14 @@ def test_afsungar_loses_when_mafia_wins():
 
 
 def test_suitsid():
+    """Suitsid faqat kunduzi osilsa yutadi; tunda o'lsa - oddiy o'lim (hech kimni olib ketmaydi)."""
     g = mk("don", "mafiya", "suitsid", "tinch", "tinch", "tinch", "tinch")
     night(g, (1, "mafia_kill", 3))
-    assert not g.get(1).alive and g.get(3).won
+    assert not g.get(3).alive and g.get(1).alive and not g.get(3).won
+    g = mk("don", "mafiya", "suitsid", "tinch", "tinch", "tinch", "tinch")
+    night(g)
+    ev = vote(g, (1, 3), (2, 3), (4, 3))
+    assert not g.get(3).alive and g.get(3).won and "suitsid_won" in kinds(ev)
 
 
 def test_voris_transforms():
@@ -449,10 +475,14 @@ def test_only_alive_teammates_win():
     night(g, (1, "mafia_kill", 2))
     vote(g, (3, 1), (4, 1), (5, 1))
     assert g.winner == TOWN and not g.get(2).won and g.get(3).won and g.get(4).won and not g.get(1).won
-    # Suitsid o'lib yutadi - o'yin oxirida ham g'olib qoladi
+    # Suitsid osilib yutadi - o'yin oxirida ham g'olib qoladi
     g = mk("don", "mafiya", "suitsid", "tinch", "tinch", "tinch", "tinch")
-    night(g, (1, "mafia_kill", 3))
+    night(g)
+    vote(g, (4, 3), (5, 3), (6, 3))
+    night(g)
     vote(g, (4, 2), (5, 2), (6, 2))
+    night(g)
+    vote(g, (4, 1), (5, 1), (6, 1))
     assert g.winner == TOWN and g.get(3).won and not g.get(3).alive
 
 
@@ -520,7 +550,13 @@ def play_random(seed: int) -> Game:
                 assert bool(g.hunter_kill(u)) == can, (seed, u, t)
         if g.phase == FINISHED:
             return g
+        if g.vendetta and rng.random() < 0.5:  # Afsungar: ba'zan olib ketadi/kechiradi, ba'zan kutadi (avtomatik)
+            g.afsungar_take(g.vendetta[0], rng.choice([None] + list(range(len(g.vendetta[1])))))
+            if g.phase == FINISHED:
+                return g
         g.start_voting()
+        if g.phase == FINISHED:  # Afsungar avtomatik qasosi o'yinni tugatishi mumkin
+            return g
         alive = [p.uid for p in g.alive()]
         for u in alive:
             if g.can_vote(u):
@@ -753,11 +789,10 @@ def test_doc_covers_every_check_that_night():
     assert kinds(ev).count("item_used") == 1  # (Ovchiga Hujjat ishlamaydi: test_doc_does_not_fool_ovchi)
 
 
-def test_suitsid_shield_not_used_against_mafia():
+def test_suitsid_shield_works_at_night():
     g = mk("don", "suitsid", "tinch", "tinch", "tinch", "tinch", "mafiya", p2={"shield": 1})
-    ev = night(g, (1, "mafia_kill", 2))
-    assert not g.get(2).alive and g.get(2).won and not g.get(1).alive  # Donni olib ketdi
-    assert g.get(2).items["shield"] == 1 and "item_used" not in kinds(ev)
+    ev = night(g, (1, "mafia_kill", 2))  # tunda o'lish unga foyda bermaydi - qalqon odatdagidek saqlaydi
+    assert g.get(2).alive and g.get(2).items["shield"] == 0 and "item_used" in kinds(ev)
 
 
 def test_tulki_votesave_not_used():
@@ -804,8 +839,9 @@ def test_couple_mode_ignores_side_wins():
     g = couple_game("don", "tinch", "podshoh", "tinch", "suitsid", "tinch")
     vote(g, (1, 3), (2, 3))  # Podshoh osildi - oddiy o'yindagidek tugamaydi
     assert g.phase != FINISHED and not g.get(4).alive
-    night(g, (1, "mafia_kill", 5))  # Suitsid Donni olib ketadi, lekin yutmaydi
-    assert g.phase == FINISHED and g.winner == "draw" and not any(p.won for p in g.players)  # hamma o'ldi
+    night(g)
+    vote(g, (1, 5), (2, 5))  # Suitsid osildi - paralar o'yinida shaxsiy g'alaba yo'q
+    assert g.phase == FINISHED and g.winner == COUPLE and not g.get(5).won and {1, 2} == {p.uid for p in g.players if p.won}
 
 
 def test_simulate_couple_mode():

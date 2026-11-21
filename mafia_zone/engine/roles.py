@@ -21,13 +21,13 @@ _ROLES = [
     Role("doktor", "👨‍⚕️ Doktor", TOWN, ("heal",), "Tunda 1 kishini o'limdan saqlaysiz. O'zingizni ketma-ket 2 tun davolay olmaysiz."),
     Role("daydi", "🍾 Daydi", TOWN, ("visit",), "Tunda bir uyga borasiz. U yerda qotillik bo'lsa, qotilni ko'rasiz."),
     Role("kezuvchi", "💃 Kezuvchi", TOWN, ("block",), "Tunda 1 kishini uxlatasiz: u harakat qila olmaydi va ertaga ovoz bera olmaydi."),
-    Role("afsungar", "💣 Afsungar", TOWN, (), "Tunda o'ldirilsangiz, qotilingiz ham siz bilan ketadi. Osilsangiz, tong otguncha 1 kishini o'zingiz bilan olib ketasiz."),
+    Role("afsungar", "💣 Afsungar", TOWN, (), "Tunda o'ldirilsangiz, kunduzi qotilingizni olib ketasiz yoki kechirasiz. Osilsangiz, 1 kishini darhol olib ketasiz."),
     Role("voris", "🧬 Voris", TOWN, (), "Don o'ldirsa - Mafiyaga, Komissar otsa - Serjantga aylanasiz."),
     Role("janob", "🎖 Janob", TOWN, (), "Kunduzgi ovoz berishda ovozingiz 2 ta hisoblanadi."),
     Role("ovchi", "🏹 Ovchi", TOWN, ("check",), "Tunda 1 kishining rolini bilasiz va kunduzi uni o'ldirishingiz mumkin. "
          "Tinchni o'ldirsangiz, 100-200 💵 jarima."),
     Role("donishmand", "👨‍🏫 Donishmand", TOWN, (), "Tunda Mafiya va Komissar yozishmalarini ismsiz eshitasiz."),
-    Role("suitsid", "🤦 Suitsid", TOWN, (), "Don sizni o'ldirsa, uni ham olib ketasiz va g'olib bo'lasiz."),
+    Role("suitsid", "🤦 Suitsid", TOWN, (), "Kunduzi osilsangiz, g'olib bo'lasiz. Tunda o'lsangiz - oddiy o'lim."),
     Role("qorovul", "👨‍🦳 Qorovul", TOWN, ("guard",), "Tunda 1 kishini himoyalaysiz: u ertaga osilmaydi."),
     Role("podshoh", "🤴 Podshoh", TOWN, (), "Muhim figura. Qorovulsiz osilsangiz, Mafiya va Neytrallar g'alaba qiladi."),
     # --- Mafiya ---
