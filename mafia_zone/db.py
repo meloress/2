@@ -1151,7 +1151,8 @@ ECONOMY = {"reward_win": "REWARD_WIN", "reward_play": "REWARD_PLAY",
 
 def economy() -> dict:
     return {**{k: getattr(config, attr) for k, attr in ECONOMY.items()},
-            "shop": dict(config.SHOP), "shop_off": sorted(config.SHOP_OFF)}
+            "shop": dict(config.SHOP), "shop_off": sorted(config.SHOP_OFF),
+            "shop_gems": dict(config.SHOP_GEMS), "role_picks": dict(config.ROLE_PICKS)}
 
 
 def _apply(key: str, value) -> None:
@@ -1159,6 +1160,9 @@ def _apply(key: str, value) -> None:
         setattr(config, ECONOMY[key], int(value))
     elif key == "shop":
         config.SHOP.update({k: int(v) for k, v in value.items() if k in config.SHOP})  # joyida: importlar ko'radi
+    elif key in ("shop_gems", "role_picks"):  # olmosli buyumlar va rol tanlash narxlari (joyida yangilanadi)
+        d = config.SHOP_GEMS if key == "shop_gems" else config.ROLE_PICKS
+        d.update({k: int(v) for k, v in value.items() if k in d})
     elif key == "shop_off":
         config.SHOP_OFF.clear()
         config.SHOP_OFF.update(k for k in value if k in config.SHOP)

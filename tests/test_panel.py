@@ -207,6 +207,19 @@ def test_economy_settings_apply_and_persist():
         await c.post("/api/economy", json={"reward_win": old_win, "shop": {"shield": old_price}, "shop_off": []},
                      headers=hdr)
         assert config.REWARD_WIN == old_win and not config.SHOP_OFF
+        # 💎 olmosli buyumlar va rol tanlash narxlari
+        old_mask, old_don = config.SHOP_GEMS["mask"], config.ROLE_PICKS["don"]
+        r = await c.post("/api/economy", json={"shop_gems": {"mask": 5}, "role_picks": {"don": 7}}, headers=hdr)
+        assert r.status == 200 and config.SHOP_GEMS["mask"] == 5 and config.ROLE_PICKS["don"] == 7
+        assert (await r.json())["values"]["role_picks"]["don"] == 7 and db.gem_price("r_don") == 7
+        for bad in [{"shop_gems": {"mask": 0}}, {"shop_gems": {"shield": 3}}, {"role_picks": {"tinch": 1}},
+                    {"role_picks": {"don": 1001}}]:
+            assert (await c.post("/api/economy", json=bad, headers=hdr)).status == 400, bad
+        config.SHOP_GEMS["mask"] = 1
+        await db.load_settings()
+        assert config.SHOP_GEMS["mask"] == 5  # bazadan qayta yuklanadi
+        await c.post("/api/economy", json={"shop_gems": {"mask": old_mask}, "role_picks": {"don": old_don}}, headers=hdr)
+        assert config.SHOP_GEMS["mask"] == old_mask and config.ROLE_PICKS["don"] == old_don
     run(s)
 
 
@@ -401,4 +414,47 @@ def test_panel_bad_words():
             assert (await c.post("/api/bad-words", json={"words": ""}, headers={"X-CSRF": mcsrf})).status == 403
         finally:
             await db.save_settings({"bad_words": old})
+    run(s)
+
+
+def _init_data(uid: int, age: int = 0, token: str | None = None) -> str:
+    """Telegram mini app initData (o'zimiz imzolaymiz, bot tokeni bilan)."""
+    import hashlib, hmac, time
+    from urllib.parse import urlencode
+    data = {"auth_date": str(int(time.time()) - age), "query_id": "AAE",
+            "user": json.dumps({"id": uid, "first_name": "Ega"}, separators=(",", ":"))}
+    check = chr(10).join(f"{k}={v}" for k, v in sorted(data.items()))
+    key = hmac.new(b"WebAppData", (token or config.BOT_TOKEN).encode(), hashlib.sha256).digest()
+    data["hash"] = hmac.new(key, check.encode(), hashlib.sha256).hexdigest()
+    return urlencode(data)
+
+
+def test_mini_app_login_and_menu_button():
+    async def s(c):
+        bad = [_init_data(OWNER, token="boshqa:token"), _init_data(OWNER, age=panel.TG_AUTH_TTL + 60),
+               _init_data(USER), _init_data(OWNER).replace("Ega", "Egb"), "hash=0", ""]
+        for init in bad:  # soxta imzo, eskirgan, admin emas, o'zgartirilgan, bo'sh
+            r = await c.post("/api/tg-auth", json={"init": init})
+            assert r.status == 403 and panel.COOKIE not in r.cookies
+        r = await c.post("/api/tg-auth", json={"init": _init_data(MOD)})
+        assert r.status == 200 and r.cookies[panel.COOKIE]["httponly"]
+        me = await (await c.get("/api/me")).json()
+        assert me["id"] == MOD and me["role"] == "moderator"
+        # menyu tugmasi: admin qo'shilsa - panel, o'chirilsa - oddiy menyu
+        calls = []
+
+        async def set_chat_menu_button(chat_id, menu_button):
+            calls.append((chat_id, menu_button.type))
+            return True
+        panel.BOT.set_chat_menu_button = set_chat_menu_button
+        old, config.PANEL_URL = config.PANEL_URL, "https://panel.example"
+        try:
+            await panel.set_menu(panel.BOT, OTHER, True)
+            await panel.set_menu(panel.BOT, OTHER, False)
+            assert calls == [(OTHER, "web_app"), (OTHER, "default")]
+            config.PANEL_URL = "http://localhost:8080"  # https emas - tugma qo'yilmaydi
+            await panel.set_menu(panel.BOT, OTHER, True)
+            assert len(calls) == 2
+        finally:
+            config.PANEL_URL = old
     run(s)

@@ -19,7 +19,9 @@ from pathlib import Path
 from aiohttp import web
 from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, TelegramRetryAfter
-from aiogram.types import BufferedInputFile, InlineKeyboardButton as Btn, InlineKeyboardMarkup as Kb
+from aiogram.types import (BufferedInputFile, InlineKeyboardButton as Btn, InlineKeyboardMarkup as Kb,
+                           MenuButtonDefault, MenuButtonWebApp, WebAppInfo)
+from urllib.parse import parse_qsl
 
 from . import config, db, pro, runner, texts
 from .engine.game import CONFIRM, DAY, NIGHT, VOTING
@@ -80,6 +82,38 @@ def _use_once(nonce: str) -> bool:
 
 def login_link(uid: int) -> str:
     return f"{config.PANEL_URL}/auth?t={make_token('login', uid, LOGIN_TTL)}"
+
+
+TG_AUTH_TTL = 3600  # mini app initData shuncha soniya amal qiladi (har ochilishda Telegram yangisini beradi)
+MENU_TEXT = "Admin panel"
+
+
+def tg_init_uid(init: str) -> int | None:
+    """Telegram mini app initData imzosi (core.telegram.org/bots/webapps#validating-data) -> foydalanuvchi id."""
+    try:
+        data = dict(parse_qsl(init or "", keep_blank_values=True, strict_parsing=True))
+    except ValueError:
+        return None
+    got = data.pop("hash", "")
+    check = "\n".join(f"{k}={v}" for k, v in sorted(data.items()))
+    key = hmac.new(b"WebAppData", config.BOT_TOKEN.encode(), hashlib.sha256).digest()
+    if not got or not hmac.compare_digest(got, hmac.new(key, check.encode(), hashlib.sha256).hexdigest()):
+        return None
+    try:
+        if time.time() - int(data.get("auth_date", 0)) > TG_AUTH_TTL:
+            return None
+        uid = json.loads(data.get("user", "{}")).get("id")
+    except (ValueError, AttributeError):
+        return None
+    return uid if isinstance(uid, int) else None
+
+
+async def set_menu(bot: Bot, uid: int, on: bool) -> None:
+    """Admin chatidagi pastki ko'k tugma: panel (mini app) yoki oddiy menyu. https bo'lmasa - qo'yilmaydi."""
+    if not config.PANEL_URL.startswith("https://"):  # panel sozlanmagan / lokal sinov - tugmaga tegmaymiz
+        return
+    btn = MenuButtonWebApp(text=MENU_TEXT, web_app=WebAppInfo(url=config.PANEL_URL + "/")) if on else MenuButtonDefault()
+    await runner._call(bot.set_chat_menu_button, chat_id=uid, menu_button=btn)
 
 
 def csrf_for(session_nonce: str) -> str:
@@ -216,7 +250,7 @@ async def role_of(uid: int) -> str | None:
     return role
 
 
-PUBLIC_API = {"/api/public"}
+PUBLIC_API = {"/api/public", "/api/tg-auth"}
 
 
 @web.middleware
@@ -247,6 +281,18 @@ async def page_auth(req: web.Request) -> web.Response:  # noqa: RET503 (redirect
                     secure=_https(req), samesite="Lax", path="/")
     await db.log_action(tok[0], "login", "", req.headers.get("User-Agent", "")[:200])
     raise resp
+
+
+async def api_tg_auth(req: web.Request) -> web.Response:
+    """Mini app (pastki "Admin panel" tugmasi) orqali kirish: Telegram imzolagan initData -> sessiya."""
+    uid = tg_init_uid(str((await body(req)).get("init", ""))[:4096])
+    if not uid or not await role_of(uid):
+        return web.json_response({"error": "Kirish rad etildi"}, status=403)
+    resp = ok()
+    resp.set_cookie(COOKIE, make_token("s", uid, SESSION_TTL), max_age=SESSION_TTL, httponly=True,
+                    secure=_https(req), samesite="Lax", path="/")
+    await db.log_action(uid, "login", "", "mini app")
+    return resp
 
 
 async def api_public(req: web.Request) -> web.Response:
@@ -599,6 +645,12 @@ async def api_economy_save(req: web.Request) -> web.Response:
         if not isinstance(d["shop"], dict) or set(d["shop"]) - set(config.SHOP):
             raise Bad("Do'kon narxlari noto'g'ri")
         new["shop"] = {**old["shop"], **{k: as_int(v, 1, 1_000_000, texts.ITEMS[k]) for k, v in d["shop"].items()}}
+    for key, ref, name in (("shop_gems", config.SHOP_GEMS, lambda k: texts.ITEMS[k]),
+                           ("role_picks", config.ROLE_PICKS, lambda k: texts.ITEMS[f"r_{k}"])):
+        if key in d:  # olmos narxlari: 1..1000
+            if not isinstance(d[key], dict) or set(d[key]) - set(ref):
+                raise Bad("Olmos narxlari noto'g'ri")
+            new[key] = {**old[key], **{k: as_int(v, 1, 1000, name(k)) for k, v in d[key].items()}}
     if "shop_off" in d:
         if not isinstance(d["shop_off"], list) or set(d["shop_off"]) - set(config.SHOP):
             raise Bad("Do'kon holati noto'g'ri")
@@ -608,8 +660,8 @@ async def api_economy_save(req: web.Request) -> web.Response:
     await db.save_settings(new)
     changes = []
     for k, v in new.items():
-        if k == "shop":
-            changes += [f"{i}: {old['shop'][i]} → {p}" for i, p in v.items() if old["shop"][i] != p]
+        if k in ("shop", "shop_gems", "role_picks"):
+            changes += [f"{i}: {old[k][i]} → {p}" for i, p in v.items() if old[k][i] != p]
         elif old.get(k) != v:
             changes.append(f"{k}: {old.get(k)} → {v}")
     await audit(req, "economy", "", "; ".join(changes) or "o'zgarishsiz")
@@ -760,6 +812,8 @@ async def api_admin_add(req: web.Request) -> web.Response:
         raise Bad("Bu bosh admin: uning rolini faqat ADMIN_IDS orqali o'zgartirish mumkin")
     await db.set_admin(u.telegram_id, role, req["uid"])
     _roles_cache.pop(u.telegram_id, None)
+    if BOT:
+        await set_menu(BOT, u.telegram_id, True)
     await audit(req, "admin_set", u.telegram_id, role)
     return ok({"items": await db.list_admins()})
 
@@ -772,6 +826,8 @@ async def api_admin_remove(req: web.Request) -> web.Response:
     if not await db.remove_admin(uid):
         raise NotFound("Admin topilmadi")
     _roles_cache.pop(uid, None)
+    if BOT:
+        await set_menu(BOT, uid, False)
     await audit(req, "admin_remove", uid)
     return ok({"items": await db.list_admins()})
 
@@ -1012,6 +1068,7 @@ def make_app() -> web.Application:
     r.add_get("/healthz", healthz)
     r.add_static("/static/", STATIC, append_version=False)
     r.add_get("/api/public", api_public)
+    r.add_post("/api/tg-auth", api_tg_auth)
     r.add_get("/api/me", api_me)
     r.add_post("/api/logout", api_logout)
     r.add_get("/api/dashboard", api_dashboard)
@@ -1059,4 +1116,6 @@ async def start(bot: Bot) -> web.AppRunner | None:
         log.error("admin panel ishga tushmadi (port %s): %s", config.PORT, e)
         return None
     log.info("admin panel: port %s, manzil: %s", config.PORT, config.PANEL_URL or "(PANEL_URL yo'q)")
+    for a in await db.list_admins():  # pastki ko'k "Admin panel" tugmasi - faqat adminlarda
+        runner.spawn(set_menu(bot, a["id"], True))
     return app_runner

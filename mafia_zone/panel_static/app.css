@@ -37,6 +37,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--font); font-size: 14px; line-height: 1.45; -webkit-text-size-adjust: 100%; }
 body { min-height: 100vh; overflow-x: hidden; }
 a { color: var(--gold); text-decoration: none; }
@@ -216,6 +217,7 @@ table.t { width: 100%; border-collapse: collapse; }
 .detail { position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow-y: auto; }
 .item-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 44px; }
 .qty { width: 34px; text-align: center; font-family: var(--mono); }
+.pick-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); column-gap: 24px; }
 .divider { border-top: 1px solid var(--line); }
 
 /* ---------- e'lon ---------- */
@@ -278,10 +280,12 @@ table.t { width: 100%; border-collapse: collapse; }
   .kpi .val { font-size: 22px; }
   .top .me .who-text { display: none; }
   .t.cards thead { display: none; }
-  .t.cards tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; padding: 12px 10px; border-top: 1px solid var(--line); }
+  .t.cards tr { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px 10px; padding: 12px 8px; border-top: 1px solid var(--line); }
+  .t.cards td[data-label="#"] { display: none; }
+  .t.cards td.num { font-size: 14px; }
   .t.cards td { border: 0; padding: 0; }
   .t.cards td.wide { grid-column: 1 / -1; }
-  .t.cards td[data-label]::before { content: attr(data-label); display: block; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
+  .t.cards td[data-label]::before { content: attr(data-label); display: block; color: var(--muted); font: 500 10px var(--font); text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .t.cards td.right { text-align: left; }
   .t.cards .acts { text-align: left; }
   .modal-back { align-items: flex-end; padding: 0; }

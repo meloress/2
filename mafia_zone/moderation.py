@@ -87,7 +87,7 @@ _EXACT, _PREFIX, _INSIDE = set(_norm_list(SWEAR_EXACT)), _norm_list(SWEAR_PREFIX
 
 
 # ---------- reklama ----------
-TG_LINK = re.compile(r"(?:https?://)?(?:www\.)?(?:t|telegram)\.(?:me|dog)/(\+?[\w-]+)", re.I)
+TG_LINK = re.compile(r"(?:https?://)?(?:www\.)?(?:t|telegram)\.(?:me|dog)/(c/\d+|\+?[\w-]+)", re.I)  # c/<id> - yopiq guruh xabari
 WEB_LINK = re.compile(r"(?:https?://|www\.)\S+|\b[\w-]+\.(?:com|ru|uz|net|org|io|me|info|xyz|site|online|shop|app)\b(?:/\S*)?",
                       re.I)
 
@@ -112,6 +112,8 @@ def ad_reason(text: str, entities, own: set[str], forwarded_channel: bool = Fals
     links += [m.group(0) for m in TG_LINK.finditer(text)]
     links += [m.group(0) for m in WEB_LINK.finditer(text)]
     for link in links:
+        if link.lower().startswith("tg://user"):  # o'yinchi ismi (bot xabaridan ko'chirilgan) - reklama emas
+            continue
         if TG_LINK.search(link):
             if not _own(link, own):
                 return "link"
@@ -435,6 +437,9 @@ async def auto(msg: Message, bot: Bot) -> bool:
         return False
     if msg.sender_chat or msg.new_chat_members or msg.left_chat_member:
         return False
+    origin = getattr(msg, "forward_origin", None)
+    if getattr(getattr(origin, "sender_user", None), "id", None) == bot.id:
+        return False  # botning o'z xabari forward qilingan (Donishmand eshitgani va h.k.): tugmasi bor, lekin reklama emas
     s, invite = await settings(msg.chat.id)
     if not (s.get("mod_ads") or s.get("mod_swear")):
         return False
@@ -452,9 +457,11 @@ async def auto(msg: Message, bot: Bot) -> bool:
     if s.get("mod_ads"):
         from . import runner
         own = {x.lower() for x in (msg.chat.username, runner.BOT_USERNAME, invite.rsplit("/", 1)[-1].lstrip("+")) if x}
-        origin = getattr(msg, "forward_origin", None)
+        if str(chat).startswith("-100"):
+            own.add(f"c/{str(chat)[4:]}")  # shu guruhdagi xabarga havola
+        from_here = getattr(getattr(origin, "sender_chat", None), "id", None) == chat  # guruhning o'z nomidan yozilgan
         reason = ad_reason(text, ents, own,
-                           forwarded_channel=getattr(origin, "type", None) in ("channel", "chat"),
+                           forwarded_channel=getattr(origin, "type", None) in ("channel", "chat") and not from_here,
                            has_buttons=bool(msg.reply_markup and msg.reply_markup.inline_keyboard),
                            channel_mentions=await _channel_mentions(bot, mentions(text, ents), own))
         if reason:

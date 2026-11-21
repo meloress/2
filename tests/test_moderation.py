@@ -48,6 +48,11 @@ def test_ads():
     assert mod.ad_reason("", [], own, forwarded_channel=True) == "forward"
     assert mod.ad_reason("", [], own, has_buttons=True) == "buttons"
     assert mod.ad_reason("salom, ertaga 9.30 da o'yin", [], own) is None
+    # o'yin matnidan ko'chirilgan ism (tg://user) va shu guruhdagi xabar havolasi - reklama emas, boshqa guruhniki - reklama
+    assert mod.ad_reason("Ali o'ldi", [E("text_link", url="tg://user?id=5")], own) is None
+    assert mod.ad_reason("bosing", [E("text_link", url="tg://resolve?domain=spamkanal")], own) == "link"
+    assert mod.ad_reason("lobbi: https://t.me/c/123456/77", [], own | {"c/123456"}) is None
+    assert mod.ad_reason("lobbi: https://t.me/c/999999/77", [], own | {"c/123456"}) == "link"
     text = "salom 😎 @kino_uz"
     at = len(text[:text.index("@")].encode("utf-16-le")) // 2
     assert mod.mentions(text, [E("mention", at, 8)]) == ["kino_uz"]
@@ -270,6 +275,14 @@ def test_auto_swear_and_ads():
         assert not await mod.auto(m, bot)  # oddiy odamning @username'i
         m = gmsg(bot, chat, OTHER, "", forward_origin=NS(type="channel"))
         assert await mod.auto(m, bot) and m.deleted
+        # botning o'z xabari forward (Donishmand eshitgani, "guruhga qaytish" tugmasi bilan) - reklama emas
+        m = gmsg(bot, chat, OTHER, "👂 Devor ortidan pichirlash eshitildi: t.me/x jalab",
+                 forward_origin=NS(type="user", sender_user=NS(id=BOTID)))
+        m.reply_markup = NS(inline_keyboard=[[NS(url="https://t.me/c/1/2")]])
+        assert not await mod.auto(m, bot) and not m.deleted
+        # guruhning o'z nomidan (anonim admin) yozilgan xabar forwardi - reklama emas
+        m = gmsg(bot, chat, OTHER, "e'lon", forward_origin=NS(type="chat", sender_chat=NS(id=chat)))
+        assert not await mod.auto(m, bot) and not m.deleted
         bot.rights = False  # o'chirib bo'lmasa - jazo ham yo'q
         m = gmsg(bot, chat, OTHER, "jalab")
         m.delete = lambda: asyncio.sleep(0)  # None qaytaradi

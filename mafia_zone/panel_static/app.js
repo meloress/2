@@ -8,6 +8,12 @@
   const S = { me: null, csrf: "", period: "today", view: 0, timers: [], bot: "" };
 
   // ================= DOM yordamchilari =================
+  // el.append(...) h() kabi ishlasin: massivlar yoyiladi, null/undefined/false tashlanadi
+  // (aks holda sahifada "null" va "[object HTMLDivElement]" yozuvlari chiqardi)
+  const nativeAppend = Element.prototype.append;
+  Element.prototype.append = function (...kids) {
+    return nativeAppend.apply(this, kids.flat(Infinity).filter((k) => k !== null && k !== undefined && k !== false));
+  };
   const SVGNS = "http://www.w3.org/2000/svg";
   function h(tag, props, ...kids) {
     const svg = tag.startsWith("svg:");
@@ -229,6 +235,12 @@
   ];
 
   async function boot() {
+    // Telegram mini app (botdagi pastki "Admin panel" tugmasi): imzolangan initData bilan avtomatik kirish
+    const tg = new URLSearchParams(location.hash.slice(1)).get("tgWebAppData");
+    if (tg) {
+      history.replaceState(null, "", location.pathname + location.search + "#/");
+      try { await api("/api/tg-auth", { method: "POST", json: { init: tg }, quiet401: true }); } catch (e) { /* oddiy kirish sahifasi */ }
+    }
     try {
       const me = await api("/api/me", { quiet401: true });
       S.me = me; S.csrf = me.csrf; S.bot = me.bot;
@@ -364,9 +376,17 @@
     admin_set: ["Admin roli berildi", "A", "c-blue"], admin_remove: ["Adminlikdan olindi", "A", "c-red"],
     broadcast: ["E'lon yuborildi", "E", "c-blue"], broadcast_cancel: ["E'lon to'xtatildi", "E", "c-red"],
   };
+  function device(ua) {  // kirish jurnali: brauzer satri o'rniga qisqa nom
+    if (!ua) return "";
+    if (ua === "mini app") return "Telegram mini app";
+    const os = /Android/i.test(ua) ? "Android" : /iPhone|iPad/i.test(ua) ? "iPhone" : /Windows/i.test(ua) ? "Windows" : /Mac OS/i.test(ua) ? "Mac" : /Linux/i.test(ua) ? "Linux" : "";
+    const br = /Telegram/i.test(ua) ? "Telegram" : /Edg\//.test(ua) ? "Edge" : /OPR\/|Opera/.test(ua) ? "Opera" : /YaBrowser/.test(ua) ? "Yandex" : /Chrome\//.test(ua) ? "Chrome" : /Firefox\//.test(ua) ? "Firefox" : /Safari\//.test(ua) ? "Safari" : "Brauzer";
+    return os ? `${br} · ${os}` : br;
+  }
+
   function feedItem(l) {
     const [label, letter, cls] = ACTIONS[l.action] || [l.action, "•", "c-gray"];
-    const detail = [l.target, l.details].filter(Boolean).join(" · ");
+    const detail = [l.target, l.action === "login" ? device(l.details) : l.details].filter(Boolean).join(" · ");
     return h("div", { class: "feed-item" },
       h("div", { class: `feed-icon chip ${cls}`, text: letter }),
       h("div", { class: "stack gap-8", style: { gap: "2px", minWidth: "0" } },
@@ -539,17 +559,17 @@
         const href = `#/users/${u.id}${listHref()}`;
         return h("tr", { class: `click ${String(u.id) === selected ? "sel" : ""}`, onClick: (e) => { if (!(e.target.closest && e.target.closest("a"))) location.hash = href; } },
           h("td", { class: "wide" }, h("div", { class: "who" }, h("div", { class: "avatar round", text: initial(u.name) }),
-            h("div", null, h("a", { href, class: "ellipsis", style: { color: "#EDEDEF", fontWeight: "500" }, text: u.name || "(ismsiz)" }),
+            h("div", null, h("div", { class: "inline", style: { gap: "6px", flexWrap: "nowrap", minWidth: "0" } },
+                h("a", { href, class: "ellipsis", style: { color: "#EDEDEF", fontWeight: "500" }, text: u.name || "(ismsiz)" }), chip(sl, sc)),
               h("span", { class: "small muted mono ellipsis", text: u.username ? `@${u.username}` : String(u.id) })))),
           h("td", { class: "right num", "data-label": "Dollar", text: fmt(u.dollars) }),
           h("td", { class: "right num", "data-label": "Olmos", text: fmt(u.diamonds) }),
           h("td", { class: "right num", "data-label": "O'yin", text: fmt(u.games) }),
-          h("td", { class: "right num", "data-label": "G'alaba", text: fmt(u.wins) }),
-          h("td", { "data-label": "Holat" }, chip(sl, sc)));
+          h("td", { class: "right num", "data-label": "G'alaba", text: fmt(u.wins) }));
       });
       clear(listCard).append(h("div", { class: "table-wrap" }, h("table", { class: "t cards" },
         h("thead", null, h("tr", null, h("th", { text: "Foydalanuvchi" }), h("th", { class: "right", text: "Dollar" }), h("th", { class: "right", text: "Olmos" }),
-          h("th", { class: "right", text: "O'yin" }), h("th", { class: "right", text: "G'alaba" }), h("th", { text: "Holat" }))),
+          h("th", { class: "right", text: "O'yin" }), h("th", { class: "right", text: "G'alaba" }))),
         h("tbody", null, rows))),
         pager(d.page, d.size, d.total, (p) => { st.page = p; sync(); loadList(); }));
     }
@@ -644,24 +664,31 @@
       return h("div", { class: "item-row" }, h("span", { class: "ellipsis", text: it.name }),
         h("div", { class: "inline" }, minus, qty, plus));
     });
-    parts.push(h("div", { class: "divider" }), h("h3", { text: "Buyumlar" }), h("div", null, itemRows));
+    // rol tanlashlar ko'p (~30): 0 tasi yig'ilgan, "Hammasini ko'rsatish" bilan ochiladi
+    const hidden = u.items.map((it, i) => (it.code.startsWith("r_") && it.qty <= 0 ? i : -1)).filter((i) => i >= 0);
+    hidden.forEach((i) => { itemRows[i].hidden = true; });
+    const more = hidden.length ? h("button", { type: "button", class: "btn sm ghost block", text: `Rol tanlashlar (${hidden.length}) — hammasini ko'rsatish` }) : null;
+    if (more) more.addEventListener("click", () => { hidden.forEach((i) => { itemRows[i].hidden = false; }); more.remove(); });
+    parts.push(h("div", { class: "divider" }), h("h3", { text: "Buyumlar" }), h("div", null, itemRows), more);
 
     // ---- PRO ----
     const reload = () => { if (alive(view)) loadDetail(box, uid, view, refreshList, listHref); };
-    const proParts = [h("div", { class: "divider" }), h("h3", { text: "PRO" }),
+    const proParts = [h("div", { class: "divider" }), h("h3", { text: "Pro" }),
       h("p", { class: "small", text: u.pro_title ? `${u.pro_title}: cheksiz Pro 3` : u.pro_until ? `Pro ${u.pro_tier}: ${fmtDate(u.pro_until)} gacha` : "Pro yo'q" })];
     if (u.nickname) proParts.push(h("p", { class: "small muted", text: `Nickname: ${u.nickname}` }));
     if (can("owner")) {
-      const days = h("input", { class: "input num", id: "p-days", type: "number", inputmode: "numeric", min: "1", max: "3650", step: "1", value: "30" });
+      const days = h("input", { class: "input num", id: "p-days", type: "number", inputmode: "numeric", min: "1", max: "3650", step: "1", value: "7" });
+      const tier = h("select", { class: "input", id: "p-tier" }, [1, 2, 3].map((t) => h("option", { value: String(t), text: `Pro ${t}` })));
+      tier.value = String(u.pro_tier || 3);
       const proErr = h("div", { class: "err", role: "alert" });
-      const give = h("button", { type: "button", class: "btn success", style: { flex: "1 1 0" }, text: u.pro_until ? "PRO uzaytirish" : "PRO berish" });
-      const take = h("button", { type: "button", class: "btn danger", style: { flex: "1 1 0" }, text: "PRO olib tashlash", disabled: !u.pro_until });
+      const give = h("button", { type: "button", class: "btn success", style: { flex: "1 1 0" }, text: u.pro_until ? "Uzaytirish" : "Pro berish" });
+      const take = h("button", { type: "button", class: "btn danger", style: { flex: "1 1 0" }, text: "Olib tashlash", disabled: !u.pro_until });
       const setPro = async (n, btn) => {
         proErr.textContent = "";
         await busy(btn, async () => {
           try {
-            const r = await api(`/api/users/${u.id}/pro`, { method: "POST", json: { days: n, notify: n > 0 } });
-            toast(r.pro_until ? `PRO: ${fmtDate(r.pro_until)} gacha` : "PRO olib tashlandi");
+            const r = await api(`/api/users/${u.id}/pro`, { method: "POST", json: { days: n, tier: Number(tier.value), notify: n > 0 } });
+            toast(r.pro_until ? `Pro ${tier.value}: ${fmtDate(r.pro_until)} gacha` : "Pro olib tashlandi");
             refreshList();
           } catch (e) { proErr.textContent = e.message; }
         });
@@ -674,10 +701,13 @@
         setPro(n, give);
       });
       take.addEventListener("click", async () => {
-        const c = await confirmBox({ title: "PRO olib tashlash", text: `${u.name} PRO imkoniyatlaridan darhol mahrum bo'ladi.`, ok: "Olib tashlash", danger: true });
+        const c = await confirmBox({ title: "Pro olib tashlash", text: `${u.name} Pro imkoniyatlaridan darhol mahrum bo'ladi.`, ok: "Olib tashlash", danger: true });
         if (c.ok) setPro(0, take);
       });
-      proParts.push(h("div", { class: "field" }, h("label", { for: "p-days", text: "Necha kun (foydalanuvchiga botda xabar boradi)" }), days),
+      proParts.push(h("div", { class: "inline", style: { alignItems: "flex-end" } },
+        h("div", { class: "field", style: { flex: "1 1 120px" } }, h("label", { for: "p-tier", text: "Daraja" }), tier),
+        h("div", { class: "field", style: { flex: "1 1 120px" } }, h("label", { for: "p-days", text: "Necha kun" }), days)),
+        h("p", { class: "hint", text: "Muddat bor bo'lsa ustiga qo'shiladi. Foydalanuvchiga botda xabar boradi." }),
         proErr, h("div", { class: "inline" }, give, take));
     }
     if (u.nickname && can("moderator")) {
@@ -1099,13 +1129,14 @@
   // ================= iqtisod, adminlar, jurnal =================
   const ECON = [["reward_win", "G'alaba mukofoti", "O'yinda yutgan har bir o'yinchiga", 0, 100000, "$"],
     ["reward_play", "Ishtirok mukofoti", "Yutqazganga ham beriladi (0 — faqat yutganlar oladi)", 0, 100000, "$"],
-    ["ref_bonus", "Taklif bonusi", "Taklif qilingan do'st 3 ta o'yin o'ynagach", 0, 100000, "$"],
+    ["ref_bonus", "Taklif bonusi", "Do'st havola orqali botga kirishi bilan taklif qilganga", 0, 100000, "$"],
     ["diamond_rate", "Olmos kursi", "1 olmos necha dollarga almashadi", 1, 1000000, "$"]];
 
   function pageEconomy(root, { view }) {
     const owner = can("owner");
     const econCard = h("section", { class: "card f1" }, h("h2", { text: "Mukofotlar" }), skel(5, 40));
     const shopCard = h("section", { class: "card f1" }, h("h2", { text: "Do'kon" }), skel(4, 40));
+    const gemCard = h("section", { class: "card f1" }, h("h2", { text: "💎 Olmosli do'kon" }), skel(4, 40));
     const saveBtn = h("button", { type: "button", class: "btn primary", text: "O'zgarishlarni saqlash", disabled: true });
     const resetBtn = h("button", { type: "button", class: "btn", text: "Bekor qilish", disabled: true });
     const err = h("div", { class: "err", role: "alert" });
@@ -1117,30 +1148,35 @@
     root.append(head("Iqtisod va adminlar", owner ? "O'zgarishlar darhol kuchga kiradi — botni qayta ishga tushirish shart emas" : "Ko'rish rejimi: o'zgartirish faqat bosh admin uchun",
       owner ? resetBtn : null, owner ? saveBtn : null), err,
       h("div", { class: "row", style: { alignItems: "flex-start" } }, econCard, shopCard),
+      h("div", { class: "row", style: { alignItems: "flex-start" } }, gemCard),
       cardsCard ? h("div", { class: "row", style: { alignItems: "flex-start" } }, cardsCard, lockCard) : null,
       wordsCard ? h("div", { class: "row", style: { alignItems: "flex-start" } }, wordsCard) : null,
       h("div", { class: "row", style: { alignItems: "flex-start" } }, adminCard, logCard));
 
     let base = null;
-    const inputs = {}, prices = {}, onSale = {};
+    const inputs = {}, prices = {}, onSale = {}, gems = {}, picks = {};
     function current() {
       const v = {};
       for (const [k] of ECON) v[k] = inputs[k].value.trim();
       v.shop = {}; for (const k of Object.keys(prices)) v.shop[k] = prices[k].value.trim();
       v.shop_off = Object.keys(onSale).filter((k) => !onSale[k].checked).sort();
+      v.shop_gems = {}; for (const k of Object.keys(gems)) v.shop_gems[k] = gems[k].value.trim();
+      v.role_picks = {}; for (const k of Object.keys(picks)) v.role_picks[k] = picks[k].value.trim();
       return v;
     }
     function dirty() { return base && JSON.stringify(current()) !== JSON.stringify(base); }
     function refresh() { const d = dirty(); saveBtn.disabled = !d; resetBtn.disabled = !d; }
     function fill(values) {
-      base = { ...Object.fromEntries(ECON.map(([k]) => [k, String(values[k])])), shop: Object.fromEntries(Object.entries(values.shop).map(([k, p]) => [k, String(p)])), shop_off: [...values.shop_off].sort() };
-      clear(econCard).append(h("h2", { text: "Mukofotlar" }), ECON.map(([k, label, hint, lo, hi, unit]) => {
+      base = { ...Object.fromEntries(ECON.map(([k]) => [k, String(values[k])])), shop: Object.fromEntries(Object.entries(values.shop).map(([k, p]) => [k, String(p)])), shop_off: [...values.shop_off].sort(),
+        shop_gems: Object.fromEntries(Object.entries(values.shop_gems).map(([k, p]) => [k, String(p)])),
+        role_picks: Object.fromEntries(Object.entries(values.role_picks).map(([k, p]) => [k, String(p)])) };
+      clear(econCard).append(h("h2", { text: "Mukofotlar" }), ...ECON.map(([k, label, hint, lo, hi, unit]) => {
         inputs[k] = h("input", { class: "input num", id: `ec-${k}`, type: "number", inputmode: "numeric", min: lo, max: hi, step: "1", value: values[k], disabled: !owner, style: { width: "120px" } });
         inputs[k].addEventListener("input", refresh);
         return h("div", { class: "between" }, h("div", { class: "stack", style: { gap: "2px", flex: "1 1 200px" } }, h("label", { for: `ec-${k}`, text: label }), h("span", { class: "hint", text: hint })),
           h("div", { class: "inline" }, inputs[k], h("span", { class: "muted", text: unit })));
       }));
-      clear(shopCard).append(h("h2", { text: "Do'kon" }), Object.entries(values.shop).map(([k, p]) => {
+      clear(shopCard).append(h("h2", { text: "Do'kon" }), ...Object.entries(values.shop).map(([k, p]) => {
         const item = S.me.items[k] || { name: k, about: "" };
         prices[k] = h("input", { class: "input num", id: `sp-${k}`, type: "number", inputmode: "numeric", min: "1", max: "1000000", step: "1", value: p, disabled: !owner, style: { width: "110px" } });
         onSale[k] = h("input", { type: "checkbox", class: "switch", id: `so-${k}`, checked: !values.shop_off.includes(k), disabled: !owner, "aria-label": `${item.name}: sotuvda` });
@@ -1148,6 +1184,18 @@
         return h("div", { class: "between" }, h("div", { class: "stack", style: { gap: "2px", flex: "1 1 200px" } }, h("label", { for: `sp-${k}`, text: item.name }), h("span", { class: "hint", text: item.about })),
           h("div", { class: "inline" }, prices[k], h("span", { class: "muted", text: "$" }), h("label", { class: "check-row", for: `so-${k}` }, onSale[k], h("span", { class: "small", text: "Sotuvda" }))));
       }));
+      // 💎 olmosli buyumlar + rol tanlash (narx olmosda, Pro chegirmasi yo'q)
+      const gemInput = (store, k, p, label) => {
+        store[k] = h("input", { class: "input num", type: "number", inputmode: "numeric", min: "1", max: "1000", step: "1", value: p, disabled: !owner, "aria-label": `${label}: narx`, style: { width: "84px" } });
+        store[k].addEventListener("input", refresh);
+        return h("div", { class: "item-row" }, h("span", { class: "ellipsis", text: label }), h("div", { class: "inline" }, store[k], h("span", { class: "muted", text: "💎" })));
+      };
+      const gemRows = Object.entries(values.shop_gems).map(([k, p]) => gemInput(gems, k, p, (S.me.items[k] || { name: k }).name));
+      const pickRows = Object.entries(values.role_picks).map(([k, p]) => gemInput(picks, k, p, S.me.roles[k] ? S.me.roles[k].name : k));
+      clear(gemCard).append(h("h2", { text: "💎 Olmosli do'kon" }),
+        h("p", { class: "hint", text: "Narx olmosda (1–1000), Pro chegirmasi qo'llanmaydi." }),
+        h("div", null, gemRows), h("div", { class: "divider" }), h("h3", { text: "Rol tanlash" }),
+        h("div", { class: "pick-grid" }, pickRows));
       refresh();
     }
     async function loadEcon() {
@@ -1157,7 +1205,14 @@
     saveBtn.addEventListener("click", () => {
       err.textContent = "";
       const v = current();
-      const payload = { shop: {}, shop_off: v.shop_off };
+      const payload = { shop: {}, shop_off: v.shop_off, shop_gems: {}, role_picks: {} };
+      for (const [key, store] of [["shop_gems", gems], ["role_picks", picks]]) {
+        for (const [k, raw] of Object.entries(v[key])) {
+          const n = Number(raw);
+          if (raw === "" || !Number.isInteger(n) || n < 1 || n > 1000) { err.textContent = "Olmos narxi 1 dan 1000 gacha butun son bo'lsin"; store[k].focus(); return; }
+          payload[key][k] = n;
+        }
+      }
       for (const [k, label, , lo, hi] of ECON) {
         const n = Number(v[k]);
         if (v[k] === "" || !Number.isInteger(n) || n < lo || n > hi) { err.textContent = `${label}: ${lo} dan ${fmt(hi)} gacha butun son kiriting`; inputs[k].setAttribute("aria-invalid", "true"); inputs[k].focus(); return; }
