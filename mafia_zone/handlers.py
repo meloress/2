@@ -1347,6 +1347,8 @@ async def cmd_help(msg: Message):
 @router.callback_query(F.data.startswith("t:"))
 async def cb_profile(cq: CallbackQuery):
     await db.toggle_item(cq.from_user.id, cq.data[2:])
+    if r := PLAYING.get(cq.from_user.id):
+        await r.sync_item(cq.from_user.id, cq.data[2:])
     u = await db.get_user(cq.from_user.id)
     inv = await db.inventory(u.telegram_id)
     await cq.message.edit_text(texts.profile(u, inv), reply_markup=profile_kb(inv, u.telegram_id))
@@ -1365,6 +1367,8 @@ async def cb_shop(cq: CallbackQuery):
         if not gems and (item not in config.SHOP or item in config.SHOP_OFF):
             return await cq.answer()
         ok = await db.buy(cq.from_user.id, item)
+        if ok and (r := PLAYING.get(cq.from_user.id)):
+            await r.sync_item(cq.from_user.id, item)
         await cq.answer(texts.BOUGHT if ok else texts.NO_DIAMONDS if gems else texts.NO_MONEY, show_alert=not ok)
     u = await db.get_user(cq.from_user.id)
     if cq.data == "shoproles" or (item or "").startswith("r_"):

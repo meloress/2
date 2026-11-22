@@ -492,6 +492,23 @@ class Runner:
     async def save(self) -> None:
         await db.save_game(self.game_id, self.state())
 
+    async def sync_item(self, uid: int, item: str) -> None:
+        """O'yin paytida yoqilgan/o'chirilgan/sotib olingan himoya shu zahoti ishlaydi (egasi talabi, 2026-11-22).
+        Bir o'yinda bir marta qoidasi saqlanadi (`Player.used`)."""
+        if item.startswith("r_") or item == "ticket" or not self.s.get("items", True):  # rol tanlash/chipta - faqat boshida; guruhda buyumlar o'chiq
+            return
+        async with self.lock:
+            g = self.game
+            p = g and g.phase != FINISHED and g.get(uid)
+            if not p or not p.alive:
+                return
+            inv = next((i for i in await db.inventory(uid) if i.item == item), None)
+            if inv and inv.enabled and inv.qty > 0:
+                p.items[item] = inv.qty
+            else:
+                p.items.pop(item, None)
+            await self.save()
+
     async def _loop(self) -> None:
         try:
             while self.game.phase != FINISHED:

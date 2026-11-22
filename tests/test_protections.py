@@ -96,3 +96,32 @@ def test_items_off_in_group_or_profile_means_no_protection():
         await db.toggle_item(u, "votesave")
         assert u not in await db.game_items([u])
     asyncio.run(t())
+
+
+def test_item_switched_on_mid_game_works_at_once():
+    """O'yin paytida yoqilgan/sotib olingan himoya shu o'yinda darhol ishlaydi; o'chirilsa - o'yindan ham chiqadi."""
+    async def t():
+        await db.init()
+        don, kom = BASE + 200, BASE + 201
+        for u in (don, kom):
+            await db.upsert_user(u, "x", None)
+            await db.add_balance(u, 10_000, 0)
+        g = _game(["don", "komissar", "tinch", "tinch", "tinch"], {}, False)
+        g.players[0].uid, g.players[1].uid = don, kom
+        r = runner.Runner(None, -7302, {"items": True})
+        r.game, r.game_id = g, None
+        assert await db.buy(kom, "shield")  # o'yin paytida sotib oldi
+        await r.sync_item(kom, "shield")
+        assert g.get(kom).items == {"shield": 1}
+        assert g.submit(don, "mafia_kill", kom)
+        ev = g.resolve_night()
+        assert g.get(kom).alive and ("item_used", kom) in [(e.kind, e.uid) for e in ev]
+        await db.toggle_item(kom, "shield")  # OFF - o'yindan ham chiqadi
+        await r.sync_item(kom, "shield")
+        assert "shield" not in g.get(kom).items
+        r.s["items"] = False  # guruhda buyumlar o'chiq - yoqish ta'sir qilmaydi
+        await db.toggle_item(kom, "shield")
+        await r.sync_item(kom, "shield")
+        assert "shield" not in g.get(kom).items
+        r.close()
+    asyncio.run(t())
