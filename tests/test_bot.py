@@ -1383,11 +1383,18 @@ def test_groupgame_lobby_switch_and_unequal_cancel():
 
 def test_top_groups_and_donate():
     """TOP guruhlar: 4 o'yin = 1 ball, 1 💎 = 2 ball; /donate olmosni guruhga o'tkazadi (yetmasa - faqat yozganga);
-    guruh nomi havola: ochiq - t.me/username, yopiq - bot yaratgan taklif havolasi (bir marta, bazada saqlanadi)."""
+    guruh nomi havola: ochiq - t.me/username, yopiq - bot yaratgan taklif havolasi (bazada saqlanadi, har LINK_TTL da
+    Telegram'dan yangilanadi: admin havolani almashtirsa - yangisi, bot taklif huquqidan ayrilsa - havolasiz nom)."""
     from mafia_zone import handlers
 
     class Bot(FakeBot):
-        made = 0
+        made, invite, primary = 0, True, None
+
+        async def get_chat_member(self, chat_id, uid):
+            return SimpleNamespace(status="administrator", can_invite_users=Bot.invite)
+
+        async def get_chat(self, chat_id):
+            return SimpleNamespace(invite_link=Bot.primary)
 
         async def create_chat_invite_link(self, chat_id, name=None, **kw):
             Bot.made += 1
@@ -1422,6 +1429,15 @@ def test_top_groups_and_donate():
         assert 'href="https://t.me/+inv7772"' in text and Bot.made == 1  # havola bir marta yaratiladi
         assert rows[-7772]["gems"] == 3 and "Donor" not in text and "· 3💎" in text  # nom, ball va donat olmos
         assert_telegram_html(text)
+
+        async def link_now():  # LINK_TTL o'tdi
+            handlers._LINK_AT.clear()
+            return {r["chat_id"]: r["invite"] for r in await handlers._link_groups(bot, [
+                r for r in await db.top_groups(None) if r["chat_id"] == -7772])}[-7772]
+        Bot.primary = "https://t.me/+yangi"  # admin havolani almashtirdi
+        assert await link_now() == "https://t.me/+yangi" and Bot.made == 1
+        Bot.invite = False  # bot taklif huquqidan ayrildi - eski havola ishlamaydi
+        assert await link_now() == "" and 'href' not in texts.group_link({"title": "x", "username": "", "invite": ""})
     asyncio.run(go())
 
 

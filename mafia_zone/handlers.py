@@ -1279,14 +1279,35 @@ async def top_view(uid: int, monthly: bool = True) -> tuple[str, Kb]:
     return text, kb
 
 
+LINK_TTL = 1800  # yopiq guruh havolasi shuncha soniyada bir Telegram'dan qayta tekshiriladi
+_LINK_AT: dict[int, float] = {}
+
+
+async def fresh_link(bot: Bot, chat_id: int, saved: str) -> str:
+    """Yopiq guruhning hozirgi havolasi ("" - yo'q). Admin havolani almashtirsa - asosiy havola (getChat) yangisi;
+    bot "taklif qilish" huquqidan ayrilsa - u yaratgan havolalar ishlamaydi, shuning uchun "" (eski havola qolib ketmaydi)."""
+    if time.time() - _LINK_AT.get(chat_id, 0) < LINK_TTL:
+        return saved
+    _LINK_AT[chat_id] = time.time()
+    me = await _call(bot.get_chat_member, chat_id, bot.id)
+    if me is None:  # tarmoq xatosi / bot guruhda yo'q - borini qoldiramiz
+        return saved
+    link = ""
+    if getattr(me, "can_invite_users", False):
+        chat = await _call(bot.get_chat, chat_id)
+        link = (chat and chat.invite_link) or saved
+        if not link and (new := await _call(bot.create_chat_invite_link, chat_id, name="TOP guruhlar")):
+            link = new.invite_link
+    if link != saved:
+        await db.set_invite(chat_id, link)
+    return link
+
+
 async def _link_groups(bot: Bot | None, rows: list[dict]) -> list[dict]:
-    """Yopiq guruhga havola: bir marta bot yaratadi (admin, "taklif qilish" huquqi kerak) va bazada saqlanadi."""
+    """Yopiq guruhga havola: Telegram'dan har LINK_TTL da yangilanadi va bazada saqlanadi (fresh_link)."""
     for r in rows:
-        if bot and not r["username"] and not r["invite"]:
-            link = await _call(bot.create_chat_invite_link, r["chat_id"], name="TOP guruhlar")
-            if link:
-                r["invite"] = link.invite_link
-                await db.set_invite(r["chat_id"], link.invite_link)
+        if bot and not r["username"]:
+            r["invite"] = await fresh_link(bot, r["chat_id"], r["invite"])
     return rows
 
 
