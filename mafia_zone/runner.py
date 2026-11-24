@@ -136,6 +136,19 @@ async def send(bot: Bot, chat_id: int, text: str, kb: Kb | None = None, effect: 
     return await _call(bot.send_message, chat_id, text, reply_markup=kb, disable_web_page_preview=True, **kw)
 
 
+async def send_many(bot: Bot, items: list[tuple]) -> dict[int, list]:
+    """Shaxsiy xabarlar parallel: (uid, text, kb[, effect]). Global navbat (~25/s) saqlanadi, faqat javob kutishlar
+    ustma-ust tushadi - 20 kishiga ~1 s (ketma-ket 3-5 s edi va guruhdagi keyingi xabar shuni kutardi).
+    Bir odamga bir nechta xabar - o'z tartibida. Natija: uid -> [Message | None, ...]."""
+    by: dict[int, list] = {}
+    for uid, *rest in items:
+        by.setdefault(uid, []).append(rest)
+
+    async def one(uid: int, msgs: list) -> list:
+        return [await send(bot, uid, text, kb, *more) for text, kb, *more in msgs]
+    return dict(zip(by, await asyncio.gather(*(one(u, m) for u, m in by.items()))))
+
+
 def eph(uid: int, cq_id: str | None = None) -> EphemeralMessageParameters:
     """Guruhda faqat uid ga ko'rinadigan xabar parametrlari (Bot API 10.2+, "ephemeral")."""
     return EphemeralMessageParameters(receiver_user_id=uid, callback_query_id=cq_id)
@@ -480,9 +493,8 @@ class Runner:
             await self._drop_lobby_msg()
         await send(self.bot, self.chat_id, texts.GAME_STARTED, role_kb)  # botga o'tmasdan rolni ko'rish
 
-        for p in self.game.players:
-            for t in texts.role_msgs(self.game, p.uid):  # rol, keyin sheriklar alohida
-                await send(self.bot, p.uid, t)
+        await send_many(self.bot, [(p.uid, t, None) for p in self.game.players
+                                   for t in texts.role_msgs(self.game, p.uid)])  # rol, keyin sheriklar alohida
         await self._loop()
 
     # ---------- faza sikli ----------
@@ -569,30 +581,35 @@ class Runner:
                            Kb(inline_keyboard=[[Btn(text="🌙 Botga o'tish", url=bot_link())]]))
             # har tun: Tun -> tirik o'yinchilar va tarkib (kunduzigidek)
             await send(self.bot, self.chat_id, f"{texts.alive_list(g)}\n\n{texts.alive_composition(g)}")
+            items = []
             for p in g.night_actors():
                 if kb := self.night_kb(p.uid):
-                    self._prompt(p.uid, await send(self.bot, p.uid, texts.night_prompt(g, p.uid), kb))  # faqat botda (guruhdagi ephemeral nusxa o'yinga xalal berardi)
+                    items.append((p.uid, texts.night_prompt(g, p.uid), kb))  # faqat botda (guruhdagi ephemeral nusxa o'yinga xalal berardi)
                 elif p.role == "donishmand":  # tungi tugmasi yo'q: eshitish ishlayotganini bilsin
-                    await send(self.bot, p.uid, f"🌙 <b>{g.day}-tun</b>\n\n{texts.DONISHMAND_NIGHT}")
+                    items.append((p.uid, f"🌙 <b>{g.day}-tun</b>\n\n{texts.DONISHMAND_NIGHT}", None))
+            sent = await send_many(self.bot, items)
+            for uid, _, kb in items:
+                if kb:
+                    self._prompt(uid, sent[uid][0])
         elif ph == DAY:
             await send_gif(self.bot, self.chat_id, "kun.mp4", texts.DAY_CAPTION)
             await send(self.bot, self.chat_id, texts.day_start(g, secs))
         elif ph == VOTING:
             await send(self.bot, self.chat_id, texts.vote_prompt(g, secs),
                        Kb(inline_keyboard=[[Btn(text="🗳 Ovoz berish", url=bot_link())]]))
-            for p in g.alive():
-                if g.can_vote(p.uid):
-                    kb = self.vote_kb(p.uid)
-                    self._prompt(p.uid, await send(self.bot, p.uid, texts.vote_pm(g), kb))
+            sent = await send_many(self.bot, [(p.uid, texts.vote_pm(g), self.vote_kb(p.uid))
+                                              for p in g.alive() if g.can_vote(p.uid)])
+            for uid, ms in sent.items():
+                self._prompt(uid, ms[0])
         else:
             m = await send(self.bot, self.chat_id, texts.confirm_prompt(g, secs), self._confirm_kb())
             self.meta["confirm_msg"] = m.message_id if m else None
             self.confirm_shown = g.confirm_tally()
             # tugmalar botda ham: admin guruhdagi xabarni o'chirsa ham hamma ovoz bera oladi
             pm_kb = self._confirm_kb(pm=True)
-            for p in g.alive():
-                if g.can_confirm(p.uid):
-                    self._prompt(p.uid, await send(self.bot, p.uid, texts.confirm_pm(g), pm_kb))
+            sent = await send_many(self.bot, [(p.uid, texts.confirm_pm(g), pm_kb) for p in g.alive() if g.can_confirm(p.uid)])
+            for uid, ms in sent.items():
+                self._prompt(uid, ms[0])
         await self._bots_act(ph)
 
     def _prompt(self, uid: int, m) -> None:
@@ -739,8 +756,7 @@ class Runner:
             pub = ["\n\n".join(pub) if pub else choice(texts.QUIET)]
         for text in pub:
             await send(self.bot, self.chat_id, text)
-        for uid, t in priv:
-            await send(self.bot, uid, t)
+        await send_many(self.bot, [(uid, t, None) for uid, t in priv])
         if g.phase == DAY:  # Ovchi: tanlagan odamining roli + kunduzi o'ldirish tugmasi
             kb = Kb(inline_keyboard=[[Btn(text=texts.HUNT_BTN, callback_data=f"h:{self.game_id}:{g.day}")]])
             for e in ev:
@@ -752,9 +768,12 @@ class Runner:
             hanged = {e.target for e in ev if e.kind == "hanged"}
             hunted = {e.target for e in ev if e.kind == "hunted"}
             collapsed = {e.target for e in ev if e.kind == "collapsed"}
-            for uid in texts.victims(ev):
+            dead = texts.victims(ev)
+            for uid in dead:
                 self.last_words[uid] = time.time() + LAST_WORDS_SECS
-                await send(self.bot, uid, texts.death_pm(uid in hanged, uid in hunted, uid in collapsed))
+            await send_many(self.bot, [(uid, texts.death_pm(uid in hanged, uid in hunted, uid in collapsed), None)
+                                       for uid in dead])
+            for uid in dead:
                 spawn(self._last_words_timeout(uid, self.last_words[uid]))
 
     def vendetta_kb(self) -> Kb:
@@ -800,14 +819,16 @@ class Runner:
         self.close()
         minutes = max(1, round((time.time() - self.meta["started"]) / 60)) if "started" in self.meta else None
         await send(self.bot, self.chat_id, texts.game_over(g, minutes))
+        items = []
         for p in g.players:
             reward = config.REWARD_PLAY + (pro.win_reward(p.uid) * (2 if p.uid in double else 1) if p.won else 0)
             if p.uid >= FAKE_BASE:
                 continue
             u = await db.get_user(p.uid)
             inv = await db.inventory(p.uid) if u else []
-            await send(self.bot, p.uid, texts.result_pm(p.won, reward, u, inv), profile_kb(inv, p.uid) if u else None,
-                       effect=EFFECT_WIN if p.won else None)
+            items.append((p.uid, texts.result_pm(p.won, reward, u, inv), profile_kb(inv, p.uid) if u else None,
+                          EFFECT_WIN if p.won else None))
+        await send_many(self.bot, items)
         if self.s.get("rank_tag", True):
             spawn(set_rank_tags(self.bot, self.chat_id, [p.uid for p in g.players if p.uid < FAKE_BASE]))
 
