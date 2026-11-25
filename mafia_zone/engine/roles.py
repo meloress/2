@@ -20,7 +20,7 @@ _ROLES = [
     Role("serjant", "👮 Serjant", TOWN, (), "Komissar yordamchisi. Komissar o'lsa, uning o'rnini egallaysiz."),
     Role("doktor", "👨‍⚕️ Doktor", TOWN, ("heal",), "Tunda 1 kishini o'limdan saqlaysiz. O'zingizni ketma-ket 2 tun davolay olmaysiz."),
     Role("daydi", "🍾 Daydi", TOWN, ("visit",), "Tunda bir uyga borasiz. U yerda qotillik bo'lsa, qotilni ko'rasiz."),
-    Role("kezuvchi", "💃 Kezuvchi", TOWN, ("block",), "Tunda 1 kishini uxlatasiz: u harakat qila olmaydi va ertaga ovoz bera olmaydi."),
+    Role("kezuvchi", "💃 Kezuvchi", TOWN, ("block",), "Tunda 1 kishini uxlatasiz: u harakat qila olmaydi, ertaga guruhga yoza olmaydi va ovoz bera olmaydi."),
     Role("afsungar", "💣 Afsungar", TOWN, (), "Tunda o'ldirilsangiz, kunduzi qotilingizni olib ketasiz yoki kechirasiz. Osilsangiz, 1 kishini darhol olib ketasiz."),
     Role("voris", "🧬 Voris", TOWN, (), "Don o'ldirsa - Mafiyaga, Komissar otsa - Serjantga aylanasiz."),
     Role("janob", "🎖 Janob", TOWN, (), "Kunduzgi ovoz berishda ovozingiz 2 ta hisoblanadi."),

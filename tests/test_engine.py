@@ -130,15 +130,26 @@ def test_afsungar_may_forgive_or_loses_choice_at_voting():
 
 
 def test_don_heir_order():
-    """Don o'lsa navbat: Mafiya -> Yollanma -> Advokat -> Jurnalist (o'yin raqamidan qat'i nazar); Aka/Uka - hech qachon."""
+    """Don o'lsa navbat: Mafiya -> Advokat -> Jurnalist (o'yin raqamidan qat'i nazar); Aka/Uka va Yollanma - hech qachon
+    (o'zlari o'ldira oladi, o'z hujumi bilan davom etadi)."""
     for roles, heir in ((("don", "jurnalist", "advokat", "yollanma", "mafiya"), 5),
-                        (("don", "jurnalist", "advokat", "yollanma", "aka"), 4),
+                        (("don", "jurnalist", "advokat", "yollanma", "aka"), 3),
                         (("don", "jurnalist", "uka", "advokat", "aka"), 4),
-                        (("don", "jurnalist", "aka", "uka", "tinch"), 2)):
+                        (("don", "jurnalist", "aka", "uka", "tinch"), 2),
+                        (("don", "yollanma", "jurnalist", "tinch", "tinch"), 3)):
         g = mk(*roles, "tinch", "tinch", "tinch", "tinch", "tinch")
         g.get(1).alive = False
         g._after_deaths([])
         assert g.get(heir).role == "don" and sum(p.role == "don" for p in g.alive()) == 1, roles
+
+
+def test_yollanma_alone_keeps_hitting_without_don():
+    g = mk("don", "yollanma", "komissar", "sehrgar", "tinch", "tinch", "tinch", "tinch")
+    g.get(1).alive = False
+    g._after_deaths([])
+    assert g.get(2).role == "yollanma" and not g.by_role("don") and g.available_actions(2) == ["hit"]
+    ev = night(g, (2, "hit", 4))  # Sehrgarga Don o'qi o'tmaydi, Yollanmaniki o'tadi
+    assert not g.get(4).alive and "mafia_idle" not in kinds(ev)
 
 
 def test_afsungar_wins_with_town_after_revenge():

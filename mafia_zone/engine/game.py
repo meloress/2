@@ -77,6 +77,7 @@ class Player:
     won: bool = False
     avenged: bool = False  # Afsungar dushmanni o'zi bilan olib ketdi - tinch aholi yutsa, o'lgan bo'lsa ham yutadi
     mute_day: int = 0  # shu kuni ovoz bera olmaydi (Qaroqchi o'g'irladi yoki Kezuvchi uxlatdi)
+    slept: int = 0  # Kezuvchi uxlatgan kun: shu kunduzi guruhga yoza olmaydi (Pro ham; raqam va admin "!" mumkin)
     idle: int = 0  # AFK hisoblagich
     score: int = 0  # yashirin hissa balli: faqat o'yin oxirida g'oliblarni tartiblash uchun, hech qayerda ko'rsatilmaydi
 
@@ -331,7 +332,7 @@ class Game:
         don_blocked = bool(m) and m[0] in blocked  # mafiya natijasida sababi aytiladi
         for t in blocked:
             acts.pop(t, None)
-            self.get(t).mute_day = self.day  # ertangi kunduzgi ovoz berishda ham qatnasha olmaydi
+            self.get(t).mute_day = self.get(t).slept = self.day  # ertangi kunduzi ovoz ham bermaydi, yozmaydi ham
             ev.append(Event("blocked", t))
 
         # 1b. Aferist
@@ -637,10 +638,11 @@ class Game:
             s.role = "komissar"
             ev.append(Event("promoted", s.uid, data={"role": "komissar"}))
         if not self.by_role("don"):
-            # Aka-Uka bir butun - Don bo'lmaydi: mafiyadan faqat ular qolsa, birgalikdagi hujum bilan davom etadi
-            # navbat: Mafiya -> Yollanma (allaqachon o'ldiruvchi) -> Advokat -> Jurnalist (ma'lumoti eng qimmat) -> boshqalar
-            heir = {"mafiya": 0, "yollanma": 1, "advokat": 2, "jurnalist": 3}
-            mafia = sorted((p for p in self.alive() if p.team == MAFIA and p.role not in ("aka", "uka")),
+            # o'zi o'ldira oladiganlar Don bo'lmaydi (2026-11-25, egasi talabi): Aka-Uka birgalikdagi hujumi, Yollanma
+            # o'z hujumi bilan davom etadi - Don bo'lsa mafiya bir kechalik o'ldirishdan ayrilardi.
+            # navbat: Mafiya -> Advokat -> Jurnalist -> boshqalar
+            heir = {"mafiya": 0, "advokat": 1, "jurnalist": 2}
+            mafia = sorted((p for p in self.alive() if p.team == MAFIA and p.role not in ("aka", "uka", "yollanma")),
                            key=lambda p: heir.get(p.role, 4))
             if mafia:
                 mafia[0].role = "don"

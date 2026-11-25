@@ -45,6 +45,28 @@ def test_admin_needs_bang():
         assert not handlers.may_write(game(ph), OUTSIDER, "!salom", admin=False)  # oddiy odamga ! yordam bermaydi
 
 
+def test_slept_player_silent_next_day(monkeypatch):
+    """Kezuvchi uxlatgan odam ertasi kunduzi yoza olmaydi (Pro ham); raqam va admin "!" mumkin.
+    Qaroqchi ovozini o'g'irlagan odam esa yozaveradi - faqat ovoz bera olmaydi."""
+    from mafia_zone import pro
+    g = Game(-1, 1, [Player(1, "k", "kezuvchi"), Player(2, "a", "tinch"), Player(3, "q", "qaroqchi"),
+                     Player(4, "b", "tinch"), Player(5, "x", "don"), *[Player(i, "t", "tinch") for i in range(6, 10)]])
+    g.submit(1, "block", 2)
+    g.submit(3, "rob", 4)
+    g.resolve_night()
+    g.get(4).mute_day = g.day  # Qaroqchi ovozini o'g'irladi (nima o'g'irlanishi tasodifiy)
+    monkeypatch.setattr(pro, "is_pro", lambda uid: True)
+    for ph in (DAY, VOTING, CONFIRM):
+        g.phase = ph
+        assert not handlers.may_write(g, 2, "salom", admin=False)
+        assert handlers.may_write(g, 2, "7", admin=False) and handlers.may_write(g, 2, "!salom", admin=True)
+        assert handlers.may_write(g, 4, "salom", admin=False) and handlers.may_write(g, 1, "salom", admin=False)
+    g.phase = VOTING
+    assert not g.can_vote(2) and not g.can_vote(4)  # ikkalasi ham ovoz bermaydi
+    g.phase, g.day = DAY, g.day + 1  # keyingi kun - yana yozadi
+    assert handlers.may_write(g, 2, "salom", admin=False)
+
+
 def run_handler(phase, uid, text, admins=(), sender_chat=None, lobby=False):
     deleted = []
 

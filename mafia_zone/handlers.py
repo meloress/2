@@ -1692,12 +1692,14 @@ async def group_admins(bot: Bot, chat_id: int) -> set[int]:
 
 
 def may_write(game, uid: int | None, text: str, admin: bool) -> bool:
-    """O'yin vaqtida: raqam - hammaga; '!...' - adminga; kunduzi - tirik o'yinchiga."""
+    """O'yin vaqtida: raqam - hammaga; '!...' - adminga; kunduzi - tirik o'yinchiga (Kezuvchi uxlatgani - yo'q)."""
     if text and NUMBER.fullmatch(text):
         return True
     if admin and text.startswith("!"):
         return True
     p = game.get(uid) if uid else None
+    if p and p.alive and p.slept == game.day:  # uxlab yotibdi: Pro bo'lsa ham kunduzi yozmaydi
+        return False
     if (p is None or not p.alive) and uid is not None and pro.is_pro(uid):  # Pro tomoshabin/o'lgan: faqat kunduzi
         return game.phase in TALK_PHASES
     return bool(p and p.alive and game.phase in TALK_PHASES)

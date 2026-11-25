@@ -600,7 +600,7 @@ def morning(g: Game, ev: list[Event]) -> tuple[list[str], list[tuple[int, str]]]
             pub.append(f"{role('suitsid')} aynan shuni istagan edi — <b>{pm(g, e.target)}</b> g'olib bo'ldi!")
         elif k == "blocked":
             priv.append((e.uid, "💤 Kimdir sizga uyqu dori berdi: bu tun hech narsa qila olmadingiz, "
-                                "ertaga <b>ovoz bera olmaysiz</b>."))
+                                "ertaga <b>guruhga yoza olmaysiz va ovoz bera olmaysiz</b>."))
         elif k == "stolen":
             priv.append((e.target, "🤹 Kimdir sizning tungi rejangizni o'g'irlab ketdi!"))
             priv.append((e.uid, f"🤹 Ajoyib fokus! {n(e.target)}ning harakatini o'zlashtirdingiz."))
