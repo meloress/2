@@ -836,7 +836,7 @@ def test_night_submenu_has_back_button():
     from mafia_zone.engine.game import Game, Player
     r = runner.Runner(FakeBot(), -4747, {})
     r.game = Game(-4747, 1, [Player(1, "a", "komissar"), Player(2, "b", "doktor"), Player(3, "c", "don"),
-                             Player(4, "d", "tinch")])
+                             Player(4, "d", "tinch")], day=2)  # 1-tunda Komissar faqat tekshiradi
     r.game_id = 79
     cbs = lambda kb: [b.callback_data for row in kb.inline_keyboard for b in row]
     menu = cbs(r.night_kb(1))
@@ -846,6 +846,10 @@ def test_night_submenu_has_back_button():
     assert cbs(sub)[-1] == f"k:79:{r.game.day}:menu" and sub.inline_keyboard[-1][0].text == texts.BACK_BTN
     assert cbs(r.night_kb(1, None)) == menu  # "menu" -> qayta harakat tanlash
     assert not any(c.endswith(":menu") for c in cbs(r.night_kb(2)))  # Doktor: bitta harakat
+    r.game.day = 1  # 1-tun: Komissarga darhol o'yinchilar ro'yxati (tekshirish), otish/orqaga yo'q
+    first = cbs(r.night_kb(1))
+    assert all(c.startswith("a:79:1:check:") or ":skip:" in c.lower() or c.endswith(":0") for c in first), first
+    assert any(c == "a:79:1:check:3" for c in first) and not any("shoot" in c or c.endswith(":menu") for c in first)
     r.close()
 
 

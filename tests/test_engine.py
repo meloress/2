@@ -22,9 +22,22 @@ def night(g, *acts):
     if g.phase == DAY:  # kunni ovozsiz o'tkazib yuborish
         g.start_voting()
         g.resolve_vote()
+    if g.day == 1 and any(k == "shoot" for _, k, _ in acts):  # 1-tunda Komissar otmaydi - sahna 2-tunga
+        g.day = 2
     for uid, kind, target in acts:
         assert g.submit(uid, kind, target), (uid, kind, target)
     return g.resolve_night()
+
+
+def test_komissar_only_checks_first_night():
+    """1-tun: Komissar faqat tekshiradi (otish tugmasi yo'q, submit ham rad etadi); 2-tundan - tekshirish yoki otish."""
+    g = mk("komissar", "don", "tinch", "tinch", "tinch")
+    assert g.available_actions(1) == ["check"] and not g.submit(1, "shoot", 2)
+    assert g.submit(1, "check", 2)
+    g.resolve_night()
+    g.start_voting()
+    g.resolve_vote()
+    assert g.day == 2 and g.available_actions(1) == ["check", "shoot"] and g.submit(1, "shoot", 2)
 
 
 def vote(g, *pairs):
@@ -1108,6 +1121,7 @@ def test_qotil_immune_to_aka_uka():
 def test_immune_attacker_is_told_fail_even_if_target_died():
     """Komissar Sehrgarga o'q uzdi (ta'sir qilmaydi), Vampir uni tishlab o'ldirdi: Komissarga "omon qoldi"."""
     g = mk("don", "komissar", "sehrgar", "vampir", *["tinch"] * 9)
+    g.day = 2  # 1-tunda Komissar otmaydi
     g.submit(2, "shoot", 3)
     g.submit(4, "bite", 3)
     ev = g.resolve_night()
@@ -1280,11 +1294,13 @@ def test_failed_attack_says_why():
     assert g.get(4).alive and [t for u, t in texts.morning(g, ev)[1] if u == 1 and "omon qoldi" in t]
 
     g = mk("don", "komissar", "sehrgar", "voris", "qotil", *["tinch"] * 8, p6={"verbena": 1})
+    g.day = 2  # 1-tunda Komissar otmaydi
     g.submit(2, "shoot", 3)  # Sehrgarga Komissar o'qi ta'sir qilmaydi
     g.submit(5, "kill", 4)   # Qotil Vorisni o'ldirdi - oddiy o'lim
     assert _why(g.resolve_night(), 2) == ["immune"]
 
     g = mk("don", "komissar", "voris", "tinch", "tinch", "tinch", "tinch")
+    g.day = 2  # 1-tunda Komissar otmaydi
     g.submit(2, "shoot", 3)  # Voris Serjantga aylandi
     assert _why(g.resolve_night(), 2) == ["transformed"]
 

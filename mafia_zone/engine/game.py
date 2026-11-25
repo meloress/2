@@ -216,6 +216,8 @@ class Game:
             return []
         if p.role == "gazabkor" and p.kills < GAZAB_KILLS:
             return ["rage"]
+        if p.role == "komissar" and self.day == 1:  # 1-tun faqat tekshiradi, otish 2-tundan (egasi talabi, 2026-11-25)
+            return ["check"]
         return list(ROLES[p.role].actions)
 
     def targets(self, uid: int, kind: str) -> list[int]:
